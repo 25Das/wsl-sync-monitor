@@ -1,6 +1,6 @@
 name: Build
 
-# Compila a cada push e pull request. Num push na main, se a <Version> do .csproj ainda não tem
+# Roda os testes (Linux) e compila (Windows) a cada push e pull request. Num push na main, se a <Version> do .csproj ainda não tem
 # release (tag v<versão> inexistente), cria a tag e a release com o WslSyncMonitor.exe anexado.
 
 on:
@@ -21,11 +21,11 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Testar os scripts de shell
-        run: dotnet run --project tests -c Release
+      - name: Testes
+        run: dotnet test tests -c Release
 
   build:
-    needs: tests
+    needs: tests # sem testes passando não há build nem release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
