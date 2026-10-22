@@ -82,7 +82,7 @@ public sealed class StatusCollector : IDisposable
         {
             // sem a chave a API recusa tudo; por isso a leitura do config.xml acontece mesmo com a distro
             // liberada (é rara: uma vez, e depois no máximo uma por minuto se a chave não for encontrada)
-            await EnsureCredentialsAsync(s, distro);
+            await EnsureCredentialsAsync(s, distro, allowDistroCommands);
             snap.Url = GuiUrl(s);
             await QuerySyncthingAsync(snap, s, snap.Url);
             LastApiError = null;
@@ -93,9 +93,12 @@ public sealed class StatusCollector : IDisposable
             snap.St = StState.AuthError;
             snap.StError = "Acesso negado pela API. " + (_credentialsInfo ?? "Verifique a chave da API.") + SeeTechInfo;
             LastApiError = ex.Message;
-            // a chave pode ter mudado: relê o config.xml já na próxima atualização (e depois no máximo 1x/min)
-            _cachedKey = null;
-            _configReadAt = default;
+            if (CredentialRules.DiscardKeyOnAuthError(allowDistroCommands))
+            {
+                // a chave pode ter mudado: relê o config.xml já na próxima atualização (e depois no máximo 1x/min)
+                _cachedKey = null;
+                _configReadAt = default;
+            }
         }
         catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException or TimeoutException) && !allowDistroCommands)
         {
@@ -150,14 +153,14 @@ public sealed class StatusCollector : IDisposable
         catch { return false; }
     }
 
-    async Task EnsureCredentialsAsync(Settings s, string distro)
+    async Task EnsureCredentialsAsync(Settings s, string distro, bool allowDistroCommands)
     {
         if (_cachedDistro != distro) InvalidateCredentials();
         if (!string.IsNullOrWhiteSpace(s.ApiKey) && (!string.IsNullOrWhiteSpace(s.SyncthingUrl) || _cachedUrl != null))
             return;
-        if (_cachedKey != null && _cachedUrl != null) return;
-        // sem chave: relê no máximo uma vez por minuto (o resultado não muda a cada atualização)
-        if (_cachedUrl != null && DateTime.Now - _configReadAt < TimeSpan.FromMinutes(1)) return;
+        if (_cachedUrl != null && !CredentialRules.ShouldReadConfig(_cachedKey != null, _configReadAt, DateTime.Now, allowDistroCommands))
+            return;
+        if (!allowDistroCommands) { _cachedUrl ??= "http://127.0.0.1:8384"; return; }
         _configReadAt = DateTime.Now;
 
         var (files, exit, error) = await WslService.ReadSyncthingConfigsAsync(distro, s.SyncthingConfigPath);
@@ -170,13 +173,11 @@ public sealed class StatusCollector : IDisposable
         _cachedUrl = "http://127.0.0.1:8384";
         _credentialsInfo = files.Count == 0 ? "config.xml do Syncthing não encontrado na distro." : null;
 
-        var candidates = new List<(string Path, string? Key, string Url, HashSet<string> Devices)>();
         foreach (var (path, xml) in files)
         {
             try
             {
-                var root = XDocument.Parse(xml).Root;
-                var gui = root?.Element("gui");
+                var gui = XDocument.Parse(xml).Root?.Element("gui");
                 if (gui == null) continue;
                 bool tls = string.Equals((string?)gui.Attribute("tls"), "true", StringComparison.OrdinalIgnoreCase);
                 var addr = gui.Element("address")?.Value ?? "127.0.0.1:8384";
@@ -184,37 +185,15 @@ public sealed class StatusCollector : IDisposable
                 var idx = addr.LastIndexOf(':');
                 var port = idx >= 0 && int.TryParse(addr[(idx + 1)..], out var p) ? p : 8384;
                 if (addr.StartsWith("unix", StringComparison.OrdinalIgnoreCase) || addr.StartsWith('/')) port = 8384;
-                var devices = root!.Elements("device").Select(d => (string?)d.Attribute("id") ?? "").ToHashSet();
-                candidates.Add((path, gui.Element("apikey")?.Value, $"{(tls ? "https" : "http")}://127.0.0.1:{port}", devices));
+                _cachedKey = gui.Element("apikey")?.Value;
+                _cachedUrl = $"{(tls ? "https" : "http")}://127.0.0.1:{port}";
+                ConfigFileUsed = path;
+                ApiKeySource = string.IsNullOrEmpty(_cachedKey) ? "config.xml sem chave" : "config.xml";
+                _credentialsInfo = $"Chave lida de {path}.";
+                return;
             }
             catch { /* arquivo malformado: tenta o próximo */ }
         }
-        if (candidates.Count == 0) return;
-
-        // usa o primeiro cuja chave a API aceita; o Syncthing devolve o próprio ID no cabeçalho X-Syncthing-Id
-        string? answeringId = null;
-        foreach (var c in candidates)
-        {
-            var (ok, id) = await PingAsync(c.Url, c.Key);
-            answeringId ??= id;
-            if (ok)
-            {
-                _cachedKey = c.Key; _cachedUrl = c.Url;
-                ConfigFileUsed = c.Path; ApiKeySource = "config.xml (aceita pela API)";
-                return;
-            }
-        }
-
-        var first = candidates[0];
-        _cachedKey = first.Key;
-        _cachedUrl = first.Url;
-        ConfigFileUsed = first.Path;
-        ApiKeySource = "config.xml (recusada pela API)";
-        if (answeringId != null && !candidates.Any(c => c.Devices.Contains(answeringId)))
-            _credentialsInfo = $"Quem responde em {first.Url} é outro Syncthing (ID {answeringId[..Math.Min(7, answeringId.Length)]}), " +
-                               "não o desta distro. Há um Syncthing no Windows usando a mesma porta?";
-        else
-            _credentialsInfo = $"Chave lida de {string.Join(", ", candidates.Select(c => c.Path))}.";
     }
 
     string? _credentialsInfo; // diagnóstico mostrado quando a API recusa a chave
@@ -228,19 +207,6 @@ public sealed class StatusCollector : IDisposable
     public string? LastApiError { get; private set; }
 
     const string SeeTechInfo = " Detalhes: menu → Informações técnicas.";
-
-    async Task<(bool Ok, string? Id)> PingAsync(string url, string? key)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, url + "/rest/system/ping");
-            if (!string.IsNullOrEmpty(key)) req.Headers.Add("X-API-Key", key);
-            using var resp = await _http.SendAsync(req);
-            var id = resp.Headers.TryGetValues("X-Syncthing-Id", out var v) ? v.FirstOrDefault() : null;
-            return (resp.IsSuccessStatusCode, id);
-        }
-        catch { return (false, null); }
-    }
 
     /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>
     public async Task ShutdownSyncthingAsync(Settings s)

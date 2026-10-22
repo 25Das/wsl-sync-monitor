@@ -16,5 +16,6 @@
     <Using Include="Xunit" />
     <Compile Include="../src/SyncthingScripts.cs" Link="src/SyncthingScripts.cs" />
     <Compile Include="../src/Diagnostics.cs" Link="src/Diagnostics.cs" />
+    <Compile Include="../src/CredentialRules.cs" Link="src/CredentialRules.cs" />
   </ItemGroup>
 </Project>

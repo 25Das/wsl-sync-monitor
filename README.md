@@ -125,9 +125,8 @@ foram encontrados e o erro do último script executado na distro. O botão *Copi
 
 - **"Sem resposta da API"**: confirme que `localhostForwarding` não está desativado no `.wslconfig`
   ou use `networkingMode=mirrored`; ou defina `SyncthingUrl`.
-- **"Chave da API inválida"**: o painel mostra de onde a chave foi lida. Se disser que *outro Syncthing* responde
-  na porta, há um Syncthing no Windows (ou outro programa) usando a mesma porta. Se o Syncthing roda com outro
-  usuário (ex.: serviço como root), defina `ApiKey` ou `SyncthingConfigPath`.
+- **"Chave da API inválida"**: o painel mostra de onde a chave foi lida. Se o Syncthing usa outro arquivo de
+  configuração ou roda com outro usuário (ex.: serviço como root), defina `SyncthingConfigPath` ou `ApiKey`.
 - **Widget sobre os ícones da barra** (Windows 11 com ícones à esquerda, etc.): arraste o widget para outro ponto
   ou desative em *Widget na barra de tarefas* e use só o ícone da bandeja.
 - Apenas a barra de tarefas do monitor principal é acompanhada.
@@ -137,11 +136,10 @@ foram encontrados e o erro do último script executado na distro. O botão *Copi
 ## Como ele obtém os dados
 
 - `wsl.exe --list --verbose` e `--list --running --quiet` (não liga o WSL; funciona em qualquer idioma).
-- Com a distro ligada, lê o `config.xml` do Syncthing para descobrir a chave da API e a porta da GUI: primeiro
-  o que o processo em execução usa (`--home`/`--config` ou `STHOMEDIR`), depois o que `syncthing paths` informa e
-  os locais padrão (`~/.local/state/syncthing/`, `~/.config/syncthing/`, snap). Testa cada chave na API e usa a
-  que for aceita. Consulta a REST API em `http://127.0.0.1:<porta>` (encaminhamento de localhost do WSL 2);
-  se localhost não responder, tenta o IP da VM.
+- Com a distro em uso, lê o `config.xml` do Syncthing (`~/.local/state/syncthing/`, `~/.config/syncthing/` ou
+  snap; outro local pela configuração `SyncthingConfigPath`) para descobrir a chave da API e a porta da GUI, e
+  consulta a REST API em `http://127.0.0.1:<porta>` (encaminhamento de localhost do WSL 2). Se localhost não
+  responder, tenta o IP da VM. Depois que a distro é liberada para desligar, nada é executado dentro dela.
 
 ## Compilar
 

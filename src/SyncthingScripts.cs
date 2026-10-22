@@ -15,16 +15,8 @@ public static class SyncthingScripts
         }
         """;
 
-    // ordem: o que o processo em execução usa (--home/--config ou STHOMEDIR), `syncthing paths`, locais padrão
+    // locais padrão, do atual (Syncthing 1.27+) para os antigos; outro local: SyncthingConfigPath nas configurações
     const string Discover = """
-        pid=$(pgrep -xo syncthing)
-        if [ -n "$pid" ]; then
-          d=$(tr '\0' '\n' < /proc/$pid/cmdline | awk 'p{print;exit} /^--?(home|config)$/{p=1;next} /^--?(home|config)=/{sub(/^--?[a-z]+=/,"");print;exit}')
-          [ -z "$d" ] && d=$(tr '\0' '\n' < /proc/$pid/environ 2>/dev/null | sed -n 's/^STHOMEDIR=//p;s/^STCONFDIR=//p' | head -1)
-          [ -n "$d" ] && emit "$d/config.xml"
-        fi
-        p=$(syncthing paths 2>/dev/null | awk '/^Configuration file/{getline; gsub(/^[ \t]+/,""); print; exit}')
-        [ -n "$p" ] && emit "$p"
         emit "${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml"
         emit "${XDG_CONFIG_HOME:-$HOME/.config}/syncthing/config.xml"
         emit "$HOME/snap/syncthing/common/.config/syncthing/config.xml"

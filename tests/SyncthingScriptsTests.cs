@@ -90,28 +90,24 @@ public sealed class SyncthingScriptsTests : IDisposable
         Assert.Empty(ListedFiles(SyncthingScripts.ListConfigs("")));
     }
 
-    [Theory]
-    [InlineData(false)] // --home <dir>
-    [InlineData(true)]  // --home=<dir>
-    public void Lista_primeiro_o_config_do_processo_em_execucao(bool withEquals)
+    [Fact]
+    public void Nao_procura_pelo_processo_em_execucao_so_nos_locais_padrao()
     {
         var state = WriteConfig("home/.local/state/syncthing/config.xml");
-        var procConfig = WriteConfig("prochome/config.xml");
-        var procHome = Path.GetDirectoryName(procConfig)!;
+        var procHome = Path.GetDirectoryName(WriteConfig("prochome/config.xml"))!;
 
-        // um "syncthing" falso em execução (o script procura o processo pelo nome)
+        // um "syncthing" falso em execução com --home: o script não deve olhar o processo
         var fake = Path.Combine(Directory.CreateDirectory(Path.Combine(_root, "bin")).FullName, "syncthing");
         File.WriteAllText(fake, "#!/bin/sh\nsleep 30\n");
         File.SetUnixFileMode(fake, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var psi = new ProcessStartInfo(fake);
         psi.ArgumentList.Add("serve");
-        if (withEquals) psi.ArgumentList.Add($"--home={procHome}");
-        else { psi.ArgumentList.Add("--home"); psi.ArgumentList.Add(procHome); }
+        psi.ArgumentList.Add($"--home={procHome}");
         using var proc = Process.Start(psi)!;
         try
         {
             Thread.Sleep(300);
-            Assert.Equal([procConfig, state], ListedFiles(SyncthingScripts.ListConfigs("")));
+            Assert.Equal([state], ListedFiles(SyncthingScripts.ListConfigs("")));
         }
         finally { proc.Kill(true); proc.WaitForExit(); }
     }
