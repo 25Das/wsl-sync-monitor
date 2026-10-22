@@ -202,6 +202,12 @@ Ideias para o futuro (ainda não implementadas):
 - **Independente de sistema operacional:** rodar também fora do Windows (hoje o app é WinForms e depende do WSL).
 - **Independente da estrutura das conexões remotas:** não supor uma topologia fixa de dispositivos (como o
   triângulo trabalho · casa · VM); funcionar com qualquer arranjo de dispositivos e pastas.
+- **Independente das configurações do WSL do usuário:** hoje o app foi pensado para quem deixa o WSL desligar
+  sozinho por ociosidade (decisão pessoal do autor); o essencial é a proteção da sincronização, que deve valer
+  com qualquer configuração (`vmIdleTimeout`, rede, systemd etc.).
+- **Mapear outras regras muito específicas de um usuário:** identificar comportamentos que hoje supõem o
+  ambiente do autor e torná-los opcionais ou configuráveis, com a mesma intenção acima.
+- **Idiomas:** a interface é só em português; adaptar para outros idiomas.
 
 ## Compilar
 

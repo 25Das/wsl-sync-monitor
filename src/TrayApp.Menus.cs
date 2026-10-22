@@ -286,12 +286,22 @@ public sealed partial class TrayApp
         item.Click += (_, _) =>
         {
             if (_updateState.Status == UpdateStatus.Available) { InstallUpdate(); return; } // o menu fecha e o app reinicia
-            _keepMenuOpen = true;
-            SynchronizationContext.Current?.Post(_ => _keepMenuOpen = false, null); // vale só para este clique
             CheckForUpdate();
         };
-        // o submenu (Preferências) também fecharia com o clique
-        item.OwnerChanged += (_, _) => { if (item.Owner is ToolStripDropDown dd) { dd.Closing -= KeepMenuOpenIfAsked; dd.Closing += KeepMenuOpenIfAsked; } };
+        // O menu decide fechar (ItemClicked) antes do Click do item: o pedido de continuar aberto é feito ali.
+        // Vale para o submenu (Preferências) e para o menu principal, que também fechariam com o clique.
+        void OnItemClicked(object? sender, ToolStripItemClickedEventArgs e)
+        {
+            if (e.ClickedItem != item || _updateState.Status is UpdateStatus.Available or UpdateStatus.Checking) return;
+            _keepMenuOpen = true;
+            SynchronizationContext.Current?.Post(_ => _keepMenuOpen = false, null); // vale só para este clique
+        }
+        item.OwnerChanged += (_, _) =>
+        {
+            if (item.Owner is not ToolStripDropDown dd) return;
+            dd.ItemClicked -= OnItemClicked; dd.ItemClicked += OnItemClicked;
+            dd.Closing -= KeepMenuOpenIfAsked; dd.Closing += KeepMenuOpenIfAsked;
+        };
         _renderUpdateMenuItem = Render;
         Render();
         return item;
