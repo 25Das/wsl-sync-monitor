@@ -1,5 +1,6 @@
 """
-Resumo da cobertura de testes por arquivo de src/ (arquivos cobertura.xml do coverlet), do menos ao mais coberto.
+Resumo da cobertura de testes por arquivo de src/ (relatórios no formato cobertura: coverlet ou o coletor da
+Microsoft), do menos ao mais coberto.
 Junta vários relatórios linha a linha: uma linha conta como coberta se algum conjunto de testes passou por ela.
 Uso: python tools/coverage-summary.py relatorio1.xml [relatorio2.xml ...] > cobertura.md
 """
@@ -8,9 +9,10 @@ import sys, collections, xml.etree.ElementTree as ET
 lines = collections.defaultdict(dict)  # arquivo -> {número da linha: coberta?}
 for path in sys.argv[1:]:
     for c in ET.parse(path).getroot().iter('class'):
-        name = c.get('filename').replace('\\', '/').split('/')[-1]
-        if name.endswith('Tests.cs') or name == 'Program.cs' and 'Microsoft.NET.Test.Sdk' in c.get('name', ''):
-            continue
+        path_ = c.get('filename').replace('\\', '/')
+        if '/src/' not in '/' + path_ and not path_.startswith('src/'):
+            continue  # só o código do app (fora: testes, bibliotecas, arquivos gerados)
+        name = path_.split('/src/')[-1].removeprefix('src/')
         for line in c.iter('line'):
             n = int(line.get('number'))
             lines[name][n] = lines[name].get(n, False) or int(line.get('hits')) > 0

@@ -44,12 +44,12 @@ jobs:
       - name: Testes de interface
         run: >
           dotnet test tests.windows -c Release --logger GitHubActions --blame-crash
-          --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings --results-directory "${{ runner.temp }}/cobertura"
-          --diag "${{ runner.temp }}/diag/log.txt"
+          --collect "Code Coverage;Format=cobertura" --results-directory "${{ runner.temp }}/cobertura"
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/evidencias
 
       # as regras puras também rodam aqui só para medir a cobertura do código todo num lugar
+      # (no Windows, o coletor da Microsoft: o coverlet não consegue instrumentar o assembly WinForms)
       - name: Cobertura
         if: always()
         shell: bash
@@ -57,12 +57,8 @@ jobs:
           dotnet test tests -c Release --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings \
             --results-directory "$RUNNER_TEMP/cobertura" > /dev/null || true
           mkdir -p "$RUNNER_TEMP/evidencias"
-          reports=$(find "$RUNNER_TEMP/cobertura" -name coverage.cobertura.xml)
-          python tools/coverage-summary.py $reports > "$RUNNER_TEMP/evidencias/cobertura.md"
-          { echo; echo "Relatórios:"; for r in $reports; do echo "- \`$(basename "$(dirname "$r")")\` $(grep -o 'package name="[^"]*"' "$r" | tr '\n' ' ')"; done; } \
-            >> "$RUNNER_TEMP/evidencias/cobertura.md"
-          { echo; echo '```'; grep -rhi "coverlet" "$RUNNER_TEMP/diag" | grep -iE "instrument|skip|exclud|unable|WslSyncMonitor\.dll" | cut -c1-300 | head -40; echo '```'; } \
-            >> "$RUNNER_TEMP/evidencias/cobertura.md" || true
+          python tools/coverage-summary.py $(find "$RUNNER_TEMP/cobertura" -name '*.cobertura.xml') \
+            > "$RUNNER_TEMP/evidencias/cobertura.md"
           cat "$RUNNER_TEMP/evidencias/cobertura.md" >> "$GITHUB_STEP_SUMMARY"
 
       # capturas de tela geradas pelos testes, publicadas no branch ci-evidencias (pasta = nome do branch) para
