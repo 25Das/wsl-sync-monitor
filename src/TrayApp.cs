@@ -54,6 +54,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _menuOwner.Show();
         _menuOwner.Hide();
         _menu.Closed += (_, _) => _widget?.BringAboveTaskbar();
+        _menu.Closing += KeepMenuOpenIfAsked;
         _popup.VisibleChanged += (_, _) => { if (!_popup.Visible) _widget?.BringAboveTaskbar(); };
 
         _tray = new NotifyIcon
@@ -221,11 +222,8 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         }
     }
 
-    Point _menuPoint; // onde o menu abriu: âncora do painel aberto por um item do menu
-
     void ShowMenu(Point pt)
     {
-        _menuPoint = pt;
         _popup.HidePopup();
         _widgetHover = false;
         var dir = TaskbarInfo.Get().Edge switch
@@ -329,22 +327,12 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     {
         _updateState = state;
         _popup.SetUpdate(state);
+        _renderUpdateMenuItem?.Invoke(); // menu aberto: o item mostra o andamento e o resultado na hora
         UpdateTrayIcon(); // marca de atualização pendente
     }
 
     /// <summary>Painel (recarregar, clique na versão) e menu: o resultado aparece no painel e no menu, sem notificação.</summary>
     public void CheckForUpdate() => _ = CheckUpdateAsync(UpdateCheck.Button);
-
-    /// <summary>Menu → Verificar atualizações: abre o painel, onde a versão mostra o andamento e o resultado.</summary>
-    void CheckForUpdateFromMenu()
-    {
-        // depois que o menu terminar de fechar, senão o foco volta para ele e o painel fecha na hora
-        SynchronizationContext.Current?.Post(_ =>
-        {
-            if (!_popup.Visible) ShowPopup(_widget.Visible ? _widget.PopupAnchor : _menuPoint, pin: true);
-        }, null);
-        CheckForUpdate();
-    }
 
     async Task CheckUpdateAsync(UpdateCheck origin, bool retryOnFail = false)
     {
@@ -355,10 +343,10 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             var u = await _updater.CheckAsync();
             SetUpdateState(u != null ? UpdateState.Found(u.Version, DateTime.Now) : UpdateState.UpToDate(DateTime.Now));
-            if (UpdateNotice.ShouldNotify(origin, u?.Version, _notifiedVersion))
+            if (UpdateNotice.ShouldNotify(origin, u?.Version, _notifiedVersion, uiOpen: _popup.Visible || _menu.Visible))
                 _tray.ShowBalloonTip(10000, AppName,
                     $"Versão {u!.Version.ToString(3)} disponível. Clique aqui, no painel ou no menu para atualizar.", ToolTipIcon.Info);
-            if (u != null) _notifiedVersion = u.Version; // vista pelo botão também conta: a busca automática não repete
+            if (u != null) _notifiedVersion = u.Version; // vista no painel ou no menu também conta: não repete
         }
         catch (Exception ex)
         {

@@ -70,19 +70,20 @@ public sealed record PanelHeader(
 public enum UpdateCheck { Automatic, Button }
 
 /// <summary>
-/// Quando avisar de versão nova: só na busca automática (ao iniciar e a cada 24 h), uma vez por versão.
-/// Pelos botões (painel e menu) o resultado aparece no próprio painel e no menu, sem notificação.
+/// Quando avisar de versão nova: só na busca automática (ao iniciar e a cada 24 h), uma vez por versão, e só com
+/// painel e menu fechados. Quem buscou pelo painel atualiza pelo painel; quem buscou pelo menu, pelo menu.
 /// </summary>
 public static class UpdateNotice
 {
-    public static bool ShouldNotify(UpdateCheck origin, Version? found, Version? alreadyNotified) =>
-        origin == UpdateCheck.Automatic && found != null && found != alreadyNotified;
+    public static bool ShouldNotify(UpdateCheck origin, Version? found, Version? alreadyNotified, bool uiOpen) =>
+        origin == UpdateCheck.Automatic && !uiOpen && found != null && found != alreadyNotified;
 
     public static string MenuLabel(UpdateState u) => u.Status switch
     {
         UpdateStatus.Checking => "Verificando atualizações…",
         UpdateStatus.UpToDate => $"Verificar atualizações (em dia às {u.CheckedAt:HH:mm})",
         UpdateStatus.Failed => "Verificar atualizações (a última falhou)",
+        UpdateStatus.Available => $"Atualizar para a versão {u.Version!.ToString(3)}",
         _ => "Verificar atualizações",
     };
 }

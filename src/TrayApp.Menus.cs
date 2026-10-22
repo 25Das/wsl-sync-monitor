@@ -245,13 +245,56 @@ public sealed partial class TrayApp
         }, check: _settings.HoverPopup);
         yield return Item("Iniciar com o Windows", () => Try(() => Settings.StartWithWindows = !Settings.StartWithWindows), check: autostart);
         yield return Sep();
-        yield return Item(UpdateNotice.MenuLabel(_updateState), CheckForUpdateFromMenu, enabled: _updateState.Status != UpdateStatus.Checking);
+        yield return UpdateMenuItem();
         yield return IsInstalled ? Item("Desinstalar…", Uninstall) : Item("Instalar…", InstallFromMenu);
         yield return Item("Configurações avançadas (settings.json)…", () =>
         {
             SaveSettings();
             Try(() => Process.Start(new ProcessStartInfo("notepad.exe", $"\"{Settings.FilePath}\"") { UseShellExecute = true }));
         });
+    }
+
+    // ------------------------------------------------------------------ atualização pelo menu
+
+    bool _keepMenuOpen;
+    Action? _renderUpdateMenuItem;
+
+    /// <summary>Cancela o fechamento do menu pelo clique num item que pediu para ele continuar aberto.</summary>
+    void KeepMenuOpenIfAsked(object? sender, ToolStripDropDownClosingEventArgs e)
+    {
+        if (_keepMenuOpen && e.CloseReason == ToolStripDropDownCloseReason.ItemClicked) e.Cancel = true;
+    }
+
+    /// <summary>
+    /// Preferências → Verificar atualizações: busca sem fechar o menu; o item mostra "Verificando…" e, achando
+    /// versão nova, vira "Atualizar para a versão X" ali mesmo (quem buscou pelo menu atualiza pelo menu).
+    /// </summary>
+    ToolStripMenuItem UpdateMenuItem()
+    {
+        var item = new ToolStripMenuItem();
+        var regular = item.Font;
+        var bold = new Font(regular, FontStyle.Bold);
+        item.Disposed += (_, _) => bold.Dispose();
+        void Render()
+        {
+            if (item.IsDisposed) return;
+            bool available = _updateState.Status == UpdateStatus.Available;
+            item.Text = UpdateNotice.MenuLabel(_updateState);
+            item.Font = available ? bold : regular;
+            item.Enabled = _updateState.Status != UpdateStatus.Checking && !(available && _busy);
+        }
+        item.Click += (_, _) =>
+        {
+            if (_updateState.Status == UpdateStatus.Available) { InstallUpdate(); return; } // o menu fecha e o app reinicia
+            _keepMenuOpen = true;
+            SynchronizationContext.Current?.Post(_ => _keepMenuOpen = false, null); // vale só para este clique
+            CheckForUpdate();
+        };
+        // o submenu (Preferências) também fecharia com o clique
+        item.OwnerChanged += (_, _) => { if (item.Owner is ToolStripDropDown dd) { dd.Closing -= KeepMenuOpenIfAsked; dd.Closing += KeepMenuOpenIfAsked; } };
+        _renderUpdateMenuItem = Render;
+        Render();
+        return item;
     }
 
     // ------------------------------------------------------------------ menu de uma linha do painel
