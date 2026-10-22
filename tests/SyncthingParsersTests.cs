@@ -60,3 +60,14 @@ public class SyncthingParsersTests
         finally { Directory.Delete(root, true); }
     }
 }
+
+public class ProcessCheckTests
+{
+    [Theory]
+    [InlineData("yes\n", true)]
+    [InlineData("no\n", false)]
+    [InlineData("", true)]                       // wsl.exe falhou: na dúvida, protege
+    [InlineData("Erro: distro não encontrada", true)]
+    public void So_um_no_explicito_conta_como_parado(string output, bool mayBeRunning) =>
+        Assert.Equal(mayBeRunning, SyncthingParsers.ProcessMayBeRunning(output));
+}

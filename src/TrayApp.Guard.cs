@@ -191,6 +191,12 @@ public sealed partial class TrayApp
         return false;
     }
 
+    /// <summary>
+    /// O Syncthing está rodando na distro (ligada)? Sem ele não há o que esperar: evita aguardar a API por mais
+    /// de um minuto ao sair ou ao desligar o Windows. Na dúvida (falha ao perguntar), considera que está.
+    /// </summary>
+    static Task<bool> SyncthingMayBeRunningAsync(string distro) => WslService.ProcessMayBeRunningAsync(distro, "syncthing");
+
     static string Lower(string t) => t.Length > 0 ? char.ToLower(t[0]) + t[1..] : t;
 
     // ------------------------------------------------------------------ sincronização periódica
@@ -220,8 +226,9 @@ public sealed partial class TrayApp
             _busy = true;
             _exitCts = new CancellationTokenSource();
             SetBusy("Aguardando a sincronização para sair…");
-            await WaitSyncedAsync(d.Name, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), _exitCts.Token,
-                t => SetBusy("Para sair: " + Lower(t)));
+            if (await SyncthingMayBeRunningAsync(d.Name))
+                await WaitSyncedAsync(d.Name, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), _exitCts.Token,
+                    t => SetBusy("Para sair: " + Lower(t)));
         }
         WslService.Release();
         ExitThread();
@@ -237,17 +244,17 @@ public sealed partial class TrayApp
         var d = _snap?.Target?.Name;
         if (d == null) return;
         _verifyCts?.Cancel();
-        await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), CancellationToken.None, null);
-        try
+        if (await SyncthingMayBeRunningAsync(d))
         {
-            if (await WslService.IsProcessRunningAsync(d, "syncthing"))
+            await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), CancellationToken.None, null);
+            try
             {
                 try { await _collector.ShutdownSyncthingAsync(_settings); }
                 catch { await WslService.SignalSyncthingAsync(d); }
                 await WslService.WaitProcessExitAsync(d, "syncthing", TimeSpan.FromSeconds(30));
             }
+            catch { }
         }
-        catch { }
         try { await WslService.TerminateSafelyAsync(d); } catch { }
         WslService.Release();
     }

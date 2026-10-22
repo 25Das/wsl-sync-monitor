@@ -31,4 +31,7 @@ public static class SyncthingParsers
         }
         return null;
     }
+
+    /// <summary>Saída de "pgrep … && echo yes || echo no": só um "no" explícito conta como parado (falha = na dúvida, rodando).</summary>
+    public static bool ProcessMayBeRunning(string output) => output.Trim() != "no";
 }

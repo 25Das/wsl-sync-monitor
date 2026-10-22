@@ -126,11 +126,17 @@ public static class WslService
     public static Task<Result> ShAsync(string distro, string script, int timeoutMs = 10000) =>
         RunAsync(new[] { "-d", distro, "--exec", "sh", "-c", SyncthingScripts.ForSh(script) }, timeoutMs);
 
-    public static async Task<bool> IsProcessRunningAsync(string distro, string name)
+    public static async Task<bool> IsProcessRunningAsync(string distro, string name) =>
+        (await ShAsync(distro, ProcessCheck(name))).Output.Trim() == "yes";
+
+    /// <summary>Como <see cref="IsProcessRunningAsync"/>, mas se não der para saber (falha, sem resposta), considera rodando.</summary>
+    public static async Task<bool> ProcessMayBeRunningAsync(string distro, string name)
     {
-        var r = await ShAsync(distro, $"pgrep -x {name} >/dev/null 2>&1 && echo yes || echo no");
-        return r.Output.Trim() == "yes";
+        try { return SyncthingParsers.ProcessMayBeRunning((await ShAsync(distro, ProcessCheck(name))).Output); }
+        catch { return true; }
     }
+
+    static string ProcessCheck(string name) => $"pgrep -x {name} >/dev/null 2>&1 && echo yes || echo no";
 
     /// <summary>
     /// Lê os config.xml candidatos do Syncthing, na ordem de preferência: o que o processo em execução usa
