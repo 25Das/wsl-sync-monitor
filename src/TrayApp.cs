@@ -128,9 +128,12 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _settingsMtime = m;
         _settingsErrorShown = false;
         if (!string.Equals(fresh.Distro, _settings.Distro, StringComparison.OrdinalIgnoreCase)) ResetGuardForDistroChange();
+        // só descarta a chave/URL descobertas se a configuração de acesso mudou
+        bool accessChanged = fresh.ApiKey != _settings.ApiKey || fresh.SyncthingUrl != _settings.SyncthingUrl ||
+                             fresh.SyncthingConfigPath != _settings.SyncthingConfigPath;
         // copia para a instância compartilhada com o widget
         foreach (var p in typeof(Settings).GetProperties().Where(p => p.CanWrite)) p.SetValue(_settings, p.GetValue(fresh));
-        _collector.InvalidateCredentials();
+        if (accessChanged) _collector.InvalidateCredentials();
         ApplySettings();
     }
 

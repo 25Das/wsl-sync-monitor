@@ -80,7 +80,9 @@ public sealed class StatusCollector : IDisposable
         var distro = snap.Target.Name;
         try
         {
-            await EnsureCredentialsAsync(s, distro, allowDistroCommands);
+            // sem a chave a API recusa tudo; por isso a leitura do config.xml acontece mesmo com a distro
+            // liberada (é rara: uma vez, e depois no máximo uma por minuto se a chave não for encontrada)
+            await EnsureCredentialsAsync(s, distro);
             snap.Url = GuiUrl(s);
             await QuerySyncthingAsync(snap, s, snap.Url);
         }
@@ -88,7 +90,9 @@ public sealed class StatusCollector : IDisposable
         {
             snap.St = StState.AuthError;
             snap.StError = "Acesso negado pela API (verifique a chave da API).";
-            _cachedKey = null; // relê o config.xml na próxima vez
+            // a chave pode ter mudado: relê o config.xml já na próxima atualização (e depois no máximo 1x/min)
+            _cachedKey = null;
+            _configReadAt = default;
         }
         catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException or TimeoutException) && !allowDistroCommands)
         {
@@ -140,7 +144,7 @@ public sealed class StatusCollector : IDisposable
         catch { return false; }
     }
 
-    async Task EnsureCredentialsAsync(Settings s, string distro, bool allowDistroCommands)
+    async Task EnsureCredentialsAsync(Settings s, string distro)
     {
         if (_cachedDistro != distro) InvalidateCredentials();
         if (!string.IsNullOrWhiteSpace(s.ApiKey) && (!string.IsNullOrWhiteSpace(s.SyncthingUrl) || _cachedUrl != null))
@@ -148,7 +152,6 @@ public sealed class StatusCollector : IDisposable
         if (_cachedKey != null && _cachedUrl != null) return;
         // sem chave: relê no máximo uma vez por minuto (o resultado não muda a cada atualização)
         if (_cachedUrl != null && DateTime.Now - _configReadAt < TimeSpan.FromMinutes(1)) return;
-        if (!allowDistroCommands) { _cachedUrl ??= "http://127.0.0.1:8384"; return; }
         _configReadAt = DateTime.Now;
 
         var xml = await WslService.ReadSyncthingConfigAsync(distro, s.SyncthingConfigPath);
