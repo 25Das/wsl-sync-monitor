@@ -141,6 +141,7 @@ Botão direito → *Editar configurações…* abre `%APPDATA%\WslSyncMonitor\se
 ## Compilar
 
 Requer o [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). No Windows, `build.cmd` gera
-`dist\WslSyncMonitor.exe`. O GitHub Actions compila a cada push. Para publicar uma versão, altere `<Version>` em
+`dist\WslSyncMonitor.exe`. Os scripts de shell que o app roda dentro da distro têm testes em `tests/` (rodam no Linux:
+`dotnet run --project tests`). O GitHub Actions roda os testes e compila a cada push. Para publicar uma versão, altere `<Version>` em
 `src/WslSyncMonitor.csproj` e faça push na `main`: o workflow cria a tag `v<versão>` e a release com o
 `WslSyncMonitor.exe` anexado.

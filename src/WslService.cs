@@ -159,42 +159,8 @@ public static class WslService
     /// </summary>
     public static async Task<List<(string Path, string Xml)>> ReadSyncthingConfigsAsync(string distro, string customPath)
     {
-        const string emit = """
-            seen=""
-            emit() {
-              f=$(readlink -f "$1" 2>/dev/null) || return 0
-              [ -r "$f" ] || return 0
-              case " $seen " in *" $f "*) return 0;; esac
-              seen="$seen $f"
-              printf '@@FILE %s\n' "$f"; cat "$f"; printf '\n'
-            }
-            """;
-        string script = string.IsNullOrWhiteSpace(customPath)
-            ? emit + """
-              pid=$(pgrep -xo syncthing)
-              if [ -n "$pid" ]; then
-                d=$(tr '\0' '\n' < /proc/$pid/cmdline | awk 'p{print;exit} /^--?(home|config)$/{p=1;next} /^--?(home|config)=/{sub(/^--?[a-z]+=/,"");print;exit}')
-                [ -z "$d" ] && d=$(tr '\0' '\n' < /proc/$pid/environ 2>/dev/null | sed -n 's/^STHOMEDIR=//p;s/^STCONFDIR=//p' | head -1)
-                [ -n "$d" ] && emit "$d/config.xml"
-              fi
-              p=$(syncthing paths 2>/dev/null | awk '/^Configuration file/{getline; gsub(/^[ \t]+/,""); print; exit}')
-              [ -n "$p" ] && emit "$p"
-              emit "${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml"
-              emit "${XDG_CONFIG_HOME:-$HOME/.config}/syncthing/config.xml"
-              emit "$HOME/snap/syncthing/common/.config/syncthing/config.xml"
-              exit 0
-              """
-            : emit + $"emit '{customPath.Replace("'", "'\\''")}'";
-        var r = await ShAsync(distro, script);
-        var list = new List<(string, string)>();
-        foreach (var part in r.Output.Split("@@FILE ", StringSplitOptions.RemoveEmptyEntries))
-        {
-            int nl = part.IndexOf('\n');
-            if (nl <= 0) continue;
-            var xml = part[(nl + 1)..];
-            if (xml.Contains("<configuration")) list.Add((part[..nl].Trim(), xml));
-        }
-        return list;
+        var r = await ShAsync(distro, SyncthingScripts.ListConfigs(customPath));
+        return SyncthingScripts.ParseConfigs(r.Output);
     }
 
     public static async Task<string?> GetIpAsync(string distro)

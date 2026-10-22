@@ -12,7 +12,20 @@ permissions:
   contents: write
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Testar os scripts de shell
+        run: dotnet run --project tests -c Release
+
   build:
+    needs: tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
