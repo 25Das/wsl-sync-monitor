@@ -10,7 +10,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>WslSyncMonitor</AssemblyName>
     <RootNamespace>WslSyncMonitor</RootNamespace>
-    <Version>1.5.6</Version>
+    <Version>1.6.0</Version>
     <Product>WSL Sync Monitor</Product>
   </PropertyGroup>
 

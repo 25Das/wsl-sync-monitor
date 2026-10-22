@@ -17,5 +17,6 @@
     <Compile Include="../src/SyncthingScripts.cs" Link="src/SyncthingScripts.cs" />
     <Compile Include="../src/Diagnostics.cs" Link="src/Diagnostics.cs" />
     <Compile Include="../src/CredentialRules.cs" Link="src/CredentialRules.cs" />
+    <Compile Include="../src/PanelBehavior.cs" Link="src/PanelBehavior.cs" />
   </ItemGroup>
 </Project>

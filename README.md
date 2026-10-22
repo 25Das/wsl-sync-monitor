@@ -35,7 +35,8 @@ Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo co
 
 **Ícone da bandeja**: clique esquerdo abre/fecha o painel; clique direito abre o menu; duplo clique abre o Syncthing.
 **Widget**: clique abre/fecha o painel; clique direito abre o menu. Opcional (menu → *Detalhes ao passar o mouse no widget*, desligado por padrão): passar o mouse mostra o painel.
-O painel fixado fecha com Esc ou clicando fora.
+Aberto por clique, o painel fecha com Esc, clicando fora ou clicando de novo no ícone. O botão de **pin** no
+cabeçalho fixa o painel: ele fica aberto (clicar no ícone só o traz para frente) até ser liberado no mesmo botão.
 
 ## Proteção da sincronização
 

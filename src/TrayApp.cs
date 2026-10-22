@@ -163,12 +163,14 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     {
         var cur = Cursor.Position;
 
-        // painel fixado: fecha com clique fora (reforço caso a janela não tenha recebido o foco)
-        if (_popup.Visible && _popup.Pinned)
+        // aberto por clique (ou fixado): clique fora fecha, conforme PanelBehavior
+        // (reforço caso a janela não tenha recebido o foco)
+        var state = _popup.State;
+        if (state.Visible && (state.Clicked || state.Locked))
         {
             _widgetHover = false;
-            bool inMenu = _distroMenu is { Visible: true } dm && dm.Bounds.Contains(cur);
-            if (Control.MouseButtons != MouseButtons.None && !_popup.Bounds.Contains(cur) && !inMenu) _popup.HidePopup();
+            bool inMenu = (_distroMenu is { Visible: true } dm && dm.Bounds.Contains(cur)) || (_menu.Visible && _menu.Bounds.Contains(cur));
+            if (Control.MouseButtons != MouseButtons.None && !_popup.Bounds.Contains(cur) && !inMenu) _popup.Apply(PanelEvent.ClickOutside);
             return;
         }
 
@@ -191,7 +193,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         if (_outsideSince == DateTime.MaxValue) _outsideSince = DateTime.Now;
         else if ((DateTime.Now - _outsideSince).TotalMilliseconds > 400)
         {
-            _popup.HidePopup();
+            _popup.Apply(PanelEvent.MouseLeft);
             _widgetHover = false;
             _outsideSince = DateTime.MaxValue;
         }
@@ -216,10 +218,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     void TogglePinned(Point anchor)
     {
-        if (_popup.Visible && _popup.Pinned) { _popup.HidePopup(); return; }
         // o clique que fechou o painel (perda de foco) não deve reabri‑lo
-        if ((DateTime.Now - _popup.LastHiddenAt).TotalMilliseconds < 300) return;
-        ShowPopup(anchor, pin: true);
+        if (!_popup.Visible && (DateTime.Now - _popup.LastHiddenAt).TotalMilliseconds < 300) return;
+        if (_popup.Apply(PanelEvent.SourceClicked) == PanelAction.ShowClicked) ShowPopup(anchor, pin: true);
     }
 
     void ShowPopup(Point anchor, bool pin)

@@ -24,7 +24,23 @@ public sealed class DetailPopup : Form
     int _hoverButton = -1;
     readonly List<(Rectangle Rect, string Name)> _distroRows = new();
 
-    public bool Pinned { get; private set; }
+    bool _clicked, _locked;
+
+    /// <summary>Estado para as regras de <see cref="PanelBehavior"/> (aberto por clique, fixado pelo pin).</summary>
+    public PanelState State => new(Visible, _clicked, _locked);
+
+    /// <summary>Aplica a regra do evento: fecha ou traz para frente. "Abrir por clique" fica com quem chama.</summary>
+    public PanelAction Apply(PanelEvent e)
+    {
+        var action = PanelBehavior.Decide(State, e);
+        if (action == PanelAction.Hide) HidePopup();
+        else if (action == PanelAction.BringToFront)
+        {
+            Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE);
+            Activate();
+        }
+        return action;
+    }
     public DateTime LastHiddenAt { get; private set; }
 
     public DetailPopup(IPopupActions actions)
@@ -72,17 +88,19 @@ public sealed class DetailPopup : Form
         _anchor = anchor;
         _pal = Theme.Current;
         BackColor = _pal.Bg;
-        if (pin) Pinned = true;
+        if (pin) _clicked = true;
         Relayout();
         if (!Visible) { _scroll = 0; Show(); }
         Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
         if (pin) { Activate(); Focus(); }
     }
 
-    public void HidePopup()
+    /// <summary>Fecha o painel. Fixado pelo pin, só fecha com <paramref name="evenIfLocked"/>.</summary>
+    public void HidePopup(bool evenIfLocked = false)
     {
-        if (!Visible) return;
-        Pinned = false;
+        if (!Visible || (_locked && !evenIfLocked)) return;
+        _clicked = _locked = false;
+        _pinTip.Hide(this);
         Hide();
         LastHiddenAt = DateTime.Now;
     }
@@ -102,12 +120,12 @@ public sealed class DetailPopup : Form
         if (Visible) { Relayout(); Invalidate(); }
     }
 
-    protected override void OnActivated(EventArgs e) { base.OnActivated(e); Pinned = true; }
-    protected override void OnDeactivate(EventArgs e) { base.OnDeactivate(e); if (Pinned) HidePopup(); }
+    protected override void OnActivated(EventArgs e) { base.OnActivated(e); _clicked = true; }
+    protected override void OnDeactivate(EventArgs e) { base.OnDeactivate(e); Apply(PanelEvent.Deactivated); }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.KeyCode == Keys.Escape) HidePopup();
+        if (e.KeyCode == Keys.Escape) Apply(PanelEvent.Escape);
         else if (e.KeyCode == Keys.F5) _actions.RefreshNow();
         base.OnKeyDown(e);
     }
@@ -171,8 +189,14 @@ public sealed class DetailPopup : Form
         using (var bold = new Font("Segoe UI Semibold", 11f))
             TextRenderer.DrawText(g, "WSL · Syncthing", bold, new Rectangle(P(32), 0, P(220), HeaderH), _pal.Text,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+        var pin = PinRect;
+        if (_pinHover)
+            using (var b = new SolidBrush(_pal.Hover)) FillRound(g, b, pin, P(4));
+        using (var icons = new Font("Segoe MDL2 Assets", 10f))
+            TextRenderer.DrawText(g, _locked ? "\uE840" : "\uE718", icons, pin, _locked ? _pal.Accent : _pal.Dim,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         var when = _busy ?? (_snap == null ? "Carregando…" : $"Atualizado às {_snap.Time:HH:mm:ss}");
-        TextRenderer.DrawText(g, when, Font, new Rectangle(0, 0, Width - P(14), HeaderH), _busy != null ? Theme.For(Level.Busy) : _pal.Dim,
+        TextRenderer.DrawText(g, when, Font, new Rectangle(0, 0, pin.Left - P(4), HeaderH), _busy != null ? Theme.For(Level.Busy) : _pal.Dim,
             TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
         using (var pen = new Pen(_pal.Border)) g.DrawLine(pen, 0, HeaderH, Width, HeaderH);
 
@@ -345,22 +369,51 @@ public sealed class DetailPopup : Form
         base.OnMouseWheel(e);
     }
 
+    // ------------------------------------------------------------------ botão de fixar (pin)
+
+    Rectangle PinRect => new(Width - P(12) - P(26), (HeaderH - P(26)) / 2, P(26), P(26));
+    bool _pinHover;
+    readonly ToolTip _pinTip = new();
+
+    void TogglePin()
+    {
+        var s = PanelBehavior.ToggleLock(State);
+        _clicked = s.Clicked;
+        _locked = s.Locked;
+        _pinTip.Show(_locked ? "Fixado: o painel fica aberto até ser liberado" : "Liberado", this,
+            PinRect.Left, PinRect.Bottom + P(4), 1500);
+        Invalidate();
+    }
+
     protected override void OnMouseMove(MouseEventArgs e)
     {
         int idx = _buttons.FindIndex(b => b.Rect.Contains(e.Location));
         bool overDistro = InBody(e.Location) && _distroRows.Any(r => r.Rect.Contains(e.Location));
-        Cursor = idx >= 0 || overDistro ? Cursors.Hand : Cursors.Default;
+        bool overPin = PinRect.Contains(e.Location);
+        if (overPin != _pinHover)
+        {
+            _pinHover = overPin;
+            if (overPin) _pinTip.Show(_locked ? "Liberar o painel" : "Fixar o painel aberto", this, PinRect.Left, PinRect.Bottom + P(4), 2000);
+            else _pinTip.Hide(this);
+            Invalidate();
+        }
+        Cursor = idx >= 0 || overDistro || overPin ? Cursors.Hand : Cursors.Default;
         if (idx != _hoverButton) { _hoverButton = idx; Invalidate(); }
         base.OnMouseMove(e);
     }
 
     bool InBody(Point p) => p.Y > HeaderH && p.Y < HeaderH + _bodyViewport;
 
-    protected override void OnMouseLeave(EventArgs e) { if (_hoverButton != -1) { _hoverButton = -1; Invalidate(); } base.OnMouseLeave(e); }
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        if (_hoverButton != -1 || _pinHover) { _hoverButton = -1; _pinHover = false; _pinTip.Hide(this); Invalidate(); }
+        base.OnMouseLeave(e);
+    }
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
-        if (e.Button == MouseButtons.Left)
+        if (e.Button == MouseButtons.Left && PinRect.Contains(e.Location)) TogglePin();
+        else if (e.Button == MouseButtons.Left)
         {
             var b = _buttons.FirstOrDefault(b => b.Rect.Contains(e.Location));
             b.Click?.Invoke();
