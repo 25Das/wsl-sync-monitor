@@ -11,16 +11,16 @@ public sealed class InstallForm : Form
     public InstallOptions Options => new(_desktop.Checked, _startMenu.Checked, _autostart.Checked);
     public bool DontAskAgain => _dontAsk.Checked;
 
-    public InstallForm(string installDir, bool offerDontAsk)
+    public InstallForm(string title, string installDir, bool offerDontAsk)
     {
-        Text = "Instalar o WSL Sync Monitor";
+        Text = title;
         Icon = AppIcon.Get();
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        Font = new Font("Segoe UI", 9.5f);
+        Font = SystemFonts.MessageBoxFont; // fonte do sistema: compartilhada, não precisa liberar
 
         var layout = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Padding = new Padding(16), WrapContents = false };
         layout.Controls.Add(new Label
@@ -34,7 +34,8 @@ public sealed class InstallForm : Form
 
         var install = new Button { Text = "Instalar", DialogResult = DialogResult.OK, AutoSize = true };
         var runOnly = new Button { Text = "Só executar", DialogResult = DialogResult.Cancel, AutoSize = true };
-        var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 12, 0, 0) };
+        // num FlowLayoutPanel vertical, Dock não vale: Anchor à direita alinha os botões pela largura da janela
+        var buttons = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, AutoSize = true, Anchor = AnchorStyles.Right, Margin = new Padding(0, 12, 0, 0) };
         buttons.Controls.AddRange([runOnly, install]);
         layout.Controls.Add(buttons);
         Controls.Add(layout);

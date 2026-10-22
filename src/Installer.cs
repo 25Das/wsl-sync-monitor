@@ -8,16 +8,52 @@ namespace WslSyncMonitor;
 
 public sealed record InstallOptions(bool DesktopShortcut, bool StartMenuShortcut, bool StartWithWindows);
 
+/// <summary>Início com o Windows: qual .exe inicia (null = nenhum). Injetável para teste.</summary>
+public interface IStartup
+{
+    string? Get();
+    void Set(string? exe);
+}
+
+/// <summary>Início com o Windows pelo registro (HKCU\...\Run).</summary>
+public sealed class WindowsStartup : IStartup
+{
+    public string? Get() => Settings.StartWithWindowsTarget;
+    public void Set(string? exe) => Settings.SetStartWithWindows(exe);
+}
+
 /// <summary>
 /// Instalação por usuário, sem administrador: copia o .exe para <see cref="InstallPaths.Directory"/>, cria atalhos e
 /// registra em "Aplicativos instalados" (com desinstalação). Caminhos e chave do registro são injetados para teste.
 /// </summary>
-public sealed class Installer(InstallPaths paths, string uninstallKey, Action<string?> startWithWindows)
+public sealed class Installer(InstallPaths paths, string uninstallKey, IStartup startup)
 {
     public InstallPaths Paths => paths;
 
-    public static Installer ForCurrentUser() =>
-        new(InstallPaths.Current, InstallPaths.UninstallKey, exe => Settings.SetStartWithWindows(exe));
+    public static Installer ForCurrentUser() => new(InstallPaths.Current, InstallPaths.UninstallKey, new WindowsStartup());
+
+    /// <summary>Versão registrada em "Aplicativos instalados" (null = não instalado).</summary>
+    public Version? InstalledVersion()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(uninstallKey);
+        return Version.TryParse(key?.GetValue("DisplayVersion") as string, out var v) && File.Exists(paths.Exe) ? v : null;
+    }
+
+    /// <summary>Depois de uma atualização: corrige versão e tamanho em "Aplicativos instalados" (só se instalado).</summary>
+    public void RefreshRegistration(Version version)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(uninstallKey, writable: true);
+        if (key == null || !File.Exists(paths.Exe)) return;
+        WriteEntry(key, version);
+    }
+
+    void WriteEntry(RegistryKey key, Version version)
+    {
+        foreach (var (name, value) in paths.UninstallEntry(version, new FileInfo(paths.Exe).Length))
+            key.SetValue(name, value, value is int ? RegistryValueKind.DWord : RegistryValueKind.String);
+    }
+
+    bool StartupIsThisCopy => string.Equals(startup.Get(), paths.Exe, StringComparison.OrdinalIgnoreCase);
 
     public void Install(string sourceExe, InstallOptions options)
     {
@@ -27,11 +63,13 @@ public sealed class Installer(InstallPaths paths, string uninstallKey, Action<st
         // respeita a escolha também numa reinstalação: atalho desmarcado é removido
         SetShortcut(paths.DesktopShortcut, options.DesktopShortcut);
         SetShortcut(paths.StartMenuShortcut, options.StartMenuShortcut);
-        startWithWindows(options.StartWithWindows ? paths.Exe : null);
+        // marcado: a cópia instalada passa a iniciar com o Windows (substitui uma cópia avulsa anterior);
+        // desmarcado: só desliga se quem inicia é a cópia instalada
+        if (options.StartWithWindows) startup.Set(paths.Exe);
+        else if (StartupIsThisCopy) startup.Set(null);
 
         using var key = Registry.CurrentUser.CreateSubKey(uninstallKey);
-        foreach (var (name, value) in paths.UninstallEntry(Updater.Current, new FileInfo(paths.Exe).Length))
-            key.SetValue(name, value, value is int ? RegistryValueKind.DWord : RegistryValueKind.String);
+        WriteEntry(key, Updater.Current);
     }
 
     void SetShortcut(string shortcut, bool wanted)
@@ -45,17 +83,26 @@ public sealed class Installer(InstallPaths paths, string uninstallKey, Action<st
     {
         foreach (var s in new[] { paths.DesktopShortcut, paths.StartMenuShortcut })
             if (File.Exists(s)) File.Delete(s);
-        startWithWindows(null);
+        if (StartupIsThisCopy) startup.Set(null); // não mexe no início automático de outra cópia
         Registry.CurrentUser.DeleteSubKeyTree(uninstallKey, throwOnMissingSubKey: false);
     }
 
-    /// <summary>Apaga a pasta de instalação alguns segundos depois que este processo fechar (o .exe em uso não pode ser apagado já).</summary>
-    public void ScheduleDirectoryRemoval() =>
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/c ping 127.0.0.1 -n 4 > nul & rmdir /s /q \"{paths.Directory}\"")
+    /// <summary>
+    /// Apaga a pasta de instalação depois que este processo terminar (o .exe em uso não pode ser apagado antes).
+    /// Roda a partir da pasta temporária: uma pasta não pode ser apagada por quem está dentro dela.
+    /// </summary>
+    public void ScheduleDirectoryRemoval()
+    {
+        var dir = paths.Directory.Replace("'", "''");
+        var script = $"Wait-Process -Id {Environment.ProcessId} -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; " +
+                     $"Remove-Item -LiteralPath '{dir}' -Recurse -Force -ErrorAction SilentlyContinue";
+        Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -NonInteractive -WindowStyle Hidden -Command \"{script}\"")
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            WorkingDirectory = Path.GetTempPath(),
         });
+    }
 }
 
 /// <summary>Atalhos do Windows (.lnk) pela interface COM do próprio Windows (IShellLink).</summary>

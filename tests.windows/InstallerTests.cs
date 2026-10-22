@@ -27,7 +27,15 @@ public sealed class InstallerTests : IDisposable
         try { Directory.Delete(_root, true); } catch { }
     }
 
-    Installer NewInstaller() => new(_paths, _testKey, startWithWindows: _ => { });
+    /// <summary>Início com o Windows de mentira (no teste não mexe no registro de verdade).</summary>
+    sealed class FakeStartup(string? current = null) : IStartup
+    {
+        public string? Target { get; private set; } = current;
+        public string? Get() => Target;
+        public void Set(string? exe) => Target = exe;
+    }
+
+    Installer NewInstaller(IStartup? startup = null) => new(_paths, _testKey, startup ?? new FakeStartup());
 
     [Fact]
     public void Instala_copiando_o_exe_criando_atalhos_e_o_registro()
@@ -54,11 +62,10 @@ public sealed class InstallerTests : IDisposable
     [Fact]
     public void Iniciar_com_o_Windows_aponta_para_o_exe_instalado()
     {
-        string? autostart = null;
-        new Installer(_paths, _testKey, startWithWindows: exe => autostart = exe)
-            .Install(_source, new InstallOptions(false, false, StartWithWindows: true));
+        var startup = new FakeStartup(current: @"C:\Users\Daniel\Downloads\WslSyncMonitor.exe"); // cópia avulsa anterior
+        NewInstaller(startup).Install(_source, new InstallOptions(false, false, StartWithWindows: true));
 
-        Assert.Equal(_paths.Exe, autostart);
+        Assert.Equal(_paths.Exe, startup.Target);
     }
 
     [Fact]
@@ -84,5 +91,50 @@ public sealed class InstallerTests : IDisposable
         installer.Install(_source, new InstallOptions(false, false, false));
 
         Assert.Equal(File.ReadAllBytes(_source), File.ReadAllBytes(_paths.Exe));
+    }
+
+    [Fact]
+    public void Desinstalar_mantem_o_inicio_automatico_de_outra_copia()
+    {
+        var other = @"C:\Users\Daniel\Downloads\WslSyncMonitor.exe";
+        var startup = new FakeStartup(current: other);
+        var installer = NewInstaller(startup);
+        installer.Install(_source, new InstallOptions(false, false, StartWithWindows: false));
+
+        installer.RemoveShortcutsAndRegistration();
+
+        Assert.Equal(other, startup.Target);
+    }
+
+    [Fact]
+    public void Desinstalar_remove_o_inicio_automatico_da_copia_instalada()
+    {
+        var startup = new FakeStartup();
+        var installer = NewInstaller(startup);
+        installer.Install(_source, new InstallOptions(false, false, StartWithWindows: true));
+
+        installer.RemoveShortcutsAndRegistration();
+
+        Assert.Null(startup.Target);
+    }
+
+    [Fact]
+    public void Versao_instalada_lida_do_registro_e_atualizada_depois_de_uma_atualizacao()
+    {
+        var installer = NewInstaller();
+        Assert.Null(installer.InstalledVersion());
+        installer.Install(_source, new InstallOptions(false, false, false));
+
+        installer.RefreshRegistration(new Version(9, 9, 9));
+
+        Assert.Equal(new Version(9, 9, 9), installer.InstalledVersion());
+    }
+
+    [Fact]
+    public void Atualizar_o_registro_sem_estar_instalado_nao_cria_nada()
+    {
+        NewInstaller().RefreshRegistration(new Version(9, 9, 9));
+
+        Assert.Null(Registry.CurrentUser.OpenSubKey(_testKey));
     }
 }

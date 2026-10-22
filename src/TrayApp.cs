@@ -91,7 +91,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _updateTimer.Start();
         _tray.BalloonTipClicked += (_, _) => { if (_updater.Available != null) InstallUpdate(); };
         _ = RefreshAsync();
-        _ = CheckUpdateAsync(manual: false); // procura atualização logo ao iniciar (e depois a cada 24 h)
+        _ = CheckUpdateAsync(manual: false, retryOnFail: true); // procura atualização logo ao iniciar (e depois a cada 24 h)
         ListenForExitRequests();
     }
 
@@ -281,19 +281,33 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             _exitEvent = AppInstance.CreateExitEvent();
             var ui = SynchronizationContext.Current!;
-            _exitWait = ThreadPool.RegisterWaitForSingleObject(_exitEvent, (_, _) => ui.Post(_ => RequestExit(), null),
+            _exitWait = ThreadPool.RegisterWaitForSingleObject(_exitEvent, (_, _) => ui.Post(_ => { if (!_exiting) RequestExit(); }, null), // já saindo: não vira "sair agora"
                 null, Timeout.Infinite, executeOnlyOnce: false);
         }
         catch (Exception ex) { ErrorLog.Write("escutar pedidos de saída", ex); }
     }
 
-    /// <summary>Preferências → Instalar…: instala esta cópia e passa para a instalada.</summary>
+    /// <summary>Preferências → Instalar…: instala esta cópia (ou abre a instalada, se for mais nova) e passa para ela.</summary>
     void InstallFromMenu()
     {
         var installer = Installer.ForCurrentUser();
-        using var form = new InstallForm(installer.Paths.Directory, offerDontAsk: false);
-        if (form.ShowDialog() != DialogResult.OK) return;
-        if (!Program.InstallAndStart(installer, form.Options)) return;
+        var installed = installer.InstalledVersion();
+        var kind = InstallDecision.Decide(Updater.Current, installed);
+        bool started;
+        if (kind == InstallKind.InstalledIsNewer)
+        {
+            if (MessageBox.Show($"A versão {installed!.ToString(3)}, mais nova que esta, já está instalada. Abrir a versão instalada?",
+                    AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            started = Program.StartInstalled(installer);
+        }
+        else
+        {
+            using var form = new InstallForm(InstallDecision.Title(kind, Updater.Current, installed), installer.Paths.Directory,
+                offerDontAsk: false);
+            if (form.ShowDialog() != DialogResult.OK) return;
+            started = Program.InstallAndStart(installer, form.Options);
+        }
+        if (!started) return;
         _handingOver = true;
         ExitThread();
     }
@@ -305,7 +319,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     // ------------------------------------------------------------------ atualização do app (GitHub)
 
-    async Task CheckUpdateAsync(bool manual)
+    async Task CheckUpdateAsync(bool manual, bool retryOnFail = false)
     {
         try
         {
@@ -323,6 +337,12 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         catch (Exception ex)
         {
             if (manual) _tray.ShowBalloonTip(6000, AppName, "Não foi possível verificar atualizações: " + ex.Message, ToolTipIcon.Warning);
+            else if (retryOnFail)
+            {
+                // ao iniciar com o Windows a rede costuma ainda não estar pronta: tenta mais uma vez depois
+                await Task.Delay(TimeSpan.FromMinutes(5));
+                if (!_exiting) await CheckUpdateAsync(manual: false);
+            }
         }
     }
 

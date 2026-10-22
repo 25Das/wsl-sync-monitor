@@ -7,16 +7,26 @@ Windows) depois que o Syncthing terminou de sincronizar.
 ## Instalação
 
 1. Instale o [.NET 8 Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/8.0).
-2. Baixe o `WslSyncMonitor.exe` da [última release](../../releases/latest) e coloque numa pasta fixa.
-3. Abra. Para iniciar com o Windows: botão direito → *Iniciar com o Windows*.
+2. Baixe o `WslSyncMonitor.exe` da [última release](../../releases/latest) e abra.
+3. Ele oferece se instalar: copia o `.exe` para `%LOCALAPPDATA%\Programs\WslSyncMonitor`, cria atalhos na área de
+   trabalho e no menu Iniciar, liga o início com o Windows (cada item pode ser desmarcado) e aparece em
+   *Configurações → Aplicativos instalados*, de onde pode ser desinstalado (ou por *Preferências → Desinstalar…*).
+   Recusando, ele roda direto de onde está (*Não perguntar de novo* desliga a oferta; *Preferências → Instalar…*
+   instala depois).
+
+**Instalações anteriores:** abrir um `.exe` mais novo que o instalado oferece *Atualizar a instalação*; da mesma
+versão, *Reinstalar*; mais antigo, não instala por cima e oferece abrir a versão instalada. Se o app já estiver
+em execução, ele é fechado com a saída segura (esperando a sincronização) antes da troca. Versões anteriores à
+1.9 não atendem a esse pedido: feche-as pelo menu (*Sair*) e abra o instalador de novo.
 
 O `.exe` não é assinado; o Windows SmartScreen pode pedir confirmação (*Mais informações → Executar assim mesmo*)
 na primeira instalação.
 
-**Atualizações:** o app verifica a última release ao abrir e uma vez por dia (ou em *menu → Verificar
-atualizações*). Quando há versão nova, avisa na bandeja e mostra *Atualizar para a versão X* no menu; com um
-clique, baixa, troca o `.exe` e reinicia, sem soltar a distro que estiver segurando. O arquivo baixado pelo
-próprio app não passa pelo SmartScreen. A pasta do `.exe` precisa permitir escrita (não use `Arquivos de Programas`).
+**Atualizações:** o app verifica a última release ao abrir (e tenta de novo 5 min depois se a rede ainda não
+estiver pronta), uma vez por dia e em *menu → Verificar atualizações*. Quando há versão nova, avisa na bandeja e
+mostra *Atualizar para a versão X* no menu; com um clique, baixa, troca o `.exe` e reinicia, sem soltar a distro
+que estiver segurando. O arquivo baixado pelo próprio app não passa pelo SmartScreen. A pasta do `.exe` precisa
+permitir escrita (não use `Arquivos de Programas`).
 
 Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo como serviço do systemd do usuário).
 
@@ -63,10 +73,11 @@ Pastas ▸        cada pasta ▸  Abrir no Explorer · Abrir terminal aqui · Ve
                               Arquivos em conflito… · Versões antigas · Copiar caminho · Mostrar no painel
                 Ocultar pastas não compartilhadas · Ocultar pastas pausadas
 Dispositivos ▸  cada dispositivo ▸  Pausar/Retomar · Copiar ID · Pastas compartilhadas… · Mostrar no painel
-Diagnóstico ▸   informações rápidas (versão, proteção, chave da API, memória e disco, último erro)
+Diagnóstico ▸   informações rápidas (versão, proteção, chave da API, memória, espaço livre real, último erro)
                 Ficha técnica completa… · Copiar ficha técnica
 Preferências ▸  Mostrar widget · Restaurar posição do widget · Abrir o painel ao passar o mouse no widget
                 Iniciar com o Windows · Verificar atualizações · Configurações avançadas (settings.json)…
+                Instalar… / Desinstalar…
 Sair
 ```
 

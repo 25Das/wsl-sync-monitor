@@ -14,6 +14,12 @@ public static class WslPaths
     public static string ToUnc(string distro, string linuxPath, string home) =>
         $@"\\wsl.localhost\{distro}" + ToAbsolute(linuxPath, home).Replace('/', '\\');
 
+    /// <summary>Remove o prefixo de caminho longo do Windows ("\\?\C:\…" → "C:\…"; "\\?\UNC\srv\…" → "\\srv\…").</summary>
+    public static string NormalizeWindowsPath(string path) =>
+        path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + path[8..]
+        : path.StartsWith(@"\\?\") ? path[4..]
+        : path;
+
     /// <summary>Caminho entre aspas para o sh, expandindo ~ para "$HOME".</summary>
     public static string ShQuote(string path)
     {

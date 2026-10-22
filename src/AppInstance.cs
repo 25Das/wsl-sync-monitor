@@ -1,15 +1,24 @@
 namespace WslSyncMonitor;
 
+public enum ExitRequest
+{
+    NoneRunning,  // nenhuma instância em execução
+    Exited,       // a instância em execução fechou quando pedido
+    StillRunning, // pediu, mas ela ainda não fechou (provavelmente esperando a sincronização)
+    NotListening, // versão anterior à 1.9, que não atende ao pedido: é preciso fechar pelo menu
+}
+
 /// <summary>
-/// Uma instância por usuário (mutex) e o pedido para a instância em execução fechar (evento nomeado),
-/// usado ao instalar e ao desinstalar.
+/// Uma instância por usuário (mutex) e o pedido para a instância em execução fechar (evento nomeado), usado ao
+/// instalar e ao desinstalar. Os nomes são injetáveis para teste.
 /// </summary>
 public static class AppInstance
 {
-    const string MutexName = @"Local\WslSyncMonitor.SingleInstance";
-    const string ExitEventName = @"Local\WslSyncMonitor.Exit";
+    public sealed record Names(string Mutex, string ExitEvent);
 
-    public static Mutex CreateMutex() => new(false, MutexName);
+    public static readonly Names Default = new(@"Local\WslSyncMonitor.SingleInstance", @"Local\WslSyncMonitor.Exit");
+
+    public static Mutex CreateMutex(Names? names = null) => new(false, (names ?? Default).Mutex);
 
     /// <summary>Tenta ser a instância única, esperando até <paramref name="wait"/> a anterior fechar.</summary>
     public static bool TryAcquire(Mutex mutex, TimeSpan wait)
@@ -18,15 +27,27 @@ public static class AppInstance
         catch (AbandonedMutexException) { return true; } // a anterior fechou sem liberar: assume
     }
 
-    /// <summary>Evento que a instância em execução escuta; ao ser sinalizado, ela fecha (com a saída segura).</summary>
-    public static EventWaitHandle CreateExitEvent() => new(false, EventResetMode.AutoReset, ExitEventName);
+    /// <summary>Evento que a instância em execução escuta; ao ser sinalizado, ela fecha com a saída segura.</summary>
+    public static EventWaitHandle CreateExitEvent(Names? names = null) =>
+        new(false, EventResetMode.AutoReset, (names ?? Default).ExitEvent);
 
-    /// <summary>Pede à instância em execução para fechar e espera ela liberar o mutex. false = não fechou a tempo.</summary>
-    public static bool RequestExitAndWait(Mutex mutex, TimeSpan wait)
+    /// <summary>
+    /// Pede à instância em execução para fechar e espera ela liberar o mutex. Em <see cref="ExitRequest.NoneRunning"/>
+    /// e <see cref="ExitRequest.Exited"/>, quem chamou fica com o mutex (e deve liberá-lo).
+    /// </summary>
+    public static ExitRequest RequestExitAndWait(Mutex mutex, Names? names, TimeSpan wait)
     {
-        if (TryAcquire(mutex, TimeSpan.Zero)) return true; // nenhuma em execução
-        if (EventWaitHandle.TryOpenExisting(ExitEventName, out var ev))
-            using (ev) ev.Set();
-        return TryAcquire(mutex, wait);
+        if (TryAcquire(mutex, TimeSpan.Zero)) return ExitRequest.NoneRunning;
+        if (!EventWaitHandle.TryOpenExisting((names ?? Default).ExitEvent, out var ev)) return ExitRequest.NotListening;
+        using (ev) ev.Set();
+        return TryAcquire(mutex, wait) ? ExitRequest.Exited : ExitRequest.StillRunning;
     }
+
+    /// <summary>Mensagem para quando a instância em execução não fechou.</summary>
+    public static string Explain(ExitRequest result) => result switch
+    {
+        ExitRequest.NotListening => "Há uma versão anterior do WSL Sync Monitor em execução. Feche-a pelo menu (Sair) e tente de novo.",
+        ExitRequest.StillRunning => "O WSL Sync Monitor em execução ainda está esperando a sincronização para fechar. Tente de novo em alguns minutos.",
+        _ => "",
+    };
 }

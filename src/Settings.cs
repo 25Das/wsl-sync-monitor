@@ -157,6 +157,16 @@ public sealed class Settings
         set => SetStartWithWindows(value ? Environment.ProcessPath : null);
     }
 
+    /// <summary>Qual .exe inicia com o Windows (sem aspas), ou null.</summary>
+    public static string? StartWithWindowsTarget
+    {
+        get
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(RunKey);
+            return (k?.GetValue(RunName) as string)?.Trim('"');
+        }
+    }
+
     /// <summary>Inicia com o Windows o .exe indicado (null = não iniciar).</summary>
     public static void SetStartWithWindows(string? exe)
     {

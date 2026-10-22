@@ -19,10 +19,9 @@ public sealed partial class TrayApp
     }
 
     /// <summary>Espaço livre real: o menor entre o livre na distro e o livre na unidade do Windows do .vhdx.</summary>
-    DiskSpace? DiskOf(DistroInfo? t)
+    DiskSpace DiskOf(string? vhdPath)
     {
-        if (t == null) return null;
-        var host = WslService.GetHostFreeSpace(t.Name);
+        var host = WslService.GetHostFreeSpace(vhdPath);
         return DiskSpace.Effective(_diskFree, host?.Free, host?.Drive);
     }
 
@@ -33,9 +32,10 @@ public sealed partial class TrayApp
         yield return Info($"Proteção: {ProtectionSummary}");
         yield return Info($"Chave da API: {_collector.ApiKeySource ?? "—"}");
         var memory = WslService.GetVmMemory();
-        var vhd = t != null ? WslService.GetVhdSize(t.Name) : null;
+        var vhdPath = t != null ? WslService.GetVhdPath(t.Name) : null; // lido uma vez para tamanho e espaço livre
+        var vhd = WslService.GetVhdSize(vhdPath);
         yield return Info($"Memória do WSL: {(memory is { } m ? Fmt.Bytes(m) : "—")} · Disco da distro: {(vhd is { } v ? Fmt.Bytes(v) : "—")}");
-        if (DiskOf(t) is { Free: not null } disk) yield return Info($"Espaço: {disk.Describe()}");
+        if (DiskOf(vhdPath) is { Free: not null } disk) yield return Info($"Espaço: {disk.Describe()}");
         var error = _snap?.StError ?? _snap?.WslError ?? _collector.LastApiError;
         yield return Info("Último erro: " + (error == null ? "nenhum" : error.Length > 80 ? error[..80] + "…" : error));
         yield return Sep();
@@ -58,6 +58,7 @@ public sealed partial class TrayApp
         _wslVersion ??= await WslService.GetVersionAsync();
         await RefreshDiskFreeAsync();
         var t = _snap?.Target;
+        var vhdPath = t != null ? WslService.GetVhdPath(t.Name) : null;
         int? sessions = null;
         if (t is { Running: true })
             try { sessions = WslService.CountExternalSessions(t.Name, DefaultDistro); } catch { }
@@ -70,8 +71,8 @@ public sealed partial class TrayApp
             Guard = $"{_guard} · {ProtectionSummary}",
             ExternalSessions = sessions,
             VmMemory = WslService.GetVmMemory(),
-            VhdSize = t != null ? WslService.GetVhdSize(t.Name) : null,
-            Disk = DiskOf(t),
+            VhdSize = WslService.GetVhdSize(vhdPath),
+            Disk = DiskOf(vhdPath),
             GuiUrl = _collector.GuiUrl(_settings),
             ApiKeySource = _collector.ApiKeySource,
             ConfigFiles = _collector.ConfigFiles,

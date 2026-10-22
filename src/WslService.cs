@@ -270,7 +270,7 @@ public static class WslService
             {
                 using var k = lxss!.OpenSubKey(id);
                 if (!string.Equals(k?.GetValue("DistributionName") as string, distro, StringComparison.OrdinalIgnoreCase)) continue;
-                var vhd = Path.Combine((k!.GetValue("BasePath") as string ?? "").Replace(@"\\?\", ""), "ext4.vhdx");
+                var vhd = Path.Combine(WslPaths.NormalizeWindowsPath(k!.GetValue("BasePath") as string ?? ""), "ext4.vhdx");
                 return File.Exists(vhd) ? vhd : null;
             }
         }
@@ -278,15 +278,15 @@ public static class WslService
         return null;
     }
 
-    public static long? GetVhdSize(string distro) => GetVhdPath(distro) is { } vhd ? new FileInfo(vhd).Length : null;
+    public static long? GetVhdSize(string? vhdPath) => vhdPath != null && File.Exists(vhdPath) ? new FileInfo(vhdPath).Length : null;
 
     /// <summary>Espaço livre na unidade do Windows onde fica o disco da distro (o limite real de crescimento dele).</summary>
-    public static (long Free, string Drive)? GetHostFreeSpace(string distro)
+    public static (long Free, string Drive)? GetHostFreeSpace(string? vhdPath)
     {
         try
         {
-            if (GetVhdPath(distro) is not { } vhd) return null;
-            var drive = new DriveInfo(Path.GetPathRoot(vhd)!);
+            if (vhdPath == null) return null;
+            var drive = new DriveInfo(Path.GetPathRoot(vhdPath)!);
             return (drive.AvailableFreeSpace, drive.Name.TrimEnd('\\'));
         }
         catch { return null; }

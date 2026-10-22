@@ -33,4 +33,14 @@ public class WslPathsTests
     {
         Assert.Equal(absolute, WslPaths.ToAbsolute(path, "/home/daniel"));
     }
+
+    [Theory]
+    [InlineData(@"\\?\C:\Users\daniel\wsl\Ubuntu", @"C:\Users\daniel\wsl\Ubuntu")]
+    [InlineData(@"\\?\UNC\nas\wsl\Ubuntu", @"\\nas\wsl\Ubuntu")]               // caminho de rede longo
+    [InlineData(@"C:\Users\daniel\AppData\Local\Packages\x", @"C:\Users\daniel\AppData\Local\Packages\x")]
+    [InlineData(@"E:\DevEnv\wsl\pasta\?\nome", @"E:\DevEnv\wsl\pasta\?\nome")]   // só remove o prefixo do início
+    public void Remove_o_prefixo_de_caminho_longo_do_Windows(string path, string normalized)
+    {
+        Assert.Equal(normalized, WslPaths.NormalizeWindowsPath(path));
+    }
 }
