@@ -22,11 +22,13 @@ em execução, ele é fechado com a saída segura (esperando a sincronização) 
 O `.exe` não é assinado; o Windows SmartScreen pode pedir confirmação (*Mais informações → Executar assim mesmo*)
 na primeira instalação.
 
-**Atualizações:** o app verifica a última release ao abrir (e tenta de novo 5 min depois se a rede ainda não
-estiver pronta), uma vez por dia e em *menu → Verificar atualizações*. Quando há versão nova, avisa na bandeja e
-mostra *Atualizar para a versão X* no menu; com um clique, baixa, troca o `.exe` e reinicia, sem soltar a distro
-que estiver segurando. O arquivo baixado pelo próprio app não passa pelo SmartScreen. A pasta do `.exe` precisa
-permitir escrita (não use `Arquivos de Programas`).
+**Atualizações:** o app procura versão nova ao abrir (e tenta de novo 5 min depois se a rede ainda não
+estiver pronta) e uma vez por dia; só essa busca automática mostra uma notificação. A busca também pode ser feita
+pelo ⟳ ou pela versão no cabeçalho do painel, ou em *Preferências → Verificar atualizações* (que abre o painel):
+o resultado aparece no próprio painel, sem notificação. Quando há versão nova, a versão no painel vira o botão
+*Atualizar para X* e o menu mostra *Atualizar para a versão X*; com um clique, baixa, troca o `.exe` e reinicia,
+sem soltar a distro que estiver segurando. O arquivo baixado pelo próprio app não passa pelo SmartScreen. A pasta
+do `.exe` precisa permitir escrita (não use `Arquivos de Programas`).
 
 Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo como serviço do systemd do usuário).
 

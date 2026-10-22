@@ -66,3 +66,23 @@ public sealed record PanelHeader(
 
     internal static string Lower(string t) => t.Length == 0 ? t : char.ToLowerInvariant(t[0]) + t[1..];
 }
+
+public enum UpdateCheck { Automatic, Button }
+
+/// <summary>
+/// Quando avisar de versão nova: só na busca automática (ao iniciar e a cada 24 h), uma vez por versão.
+/// Pelos botões (painel e menu) o resultado aparece no próprio painel e no menu, sem notificação.
+/// </summary>
+public static class UpdateNotice
+{
+    public static bool ShouldNotify(UpdateCheck origin, Version? found, Version? alreadyNotified) =>
+        origin == UpdateCheck.Automatic && found != null && found != alreadyNotified;
+
+    public static string MenuLabel(UpdateState u) => u.Status switch
+    {
+        UpdateStatus.Checking => "Verificando atualizações…",
+        UpdateStatus.UpToDate => $"Verificar atualizações (em dia às {u.CheckedAt:HH:mm})",
+        UpdateStatus.Failed => "Verificar atualizações (a última falhou)",
+        _ => "Verificar atualizações",
+    };
+}

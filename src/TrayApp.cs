@@ -88,11 +88,11 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _refreshTimer.Tick += async (_, _) => await RefreshAsync();
         InitGuard();
         ApplySettings();
-        _updateTimer.Tick += async (_, _) => await CheckUpdateAsync(manual: false);
+        _updateTimer.Tick += async (_, _) => await CheckUpdateAsync(UpdateCheck.Automatic);
         _updateTimer.Start();
         _tray.BalloonTipClicked += (_, _) => { if (_updater.Available != null) InstallUpdate(); };
         _ = RefreshAsync();
-        _ = CheckUpdateAsync(manual: false, retryOnFail: true); // procura atualização logo ao iniciar (e depois a cada 24 h)
+        _ = CheckUpdateAsync(UpdateCheck.Automatic, retryOnFail: true); // procura atualização logo ao iniciar (e depois a cada 24 h)
         ListenForExitRequests();
     }
 
@@ -221,8 +221,11 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         }
     }
 
+    Point _menuPoint; // onde o menu abriu: âncora do painel aberto por um item do menu
+
     void ShowMenu(Point pt)
     {
+        _menuPoint = pt;
         _popup.HidePopup();
         _widgetHover = false;
         var dir = TaskbarInfo.Get().Edge switch
@@ -329,10 +332,21 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         UpdateTrayIcon(); // marca de atualização pendente
     }
 
-    /// <summary>Painel: recarregar ou clique na versão. O resultado aparece no próprio painel.</summary>
-    public void CheckForUpdate() => _ = CheckUpdateAsync(manual: false);
+    /// <summary>Painel (recarregar, clique na versão) e menu: o resultado aparece no painel e no menu, sem notificação.</summary>
+    public void CheckForUpdate() => _ = CheckUpdateAsync(UpdateCheck.Button);
 
-    async Task CheckUpdateAsync(bool manual, bool retryOnFail = false)
+    /// <summary>Menu → Verificar atualizações: abre o painel, onde a versão mostra o andamento e o resultado.</summary>
+    void CheckForUpdateFromMenu()
+    {
+        // depois que o menu terminar de fechar, senão o foco volta para ele e o painel fecha na hora
+        SynchronizationContext.Current?.Post(_ =>
+        {
+            if (!_popup.Visible) ShowPopup(_widget.Visible ? _widget.PopupAnchor : _menuPoint, pin: true);
+        }, null);
+        CheckForUpdate();
+    }
+
+    async Task CheckUpdateAsync(UpdateCheck origin, bool retryOnFail = false)
     {
         if (_updateState.Status == UpdateStatus.Checking) return;
         var previous = _updateState;
@@ -341,25 +355,20 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             var u = await _updater.CheckAsync();
             SetUpdateState(u != null ? UpdateState.Found(u.Version, DateTime.Now) : UpdateState.UpToDate(DateTime.Now));
-            if (u != null && (manual || u.Version != _notifiedVersion))
-            {
-                _notifiedVersion = u.Version;
+            if (UpdateNotice.ShouldNotify(origin, u?.Version, _notifiedVersion))
                 _tray.ShowBalloonTip(10000, AppName,
-                    $"Versão {u.Version.ToString(3)} disponível. Clique aqui, no painel ou no menu para atualizar.", ToolTipIcon.Info);
-            }
-            else if (u == null && manual)
-                _tray.ShowBalloonTip(4000, AppName, $"Você já está na versão mais recente ({Updater.Current.ToString(3)}).", ToolTipIcon.Info);
+                    $"Versão {u!.Version.ToString(3)} disponível. Clique aqui, no painel ou no menu para atualizar.", ToolTipIcon.Info);
+            if (u != null) _notifiedVersion = u.Version; // vista pelo botão também conta: a busca automática não repete
         }
         catch (Exception ex)
         {
             // falhou mas já se sabia de uma versão nova: continua oferecendo
             SetUpdateState(previous.Status == UpdateStatus.Available ? previous : UpdateState.Failed(ex.Message));
-            if (manual) _tray.ShowBalloonTip(6000, AppName, "Não foi possível verificar atualizações: " + ex.Message, ToolTipIcon.Warning);
-            else if (retryOnFail)
+            if (retryOnFail)
             {
                 // ao iniciar com o Windows a rede costuma ainda não estar pronta: tenta mais uma vez depois
                 await Task.Delay(TimeSpan.FromMinutes(5));
-                if (!_exiting) await CheckUpdateAsync(manual: false);
+                if (!_exiting) await CheckUpdateAsync(UpdateCheck.Automatic);
             }
         }
     }
