@@ -1,0 +1,7 @@
+<Project>
+  <!-- Analisadores do .NET no nível "recomendado" para todos os projetos (regras desligadas: ver .editorconfig).
+       O tools/compile-check trata avisos como erro, então o hook de pre-commit barra código novo com alertas. -->
+  <PropertyGroup>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+  </PropertyGroup>
+</Project>

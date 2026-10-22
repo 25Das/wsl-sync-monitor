@@ -133,7 +133,8 @@ public sealed partial class TrayApp
     async Task VerifyThenReleaseAsync(string distro, CancellationToken ct)
     {
         SetGuardText($"{distro}: verificando a sincronização antes de liberar o desligamento…");
-        bool ok = await WaitSyncedAsync(distro, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), ct, t => SetGuardText($"{distro}: {Lower(t)}"));
+        bool ok = await WaitSyncedAsync(distro, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), StartupGrace,
+            t => SetGuardText($"{distro}: {Lower(t)}"), ct);
         if (ct.IsCancellationRequested || _guard != GuardState.Verifying) return;
         WslService.Release(distro);
         _guard = GuardState.Released;
@@ -144,12 +145,15 @@ public sealed partial class TrayApp
     /// <summary>
     /// Espera tudo sincronizar: força a verificação das pastas, espera pastas paradas e sem pendências e
     /// dispositivos conectados a 100%, estável por alguns segundos. Não usa a interface (pode rodar fora da thread de UI).
+    /// Se a API não responde por <paramref name="syncthingGrace"/>, confere se o Syncthing existe; sem ele, não há o
+    /// que esperar. Carência maior logo após ligar a distro (ele ainda está subindo); zero ao sair e ao desligar.
     /// </summary>
-    async Task<bool> WaitSyncedAsync(string distro, TimeSpan max, CancellationToken ct, Action<string>? progress)
+    async Task<bool> WaitSyncedAsync(string distro, TimeSpan max, TimeSpan syncthingGrace, Action<string>? progress, CancellationToken ct)
     {
         var end = DateTime.Now + max;
         bool scanned = false;
         DateTime? stableSince = null, failingSince = null;
+        bool checkedProcess = false;
         while (DateTime.Now < end && !ct.IsCancellationRequested)
         {
             try
@@ -157,6 +161,7 @@ public sealed partial class TrayApp
                 if (!scanned) { await _collector.ScanAllAsync(_settings); scanned = true; }
                 var c = await _collector.CheckSyncedAsync(_settings);
                 failingSince = null;
+                checkedProcess = false;
                 // logo após ligar, o Syncthing ainda está conectando e trocando índices
                 bool warm = c.AllDevicesConnected || c.Uptime.TotalSeconds >= _settings.StartupGraceSeconds;
                 if (c.Synced && warm)
@@ -179,11 +184,11 @@ public sealed partial class TrayApp
                 progress?.Invoke("Aguardando o Syncthing…");
                 // a distro foi desligada por fora: não roda nada nela (qualquer comando a religaria)
                 if (Distro(distro)?.Running != true) return true;
-                if ((DateTime.Now - failingSince.Value).TotalSeconds > 60)
+                // uma vez por falha contínua (cada conferência executa um wsl.exe)
+                if (!checkedProcess && DateTime.Now - failingSince.Value >= syncthingGrace)
                 {
-                    bool running = true;
-                    try { running = await WslService.IsProcessRunningAsync(distro, "syncthing"); } catch { }
-                    if (!running) return true; // nada a proteger
+                    checkedProcess = true;
+                    if (!await WslService.ProcessMayBeRunningAsync(distro, "syncthing")) return true; // nada a proteger
                 }
             }
             try { await Task.Delay(2000, ct); } catch (OperationCanceledException) { break; }
@@ -191,13 +196,10 @@ public sealed partial class TrayApp
         return false;
     }
 
-    /// <summary>
-    /// O Syncthing está rodando na distro (ligada)? Sem ele não há o que esperar: evita aguardar a API por mais
-    /// de um minuto ao sair ou ao desligar o Windows. Na dúvida (falha ao perguntar), considera que está.
-    /// </summary>
-    static Task<bool> SyncthingMayBeRunningAsync(string distro) => WslService.ProcessMayBeRunningAsync(distro, "syncthing");
+    /// <summary>Logo após ligar a distro, o Syncthing ainda está subindo: quanto esperar a API antes de concluir que ele não existe.</summary>
+    static readonly TimeSpan StartupGrace = TimeSpan.FromSeconds(60);
 
-    static string Lower(string t) => t.Length > 0 ? char.ToLower(t[0]) + t[1..] : t;
+    static string Lower(string t) => PanelHeader.Lower(t);
 
     // ------------------------------------------------------------------ sincronização periódica
 
@@ -226,9 +228,8 @@ public sealed partial class TrayApp
             _busy = true;
             _exitCts = new CancellationTokenSource();
             SetBusy("Aguardando a sincronização para sair…");
-            if (await SyncthingMayBeRunningAsync(d.Name))
-                await WaitSyncedAsync(d.Name, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), _exitCts.Token,
-                    t => SetBusy("Para sair: " + Lower(t)));
+            await WaitSyncedAsync(d.Name, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), TimeSpan.Zero,
+                t => SetBusy("Para sair: " + Lower(t)), _exitCts.Token);
         }
         WslService.Release();
         ExitThread();
@@ -244,17 +245,17 @@ public sealed partial class TrayApp
         var d = _snap?.Target?.Name;
         if (d == null) return;
         _verifyCts?.Cancel();
-        if (await SyncthingMayBeRunningAsync(d))
+        await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), TimeSpan.Zero, null, CancellationToken.None);
+        try
         {
-            await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), CancellationToken.None, null);
-            try
+            if (await WslService.ProcessMayBeRunningAsync(d, "syncthing"))
             {
                 try { await _collector.ShutdownSyncthingAsync(_settings); }
                 catch { await WslService.SignalSyncthingAsync(d); }
                 await WslService.WaitProcessExitAsync(d, "syncthing", TimeSpan.FromSeconds(30));
             }
-            catch { }
         }
+        catch { }
         try { await WslService.TerminateSafelyAsync(d); } catch { }
         WslService.Release();
     }

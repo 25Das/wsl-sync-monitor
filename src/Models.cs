@@ -43,6 +43,17 @@ public sealed class DeviceInfo
     public DateTime? LastSeen;
     public double InRate, OutRate;
 
+    /// <summary>Velocidades, tipo e endereço da conexão e versão do Syncthing remoto (só o que se conhece).</summary>
+    public string ConnectionText
+    {
+        get
+        {
+            var kind = ConnType.Contains("relay", StringComparison.Ordinal) ? "relay" : ConnType.Split('-')[0];
+            var parts = new[] { $"↓ {Fmt.Rate(InRate)}  ↑ {Fmt.Rate(OutRate)}", $"{kind} {Address}".Trim(), ClientVersion };
+            return string.Join(" · ", parts.Where(p => p.Length > 0));
+        }
+    }
+
     public (string Text, Level Level) Status
     {
         get
@@ -100,7 +111,8 @@ public sealed class Snapshot
     {
         get
         {
-            var active = Devices.Where(d => !d.Paused).ToList();
+            // todos os dispositivos, inclusive os ocultos do painel: um conectado oculto também sincroniza
+            var active = AllDevices.Where(d => !d.Paused).ToList();
             if (active.Count == 0) return Level.Off;
             if (active.Any(d => d.Status.Level == Level.Busy)) return Level.Busy;
             return active.Any(d => d.Connected) ? Level.Ok : Level.Warn;

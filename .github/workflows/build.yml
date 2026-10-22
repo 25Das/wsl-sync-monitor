@@ -42,9 +42,23 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Testes de interface
-        run: dotnet test tests.windows -c Release --logger GitHubActions --blame-crash
+        run: >
+          dotnet test tests.windows -c Release --logger GitHubActions --blame-crash
+          --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings --results-directory "${{ runner.temp }}/cobertura"
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/evidencias
+
+      # as regras puras também rodam aqui só para medir a cobertura do código todo num lugar
+      - name: Cobertura
+        if: always()
+        shell: bash
+        run: |
+          dotnet test tests -c Release --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings \
+            --results-directory "$RUNNER_TEMP/cobertura" > /dev/null || true
+          mkdir -p "$RUNNER_TEMP/evidencias"
+          python tools/coverage-summary.py $(find "$RUNNER_TEMP/cobertura" -name coverage.cobertura.xml) \
+            > "$RUNNER_TEMP/evidencias/cobertura.md"
+          cat "$RUNNER_TEMP/evidencias/cobertura.md" >> "$GITHUB_STEP_SUMMARY"
 
       # capturas de tela geradas pelos testes, publicadas no branch ci-evidencias (pasta = nome do branch) para
       # conferir o visual sem um Windows. O branch tem sempre um único commit, e pastas de branches apagados saem.

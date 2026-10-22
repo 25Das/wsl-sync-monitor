@@ -115,7 +115,7 @@ public static class WslService
             if (isDefault) line = line[1..].Trim();
             var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2) continue;
-            int.TryParse(parts[^1], out var ver);
+            if (!int.TryParse(parts[^1], out var ver)) ver = 0; // versão desconhecida
             var name = parts[0];
             list.Add(new DistroInfo(name, runningSet.Contains(name), ver, isDefault));
         }

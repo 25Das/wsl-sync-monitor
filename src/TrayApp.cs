@@ -89,11 +89,11 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _refreshTimer.Tick += async (_, _) => await RefreshAsync();
         InitGuard();
         ApplySettings();
-        _updateTimer.Tick += async (_, _) => await CheckUpdateAsync(UpdateCheck.Automatic);
+        _updateTimer.Tick += async (_, _) => await CheckUpdateAsync();
         _updateTimer.Start();
         _tray.BalloonTipClicked += (_, _) => { if (_updater.Available != null) InstallUpdate(); };
         _ = RefreshAsync();
-        _ = CheckUpdateAsync(UpdateCheck.Automatic, retryOnFail: true); // procura atualização logo ao iniciar (e depois a cada 24 h)
+        _ = CheckUpdateAsync(retryOnFail: true); // procura atualização logo ao iniciar (e depois a cada 24 h)
         ListenForExitRequests();
     }
 
@@ -272,6 +272,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     {
         _busyText = text;
         _popup.SetBusy(text);
+        _renderUpdateMenuItem?.Invoke(); // "Atualizar para…" fica desativado durante a operação
         _widget.Busy = text != null;
         UpdateTrayIcon();
     }
@@ -323,6 +324,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     UpdateState _updateState = UpdateState.NotChecked;
 
+    /// <summary>Painel ou algum menu aberto: o resultado de uma busca aparece neles, sem notificação.</summary>
+    bool UiOpen => _popup.Visible || _menu.Visible || _itemMenu is { Visible: true };
+
     void SetUpdateState(UpdateState state)
     {
         _updateState = state;
@@ -332,9 +336,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     }
 
     /// <summary>Painel (recarregar, clique na versão) e menu: o resultado aparece no painel e no menu, sem notificação.</summary>
-    public void CheckForUpdate() => _ = CheckUpdateAsync(UpdateCheck.Button);
+    public void CheckForUpdate() => _ = CheckUpdateAsync();
 
-    async Task CheckUpdateAsync(UpdateCheck origin, bool retryOnFail = false)
+    async Task CheckUpdateAsync(bool retryOnFail = false)
     {
         if (_updateState.Status == UpdateStatus.Checking) return;
         var previous = _updateState;
@@ -343,7 +347,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             var u = await _updater.CheckAsync();
             SetUpdateState(u != null ? UpdateState.Found(u.Version, DateTime.Now) : UpdateState.UpToDate(DateTime.Now));
-            if (UpdateNotice.ShouldNotify(origin, u?.Version, _notifiedVersion, uiOpen: _popup.Visible || _menu.Visible))
+            if (UpdateNotice.ShouldNotify(u?.Version, _notifiedVersion, UiOpen))
                 _tray.ShowBalloonTip(10000, AppName,
                     $"Versão {u!.Version.ToString(3)} disponível. Clique aqui, no painel ou no menu para atualizar.", ToolTipIcon.Info);
             if (u != null) _notifiedVersion = u.Version; // vista no painel ou no menu também conta: não repete
@@ -356,7 +360,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             {
                 // ao iniciar com o Windows a rede costuma ainda não estar pronta: tenta mais uma vez depois
                 await Task.Delay(TimeSpan.FromMinutes(5));
-                if (!_exiting) await CheckUpdateAsync(UpdateCheck.Automatic);
+                if (!_exiting) await CheckUpdateAsync();
             }
         }
     }

@@ -45,7 +45,7 @@ public sealed record Diagnostics
 
         sb.AppendLine("WSL Sync Monitor - informações técnicas");
         Line("Versão do app", AppVersion);
-        Line("Atualizado em", Updated?.ToString("yyyy-MM-dd HH:mm:ss"));
+        Line("Atualizado em", Updated?.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
         Line("Configurações", SettingsPath);
         sb.AppendLine();
         sb.AppendLine("[WSL]");

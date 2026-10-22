@@ -77,7 +77,7 @@ public sealed class DetailPopup : Form
     {
         base.OnHandleCreated(e);
         int round = 2; // DWMWCP_ROUND (Windows 11)
-        try { DwmSetWindowAttribute(Handle, 33, ref round, 4); } catch { }
+        try { _ = DwmSetWindowAttribute(Handle, 33, ref round, 4); } catch { } // no Windows 10 falha e fica quadrado: tudo bem
     }
 
     float S => DeviceDpi / 96f;
@@ -362,9 +362,7 @@ public sealed class DetailPopup : Form
                 Row(lvl, d.Name, txt + Menu);
                 if (d.Connected)
                 {
-                    var addr = d.Address;
-                    var kind = d.ConnType.Contains("relay") ? "relay" : d.ConnType.Split('-').FirstOrDefault() ?? "";
-                    Sub($"↓ {Fmt.Rate(d.InRate)}  ↑ {Fmt.Rate(d.OutRate)} · {kind} {addr} · {d.ClientVersion}");
+                    Sub(d.ConnectionText);
                     if (lvl == Level.Busy) Bar(d.Completion, lvl);
                 }
                 else Sub("ID " + d.Id[..Math.Min(15, d.Id.Length)] + "…");

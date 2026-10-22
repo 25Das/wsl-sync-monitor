@@ -51,9 +51,12 @@ static class Native
     [StructLayout(LayoutKind.Sequential)]
     struct PROCESS_INFORMATION { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
 
+    // CreateProcess exige uma linha de comando gravável; o StringBuilder é a forma mais simples (CA1838 é só desempenho)
+#pragma warning disable CA1838
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern bool CreateProcess(string? app, System.Text.StringBuilder cmd, IntPtr pa, IntPtr ta, bool inherit,
         uint flags, IntPtr env, string? dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+#pragma warning restore CA1838
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     const uint CREATE_NO_WINDOW = 0x08000000;
 
@@ -108,7 +111,8 @@ static class Native
         if (h == IntPtr.Zero) return null;
         try
         {
-            NtQueryInformationProcess(h, ProcessCommandLineInformation, IntPtr.Zero, 0, out int len);
+            // primeira chamada só descobre o tamanho ("falha" com STATUS_INFO_LENGTH_MISMATCH, esperado)
+            _ = NtQueryInformationProcess(h, ProcessCommandLineInformation, IntPtr.Zero, 0, out int len);
             if (len <= 0) return null;
             var buf = Marshal.AllocHGlobal(len);
             try
@@ -168,7 +172,7 @@ static class Native
         }
         finally
         {
-            ReleaseDC(IntPtr.Zero, screenDc);
+            _ = ReleaseDC(IntPtr.Zero, screenDc);
             if (hBmp != IntPtr.Zero) { SelectObject(memDc, old); DeleteObject(hBmp); }
             DeleteDC(memDc);
         }

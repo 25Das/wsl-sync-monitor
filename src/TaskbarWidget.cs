@@ -192,12 +192,12 @@ public sealed class TaskbarWidget : Form
         _tb = tb;
         _snap = snap;
         var size = MeasureSize(tb);
-        var bmp = new Bitmap(size.Width + P(16), tb.Thickness);
+        var bmp = new Bitmap(size.Width + P(16), Math.Max(size.Height, tb.Thickness));
         using var g = Graphics.FromImage(bmp);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         g.Clear(Theme.TaskbarLight ? Color.FromArgb(238, 238, 238) : Color.FromArgb(28, 28, 28));
-        g.TranslateTransform(P(8), (tb.Thickness - size.Height) / 2f);
+        g.TranslateTransform(P(8), (bmp.Height - size.Height) / 2f);
         PaintContent(g, size.Width, size.Height, draw: true);
         return bmp;
     }

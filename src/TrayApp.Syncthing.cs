@@ -57,7 +57,7 @@ public sealed partial class TrayApp
         if (errors.Count == 0) return "Nenhum erro recente.";
         var sb = new StringBuilder();
         foreach (var (when, message) in errors.OrderByDescending(e => e.When))
-            sb.AppendLine($"{when.LocalDateTime:dd/MM HH:mm:ss}  {message}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"{when.LocalDateTime:dd/MM HH:mm:ss}  {message}");
         return sb.ToString();
     });
 

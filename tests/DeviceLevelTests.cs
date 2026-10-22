@@ -14,6 +14,7 @@ public class DeviceLevelTests
         s.Distros.Add(s.Target);
         s.Folders.Add(new FolderInfo { State = "idle" });
         foreach (var c in connected) s.Devices.Add(new DeviceInfo { Connected = c });
+        s.AllDevices.AddRange(s.Devices);
         return s;
     }
 
@@ -64,8 +65,34 @@ public class DeviceLevelTests
     public void Sem_dispositivos_ou_todos_pausados_nao_e_atencao()
     {
         Assert.Equal(Level.Off, Triangle().DevicesLevel);
-        var s = Triangle(false); s.Devices[0].Paused = true;
+        var s = Triangle(false); s.AllDevices[0].Paused = true;
         Assert.Equal(Level.Off, s.DevicesLevel);
         Assert.Equal(Level.Ok, s.Overall);
     }
+
+    [Fact]
+    public void Dispositivo_conectado_oculto_do_painel_tambem_conta()
+    {
+        var s = Triangle(true, false);
+        s.Devices.RemoveAt(0); // o conectado está oculto: só o desligado aparece no painel
+        Assert.Equal(Level.Ok, s.DevicesLevel);
+        Assert.Equal(Level.Ok, s.Overall);
+    }
+
+    [Fact]
+    public void Pasta_pausada_nao_esconde_que_nenhum_dispositivo_esta_conectado()
+    {
+        var s = Triangle(false);
+        s.Folders.Add(new FolderInfo { State = "idle", Paused = true });
+        var h = PanelHeader.For(s, null, new Version(1, 0, 0), UpdateState.NotChecked);
+        Assert.Equal(("Nenhum dispositivo conectado", Level.Warn), (h.Status, h.StatusLevel));
+    }
+
+    [Theory]
+    [InlineData("tcp-client", "tcp://1.2.3.4:22000", "v2.1.6", "↓ 0 B/s  ↑ 0 B/s · tcp tcp://1.2.3.4:22000 · v2.1.6")]
+    [InlineData("tcp-client", "tcp://1.2.3.4:22000", "", "↓ 0 B/s  ↑ 0 B/s · tcp tcp://1.2.3.4:22000")]
+    [InlineData("relay-client", "relay://x", "", "↓ 0 B/s  ↑ 0 B/s · relay relay://x")]
+    [InlineData("", "", "", "↓ 0 B/s  ↑ 0 B/s")]
+    public void Linha_de_conexao_sem_separador_sobrando(string type, string address, string version, string expected) =>
+        Assert.Equal(expected, new DeviceInfo { Connected = true, ConnType = type, Address = address, ClientVersion = version }.ConnectionText);
 }

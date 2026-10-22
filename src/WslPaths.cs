@@ -6,7 +6,7 @@ public static class WslPaths
     /// <summary>Caminho de pasta do Syncthing (absoluto, com ~ ou relativo ao home) como caminho absoluto do Linux.</summary>
     public static string ToAbsolute(string linuxPath, string home) =>
         linuxPath == "~" ? home
-        : linuxPath.StartsWith("~/") ? home.TrimEnd('/') + linuxPath[1..]
+        : linuxPath.StartsWith("~/", StringComparison.Ordinal) ? home.TrimEnd('/') + linuxPath[1..]
         : linuxPath.StartsWith('/') ? linuxPath
         : home.TrimEnd('/') + "/" + linuxPath;
 
@@ -17,7 +17,7 @@ public static class WslPaths
     /// <summary>Remove o prefixo de caminho longo do Windows ("\\?\C:\…" → "C:\…"; "\\?\UNC\srv\…" → "\\srv\…").</summary>
     public static string NormalizeWindowsPath(string path) =>
         path.StartsWith(@"\\?\UNC\", StringComparison.OrdinalIgnoreCase) ? @"\\" + path[8..]
-        : path.StartsWith(@"\\?\") ? path[4..]
+        : path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..]
         : path;
 
     /// <summary>Caminho entre aspas para o sh, expandindo ~ para "$HOME".</summary>
@@ -25,7 +25,7 @@ public static class WslPaths
     {
         static string Q(string s) => "'" + s.Replace("'", "'\\''") + "'";
         if (path == "~") return "\"$HOME\"";
-        if (path.StartsWith("~/")) return "\"$HOME\"" + Q(path[1..]);
+        if (path.StartsWith("~/", StringComparison.Ordinal)) return "\"$HOME\"" + Q(path[1..]);
         return Q(path);
     }
 }

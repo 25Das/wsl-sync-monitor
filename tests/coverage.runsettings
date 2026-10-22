@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cobertura de testes (coverlet). Os fontes do app são compilados dentro do assembly de testes, por isso
+     IncludeTestAssembly; os próprios testes ficam de fora pelo namespace. -->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <IncludeTestAssembly>true</IncludeTestAssembly>
+          <Exclude>[*]WslSyncMonitor.Tests.*,[*]WslSyncMonitor.WindowsTests.*</Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

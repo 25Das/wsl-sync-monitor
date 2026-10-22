@@ -1,0 +1,21 @@
+root = true
+
+[*.cs]
+# Regras do nível "recomendado" que não se aplicam a este app (não é uma biblioteca pública):
+# campos públicos nos modelos de dados simples (Snapshot, FolderInfo…)
+dotnet_diagnostic.CA1051.severity = none
+# nomes como Get/Set: só importam para consumidores em VB, que não existem
+dotnet_diagnostic.CA1716.severity = none
+# arrays constantes como argumento: ganho irrelevante aqui, e o código fica mais legível
+dotnet_diagnostic.CA1861.severity = none
+# inicialização explícita com o valor padrão deixa a intenção clara nas configurações
+dotnet_diagnostic.CA1805.severity = none
+# métodos de instância que poderiam ser static: mantidos junto às ações do app por legibilidade
+dotnet_diagnostic.CA1822.severity = none
+
+[*.{cs,csproj,props,yml,md}]
+charset = utf-8
+
+[{tests,tests.windows}/**.cs]
+# nomes de teste como frases ("Pasta_pausada_nao_esconde…") são a convenção dos testes
+dotnet_diagnostic.CA1707.severity = none

@@ -10,22 +10,26 @@ public class UpdateNoticeTests
     [Fact]
     public void Busca_automatica_avisa_uma_vez_por_versao()
     {
-        Assert.True(UpdateNotice.ShouldNotify(UpdateCheck.Automatic, V, alreadyNotified: null, uiOpen: false));
-        Assert.False(UpdateNotice.ShouldNotify(UpdateCheck.Automatic, V, alreadyNotified: V, uiOpen: false));
-        Assert.True(UpdateNotice.ShouldNotify(UpdateCheck.Automatic, V, alreadyNotified: new Version(1, 10, 1), uiOpen: false));
+        Assert.True(UpdateNotice.ShouldNotify(V, alreadyNotified: null, uiOpen: false));
+        Assert.False(UpdateNotice.ShouldNotify(V, alreadyNotified: V, uiOpen: false));
+        Assert.True(UpdateNotice.ShouldNotify(V, alreadyNotified: new Version(1, 10, 1), uiOpen: false));
     }
 
     [Fact]
-    public void Botao_nao_abre_notificacao() =>
-        Assert.False(UpdateNotice.ShouldNotify(UpdateCheck.Button, V, alreadyNotified: null, uiOpen: false));
+    public void Botao_com_painel_ou_menu_aberto_nao_abre_notificacao() =>
+        Assert.False(UpdateNotice.ShouldNotify(V, alreadyNotified: null, uiOpen: true));
+
+    [Fact]
+    public void Botao_cujo_resultado_chega_com_tudo_fechado_avisa_senao_ninguem_ve() =>
+        Assert.True(UpdateNotice.ShouldNotify(V, alreadyNotified: null, uiOpen: false));
 
     [Fact]
     public void Busca_automatica_com_painel_ou_menu_aberto_nao_notifica_quem_mostra_e_ele() =>
-        Assert.False(UpdateNotice.ShouldNotify(UpdateCheck.Automatic, V, alreadyNotified: null, uiOpen: true));
+        Assert.False(UpdateNotice.ShouldNotify(V, alreadyNotified: null, uiOpen: true));
 
     [Fact]
     public void Sem_versao_nova_nunca_avisa() =>
-        Assert.False(UpdateNotice.ShouldNotify(UpdateCheck.Automatic, null, alreadyNotified: null, uiOpen: false));
+        Assert.False(UpdateNotice.ShouldNotify(null, alreadyNotified: null, uiOpen: false));
 
     [Fact]
     public void Item_do_menu_mostra_o_resultado_da_ultima_busca()

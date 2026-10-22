@@ -58,7 +58,7 @@ public sealed record PanelHeader(
         {
             Level.Error => ("Há erros em pastas ou dispositivos", Level.Error),
             Level.Busy => ("Sincronizando…", Level.Busy),
-            Level.Warn when s.DevicesLevel == Level.Warn && s.FoldersOk == s.Folders.Count => ("Nenhum dispositivo conectado", Level.Warn),
+            Level.Warn when s.DevicesLevel == Level.Warn && !s.Folders.Any(f => f.Status.Level == Level.Warn) => ("Nenhum dispositivo conectado", Level.Warn),
             Level.Warn => ($"{s.FoldersOk} de {s.Folders.Count} pastas atualizadas", Level.Warn),
             _ => ("Tudo sincronizado", Level.Ok),
         };
@@ -67,16 +67,15 @@ public sealed record PanelHeader(
     internal static string Lower(string t) => t.Length == 0 ? t : char.ToLowerInvariant(t[0]) + t[1..];
 }
 
-public enum UpdateCheck { Automatic, Button }
-
 /// <summary>
-/// Quando avisar de versão nova: só na busca automática (ao iniciar e a cada 24 h), uma vez por versão, e só com
-/// painel e menu fechados. Quem buscou pelo painel atualiza pelo painel; quem buscou pelo menu, pelo menu.
+/// Quando avisar de versão nova: uma vez por versão e só se o resultado chegar com o painel e os menus fechados.
+/// Quem buscou pelo painel ou pelo menu vê o resultado (e atualiza) ali mesmo; se fechou antes de a resposta
+/// chegar, ou a busca foi a automática, a notificação é o único jeito de saber.
 /// </summary>
 public static class UpdateNotice
 {
-    public static bool ShouldNotify(UpdateCheck origin, Version? found, Version? alreadyNotified, bool uiOpen) =>
-        origin == UpdateCheck.Automatic && !uiOpen && found != null && found != alreadyNotified;
+    public static bool ShouldNotify(Version? found, Version? alreadyNotified, bool uiOpen) =>
+        !uiOpen && found != null && found != alreadyNotified;
 
     public static string MenuLabel(UpdateState u) => u.Status switch
     {
