@@ -60,7 +60,8 @@ jobs:
           mapfile -t reports < <(find "$RUNNER_TEMP/cobertura" -name '*.cobertura.xml')
           python tools/coverage-summary.py "${reports[@]}" > "$RUNNER_TEMP/evidencias/cobertura.md"
           { echo; echo "Relatórios lidos: ${#reports[@]}"; for r in "${reports[@]}"; do echo "- ${r#$RUNNER_TEMP/}"; done
-            echo; echo '```'; tail -5 "$RUNNER_TEMP/cobertura-regras.log"; echo '```'; } >> "$RUNNER_TEMP/evidencias/cobertura.md"
+            echo; echo '```'; grep -A8 -E "^\s+Failed " "$RUNNER_TEMP/cobertura-regras.log" | head -150; tail -3 "$RUNNER_TEMP/cobertura-regras.log"; echo '```'; } \
+            >> "$RUNNER_TEMP/evidencias/cobertura.md"
           cat "$RUNNER_TEMP/evidencias/cobertura.md" >> "$GITHUB_STEP_SUMMARY"
 
       # capturas de tela geradas pelos testes, publicadas no branch ci-evidencias (pasta = nome do branch) para
