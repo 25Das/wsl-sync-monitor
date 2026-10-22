@@ -18,5 +18,11 @@
     <Compile Include="../src/Diagnostics.cs" Link="src/Diagnostics.cs" />
     <Compile Include="../src/CredentialRules.cs" Link="src/CredentialRules.cs" />
     <Compile Include="../src/PanelBehavior.cs" Link="src/PanelBehavior.cs" />
+    <Compile Include="../src/UpdateInfo.cs" Link="src/UpdateInfo.cs" />
+    <Compile Include="../src/WslCommandLine.cs" Link="src/WslCommandLine.cs" />
+    <Compile Include="../src/IconLayout.cs" Link="src/IconLayout.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

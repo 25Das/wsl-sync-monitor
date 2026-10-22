@@ -77,6 +77,13 @@ static class Native
 
         public void Dispose() => _handle.Dispose();
 
+        /// <summary>Abre um processo já existente (para poder esperar e encerrar), ou null.</summary>
+        public static DetachedProcess? Open(int pid)
+        {
+            var h = OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            return h == IntPtr.Zero ? null : new DetachedProcess(h, pid);
+        }
+
         public static DetachedProcess Start(string commandLine)
         {
             var si = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
@@ -91,7 +98,7 @@ static class Native
     // ---- linha de comando de outro processo ----
     [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
     [DllImport("ntdll.dll")] static extern int NtQueryInformationProcess(IntPtr h, int cls, IntPtr buf, int len, out int retLen);
-    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000, SYNCHRONIZE = 0x100000, PROCESS_TERMINATE = 0x1;
     const int ProcessCommandLineInformation = 60;
 
     /// <summary>Lê a linha de comando de um processo (Windows 8.1+). null se não for possível.</summary>

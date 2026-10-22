@@ -31,11 +31,16 @@ public sealed class IconRenderer : IDisposable
                 s.St != StState.Running ? "!" :
                 s.DevicesOnline > 9 ? "9+" : s.DevicesOnline.ToString();
 
-            float fs = size * (glyph.Length > 1 ? 0.42f : 0.58f);
-            using var font = new Font("Segoe UI", fs, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            // desenha o contorno do texto e o centraliza pelos limites reais do número (o DrawString centraliza
+            // a caixa da fonte, que tem espaço acima do número, e o deixava deslocado)
+            float em = size * (glyph.Length > 1 ? 0.48f : 0.66f);
+            using var path = new GraphicsPath();
+            using (var family = new FontFamily("Segoe UI"))
+                path.AddString(glyph, family, (int)FontStyle.Bold, em, PointF.Empty, StringFormat.GenericTypographic);
+            var offset = IconLayout.CenterOffset(path.GetBounds(), size);
+            using (var m = new Matrix()) { m.Translate(offset.X, offset.Y); path.Transform(m); }
             using var tb = new SolidBrush(level == Level.Warn ? Color.FromArgb(30, 30, 30) : Color.White);
-            g.DrawString(glyph, font, tb, new RectangleF(0, size * 0.03f, size, size), sf);
+            g.FillPath(tb, path);
         }
 
         var h = bmp.GetHicon();

@@ -15,6 +15,10 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     readonly Form _menuOwner;
     readonly System.Windows.Forms.Timer _refreshTimer = new();
     readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 100 };
+    readonly Updater _updater = new();
+    readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 24 * 60 * 60 * 1000 };
+    bool _updating;
+    Version? _notifiedVersion;
 
     Snapshot? _snap;
     bool _refreshing;
@@ -81,6 +85,11 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _refreshTimer.Tick += async (_, _) => await RefreshAsync();
         InitGuard();
         ApplySettings();
+        _updateTimer.Tick += async (_, _) => await CheckUpdateAsync(manual: false);
+        _updateTimer.Start();
+        _tray.BalloonTipClicked += (_, _) => { if (_updater.Available != null) InstallUpdate(); };
+        _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => CheckUpdateAsync(manual: false),
+            TaskScheduler.FromCurrentSynchronizationContext());
         _ = RefreshAsync();
     }
 
@@ -415,6 +424,8 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             try { Settings.StartWithWindows = !Settings.StartWithWindows; } catch (Exception ex) { MessageBox.Show(ex.Message); }
         });
         var techInfo = new ToolStripMenuItem("Informações técnicas…", null, (_, _) => ShowTechInfo());
+        var update = new ToolStripMenuItem("Atualizar", null, (_, _) => InstallUpdate()) { Font = new Font(m.Font, FontStyle.Bold), Visible = false };
+        var checkUpdate = new ToolStripMenuItem("Verificar atualizações", null, async (_, _) => await CheckUpdateAsync(manual: true));
         var edit = new ToolStripMenuItem("Editar configurações…", null, (_, _) =>
         {
             SaveSettings();
@@ -434,7 +445,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             distrosHeader, shutdownAll, distrosEnd,
             folders, new ToolStripSeparator(),
             protect, periodic, new ToolStripSeparator(),
-            widget, resetPos, hover, autostart, edit, techInfo, new ToolStripSeparator(),
+            widget, resetPos, hover, autostart, edit, techInfo, checkUpdate, new ToolStripSeparator(),
             exit,
         });
 
@@ -442,6 +453,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             _popup.HidePopup();
             open.Enabled = _snap?.St == StState.Running;
+            update.Visible = _updater.Available != null;
+            if (_updater.Available is { } avail) update.Text = $"Atualizar para a versão {avail.Version.ToString(3)}";
+            update.Enabled = !_busy;
             widget.Checked = _settings.ShowTaskbarWidget;
             hover.Checked = _settings.HoverPopup;
             protect.Checked = _settings.ProtectSync;
@@ -546,9 +560,55 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         RefreshNow();
     }
 
+    // ------------------------------------------------------------------ atualização
+
+    async Task CheckUpdateAsync(bool manual)
+    {
+        try
+        {
+            var u = await _updater.CheckAsync();
+            if (u != null && (manual || u.Version != _notifiedVersion))
+            {
+                _notifiedVersion = u.Version;
+                _tray.ShowBalloonTip(10000, "WSL Sync Monitor",
+                    $"Versão {u.Version.ToString(3)} disponível. Clique aqui ou use o menu para atualizar.", ToolTipIcon.Info);
+            }
+            else if (u == null && manual)
+                _tray.ShowBalloonTip(4000, "WSL Sync Monitor", $"Você já está na versão mais recente ({Updater.Current.ToString(3)}).", ToolTipIcon.Info);
+        }
+        catch (Exception ex)
+        {
+            if (manual) _tray.ShowBalloonTip(6000, "WSL Sync Monitor", "Não foi possível verificar atualizações: " + ex.Message, ToolTipIcon.Warning);
+        }
+    }
+
+    async void InstallUpdate()
+    {
+        if (_updater.Available is not { } u || _busy) return;
+        _busy = true;
+        SetBusy($"Baixando a versão {u.Version.ToString(3)}…");
+        try
+        {
+            await _updater.InstallAsync(u);
+            // a nova versão assume a distro (AdoptKeepAlives): não solta nada ao sair
+            _updating = true;
+            ExitThread();
+        }
+        catch (Exception ex)
+        {
+            _busy = false;
+            SetBusy(null);
+            if (MessageBox.Show($"Não foi possível atualizar: {ex.Message}\n\nAbrir a página da versão para baixar manualmente?",
+                    "WSL Sync Monitor", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                try { Process.Start(new ProcessStartInfo(u.PageUrl) { UseShellExecute = true }); } catch { }
+        }
+    }
+
     protected override void ExitThreadCore()
     {
-        WslService.Release();
+        if (!_updating) WslService.Release();
+        _updateTimer.Stop();
+        _updater.Dispose();
         _shutdownWatcher?.DestroyHandle();
         _tray.Visible = false;
         _refreshTimer.Stop();

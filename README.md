@@ -10,7 +10,13 @@ Windows) depois que o Syncthing terminou de sincronizar.
 2. Baixe o `WslSyncMonitor.exe` da [última release](../../releases/latest) e coloque numa pasta fixa.
 3. Abra. Para iniciar com o Windows: botão direito → *Iniciar com o Windows*.
 
-O `.exe` não é assinado; o Windows SmartScreen pode pedir confirmação (*Mais informações → Executar assim mesmo*).
+O `.exe` não é assinado; o Windows SmartScreen pode pedir confirmação (*Mais informações → Executar assim mesmo*)
+na primeira instalação.
+
+**Atualizações:** o app verifica a última release ao abrir e uma vez por dia (ou em *menu → Verificar
+atualizações*). Quando há versão nova, avisa na bandeja e mostra *Atualizar para a versão X* no menu; com um
+clique, baixa, troca o `.exe` e reinicia, sem soltar a distro que estiver segurando. O arquivo baixado pelo
+próprio app não passa pelo SmartScreen. A pasta do `.exe` precisa permitir escrita (não use `Arquivos de Programas`).
 
 Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo como serviço do systemd do usuário).
 

@@ -23,6 +23,8 @@ public sealed partial class TrayApp
     {
         // pede para ser avisado do desligamento do Windows antes dos outros apps
         Native.SetProcessShutdownParameters(0x3FF, 0);
+        // depois de uma atualização: continua segurando a distro que a versão anterior segurava
+        try { WslService.AdoptKeepAlives(); } catch { }
         _shutdownWatcher = new ShutdownWatcher(NeedsShutdownProtection, ShutdownSequenceAsync,
             // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga
             () => _settings.ShutdownMaxWaitSeconds + 300);

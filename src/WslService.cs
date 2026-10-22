@@ -24,14 +24,6 @@ public static class WslService
     /// <summary>PIDs de wsl.exe criados por este app (não contam como "alguém usando o WSL").</summary>
     static readonly HashSet<int> OwnPids = new();
 
-    // opções do wsl.exe que só administram o WSL (não abrem sessão na distro)
-    static readonly HashSet<string> AdminFlags = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "-l", "--list", "--shutdown", "-t", "--terminate", "--status", "--version", "-v", "--update",
-        "-s", "--set-default", "--set-version", "--set-default-version", "--install", "--unregister",
-        "--export", "--import", "--import-in-place", "--mount", "--unmount", "--manage", "--help", "--debug-shell",
-    };
-
     /// <summary>
     /// Conta as sessões abertas na distro por outros programas (VS Code, dev containers, terminais):
     /// processos wsl.exe do Windows que não foram criados por este app e cuja linha de comando aponta para a distro.
@@ -46,27 +38,13 @@ public static class WslService
                 bool own;
                 lock (OwnPids) own = OwnPids.Contains(p.Id) || _keepAlive.Values.Any(k => k.Id == p.Id && !k.HasExited);
                 if (own) continue;
-                var target = SessionTarget(Native.GetCommandLine(p.Id), defaultDistro);
+                var cmd = Native.GetCommandLine(p.Id);
+                if (WslCommandLine.IsKeepAlive(cmd, out _)) continue; // de outra instância do app (ver AdoptKeepAlives)
+                var target = WslCommandLine.SessionTarget(cmd, defaultDistro);
                 if (target == null || target.Equals(distro, StringComparison.OrdinalIgnoreCase)) n++;
             }
         }
         return n;
-    }
-
-    /// <summary>Distro de uma linha de comando do wsl.exe; "" se for só administração; null se não der para saber.</summary>
-    static string? SessionTarget(string? cmd, string? defaultDistro)
-    {
-        if (cmd == null) return null; // sem acesso: por segurança, conta como sessão
-        var tokens = cmd.Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1).Select(t => t.Trim('"')).ToList();
-        string? target = null;
-        for (int i = 0; i < tokens.Count; i++)
-        {
-            var t = tokens[i];
-            if (t is "--" or "-e" or "--exec") break;          // daqui em diante é o comando Linux
-            if (AdminFlags.Contains(t)) return "";
-            if ((t is "-d" or "--distribution") && i + 1 < tokens.Count) target = tokens[++i];
-        }
-        return target ?? defaultDistro; // null = distro desconhecida: conta como sessão
     }
 
     public static bool IsInstalled => File.Exists(WslExe) || WslExe == "wsl.exe";
@@ -197,6 +175,24 @@ public static class WslService
         // vive enquanto o WSL estiver ligado, o executável ficaria travado mesmo após fechar o app.
         // Por isso é criado via CreateProcess sem herança de handles.
         _keepAlive[distro] = Native.DetachedProcess.Start($"\"{WslExe}\" -d {distro} --exec sleep infinity");
+    }
+
+    /// <summary>
+    /// Assume os processos que seguram distros deixados por uma instância anterior do app (por exemplo, a que
+    /// acabou de se atualizar), para continuar protegendo a sincronização sem soltar a distro no meio.
+    /// </summary>
+    public static void AdoptKeepAlives()
+    {
+        foreach (var p in Process.GetProcessesByName("wsl"))
+        {
+            using (p)
+            {
+                if (!WslCommandLine.IsKeepAlive(Native.GetCommandLine(p.Id), out var distro)) continue;
+                if (IsHolding(distro)) continue;
+                var adopted = Native.DetachedProcess.Open(p.Id);
+                if (adopted != null) _keepAlive[distro] = adopted;
+            }
+        }
     }
 
     public static bool IsHolding(string distro) =>
