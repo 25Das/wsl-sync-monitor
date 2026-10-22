@@ -25,6 +25,7 @@ public sealed record Diagnostics
     public long? VmMemory { get; init; }
     public long? VhdSize { get; init; }
     public long? DiskFree { get; init; }
+    public string? ErrorLogTail { get; init; }
     public DateTime? Updated { get; init; }
 
     const int MaxErrorLength = 1000;
@@ -65,6 +66,12 @@ public sealed record Diagnostics
         Line("Último script na distro (código de saída)", LastScriptExitCode);
         sb.Append("Erro do último script: ").AppendLine(Short(LastScriptError));
         sb.Append("Último erro da API: ").AppendLine(Short(LastApiError));
+        if (!string.IsNullOrWhiteSpace(ErrorLogTail))
+        {
+            sb.AppendLine();
+            sb.AppendLine("[Registro de erros]");
+            sb.AppendLine(ErrorLogTail);
+        }
         return sb.ToString();
     }
 }

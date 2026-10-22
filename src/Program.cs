@@ -12,6 +12,7 @@ static class Program
         catch (AbandonedMutexException) { /* a instância anterior fechou sem liberar: assume */ }
         Updater.CleanupOld();
 
+        ErrorLog.Install();
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);

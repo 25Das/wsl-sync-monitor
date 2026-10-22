@@ -17,8 +17,10 @@ public sealed partial class TrayApp
         return item;
     }
 
+    // Atenção: "() => _ = onClick()" seria uma lambda que devolve Task e o C# escolheria esta mesma sobrecarga,
+    // chamando-a sem fim (estouro de pilha na 1.8.0). O corpo entre chaves não devolve nada: só serve à versão Action.
     internal static ToolStripMenuItem Item(string text, Func<Task> onClick, bool enabled = true, bool check = false) =>
-        Item(text, () => _ = onClick(), enabled, check);
+        Item(text, () => { _ = onClick(); }, enabled, check);
 
     /// <summary>Linha só de leitura (informação).</summary>
     static ToolStripMenuItem Info(string text) => new(text) { Enabled = false };

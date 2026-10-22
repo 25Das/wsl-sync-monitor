@@ -22,14 +22,14 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Testes
-        run: dotnet test tests -c Release
+        run: dotnet test tests -c Release --logger GitHubActions
 
       # o build do Windows já usou código com CRLF (git autocrlf), o que quebrou os scripts de shell;
       # os testes rodam de novo com o código convertido para garantir que isso não volte a acontecer
       - name: Testes com o código em CRLF
         run: |
           sed -i 's/$/\r/' src/*.cs
-          dotnet test tests -c Release
+          dotnet test tests -c Release --logger GitHubActions
 
   # testes do código de interface (WinForms), que só roda no Windows
   windows-tests:
@@ -42,7 +42,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Testes de interface
-        run: dotnet test tests.windows -c Release
+        run: dotnet test tests.windows -c Release --logger GitHubActions --blame-crash
 
   build:
     needs: [tests, windows-tests] # sem testes passando não há build nem release

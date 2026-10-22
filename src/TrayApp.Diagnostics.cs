@@ -72,6 +72,7 @@ public sealed partial class TrayApp
             LastScriptError = _collector.LastScriptError,
             LastApiError = _collector.LastApiError,
             SettingsPath = Settings.FilePath,
+            ErrorLogTail = ErrorLog.Tail(),
             Updated = _snap?.Time,
         }.ToText();
     }
