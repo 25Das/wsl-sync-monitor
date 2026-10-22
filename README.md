@@ -138,5 +138,5 @@ Botão direito → *Editar configurações…* abre `%APPDATA%\WslSyncMonitor\se
 ## Compilar
 
 Requer o [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). No Windows, `build.cmd` gera
-`dist\WslSyncMonitor.exe`. As releases são geradas pelo GitHub Actions ao enviar uma tag `v*`
-(por exemplo `git tag v1.5.0 && git push origin v1.5.0`).
+`dist\WslSyncMonitor.exe`. O GitHub Actions compila a cada push; ao publicar uma release (ou enviar
+uma tag `v*`), ele anexa o `WslSyncMonitor.exe` à release, com a versão tirada da tag.
