@@ -279,8 +279,11 @@ public static class Theme
         catch { return false; }
     }
 
-    public static bool AppsLight => _appsLight ??= ReadLight("AppsUseLightTheme");
-    public static bool TaskbarLight => _taskbarLight ??= ReadLight("SystemUsesLightTheme");
+    /// <summary>Força o tema claro (true) ou escuro (false) em vez do tema do Windows; usado nas capturas de tela do CI.</summary>
+    internal static bool? ForceLight { get; set; }
+
+    public static bool AppsLight => ForceLight ?? (_appsLight ??= ReadLight("AppsUseLightTheme"));
+    public static bool TaskbarLight => ForceLight ?? (_taskbarLight ??= ReadLight("SystemUsesLightTheme"));
 
     public static Color For(Level l) => l switch
     {

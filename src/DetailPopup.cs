@@ -129,6 +129,17 @@ public sealed class DetailPopup : Form
         if (Visible) { Relayout(); Invalidate(); }
     }
 
+    /// <summary>O painel no tamanho real, sem exibi-lo (capturas de tela do CI).</summary>
+    internal Bitmap RenderPreview()
+    {
+        _pal = Theme.Current;
+        BackColor = _pal.Bg;
+        Relayout();
+        var bmp = new Bitmap(Width, Height);
+        DrawToBitmap(bmp, new Rectangle(Point.Empty, Size));
+        return bmp;
+    }
+
     protected override void OnActivated(EventArgs e) { base.OnActivated(e); _clicked = true; }
     protected override void OnDeactivate(EventArgs e) { base.OnDeactivate(e); Apply(PanelEvent.Deactivated); }
 

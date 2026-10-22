@@ -43,6 +43,48 @@ jobs:
 
       - name: Testes de interface
         run: dotnet test tests.windows -c Release --logger GitHubActions --blame-crash
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/evidencias
+
+      # capturas de tela geradas pelos testes, publicadas no branch ci-evidencias (pasta = nome do branch) para
+      # conferir o visual sem um Windows. O branch tem sempre um único commit, e pastas de branches apagados saem.
+      - name: Publicar capturas de tela
+        if: always() && github.event_name == 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          src="$RUNNER_TEMP/evidencias"
+          [ -d "$src" ] || { echo "sem capturas"; exit 0; }
+          folder="${GITHUB_REF_NAME//\//-}"
+          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4 5; do
+            rm -rf "$RUNNER_TEMP/ev" && mkdir "$RUNNER_TEMP/ev" && cd "$RUNNER_TEMP/ev"
+            git init -q && git remote add origin "$url"
+            lease=""
+            if git fetch -q --depth 1 origin ci-evidencias; then
+              git checkout -q FETCH_HEAD -- . 2>/dev/null || true
+              lease="--force-with-lease=ci-evidencias:$(git rev-parse FETCH_HEAD)"
+            else
+              lease="--force-with-lease=ci-evidencias:"
+            fi
+            # remove pastas de branches que não existem mais
+            branches=$(git ls-remote --heads origin | sed 's:.*refs/heads/::; s:/:-:g')
+            for d in */; do
+              d="${d%/}"
+              if [ -d "$d" ] && ! grep -qx -- "$d" <<<"$branches"; then rm -rf "$d"; fi
+            done
+            rm -rf "$folder" && cp -r "$src" "$folder"
+            echo "$GITHUB_SHA" > "$folder/commit.txt"
+            git add -A
+            tree=$(git write-tree)
+            commit=$(git commit-tree "$tree" -m "Capturas de tela de $GITHUB_REF_NAME ($GITHUB_SHA)")
+            if git push -q $lease origin "$commit:refs/heads/ci-evidencias"; then echo "publicado em ci-evidencias/$folder"; exit 0; fi
+            sleep $((attempt * 3))
+          done
+          echo "::warning::não foi possível publicar as capturas de tela"
 
   build:
     needs: [tests, windows-tests] # sem testes passando não há build nem release

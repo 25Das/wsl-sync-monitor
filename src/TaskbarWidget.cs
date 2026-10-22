@@ -186,6 +186,22 @@ public sealed class TaskbarWidget : Form
         Native.SetLayeredBitmap(Handle, bmp, Left, Top);
     }
 
+    /// <summary>O conteúdo do widget sobre uma barra da cor do tema, sem exibir a janela (capturas de tela do CI).</summary>
+    internal Bitmap RenderPreview(TaskbarInfo tb, Snapshot? snap)
+    {
+        _tb = tb;
+        _snap = snap;
+        var size = MeasureSize(tb);
+        var bmp = new Bitmap(size.Width + P(16), tb.Thickness);
+        using var g = Graphics.FromImage(bmp);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+        g.Clear(Theme.TaskbarLight ? Color.FromArgb(238, 238, 238) : Color.FromArgb(28, 28, 28));
+        g.TranslateTransform(P(8), (tb.Thickness - size.Height) / 2f);
+        PaintContent(g, size.Width, size.Height, draw: true);
+        return bmp;
+    }
+
     /// <summary>Desenha (draw = true) ou só mede o conteúdo. Retorna a largura necessária.</summary>
     float PaintContent(Graphics g, int W, int H, bool draw)
     {
