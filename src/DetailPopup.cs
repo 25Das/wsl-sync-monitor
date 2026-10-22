@@ -7,6 +7,8 @@ namespace WslSyncMonitor;
 public interface IPopupActions
 {
     void RefreshNow();
+    void CheckForUpdate();
+    void InstallUpdate();
     void ShowTechInfo();
     void RunFooterAction(FooterAction action);
     void ShowItemMenu(PanelItem item, Point screen);
@@ -114,6 +116,13 @@ public sealed class DetailPopup : Form
     /// <summary>Mostra uma operação em andamento no cabeçalho (null = limpa).</summary>
     public void SetBusy(string? text) { _busy = text; if (Visible) { BuildButtons(); Invalidate(); } }
 
+    UpdateState _update = UpdateState.NotChecked;
+
+    /// <summary>Estado da busca por versão nova do app (canto direito da primeira linha do cabeçalho).</summary>
+    public void SetUpdate(UpdateState u) { _update = u; if (Visible) Invalidate(); }
+
+    PanelHeader Header => PanelHeader.For(_snap, _busy, Updater.Current, _update);
+
     public void SetSnapshot(Snapshot s)
     {
         _snap = s;
@@ -126,7 +135,7 @@ public sealed class DetailPopup : Form
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (e.KeyCode == Keys.Escape) Apply(PanelEvent.Escape);
-        else if (e.KeyCode == Keys.F5) _actions.RefreshNow();
+        else if (e.KeyCode == Keys.F5) RefreshAll();
         base.OnKeyDown(e);
     }
 
@@ -134,7 +143,8 @@ public sealed class DetailPopup : Form
 
     // ------------------------------------------------------------------ layout
 
-    int HeaderH => P(46);
+    int HeaderH => P(60);
+    int Line1 => P(32); // altura da primeira linha do cabeçalho; a segunda vai até HeaderH
     int FooterH => P(48);
     int W => P(400);
 
@@ -180,24 +190,7 @@ public sealed class DetailPopup : Form
         g.Clear(_pal.Bg);
         using (var pen = new Pen(_pal.Border)) g.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
 
-        // cabeçalho
-        var lvl = _snap?.Overall ?? Level.Off;
-        Dot(g, P(18), HeaderH / 2, P(10), lvl);
-        using (var bold = new Font("Segoe UI Semibold", 11f))
-            TextRenderer.DrawText(g, "WSL · Syncthing", bold, new Rectangle(P(32), 0, P(220), HeaderH), _pal.Text,
-                TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
-        using (var icons = new Font("Segoe MDL2 Assets", 10f))
-            foreach (var hb in HeaderButtons)
-            {
-                var r = HeaderRect(hb.Id);
-                if (_headerHover == hb.Id)
-                    using (var b = new SolidBrush(_pal.Hover)) FillRound(g, b, r, P(4));
-                TextRenderer.DrawText(g, hb.Glyph, icons, r, hb.Active ? _pal.Accent : _pal.Dim,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
-            }
-        var when = _busy ?? (_snap == null ? "Carregando…" : $"Atualizado às {_snap.Time:HH:mm:ss}");
-        TextRenderer.DrawText(g, when, Font, new Rectangle(0, 0, HeaderRect(HeaderButton.Refresh).Left - P(4), HeaderH),
-            _busy != null ? Theme.For(Level.Busy) : _pal.Dim, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+        DrawHeader(g);
         using (var pen = new Pen(_pal.Border)) g.DrawLine(pen, 0, HeaderH, Width, HeaderH);
 
         // corpo rolável
@@ -382,38 +375,131 @@ public sealed class DetailPopup : Form
         base.OnMouseWheel(e);
     }
 
-    // ------------------------------------------------------------------ botões do cabeçalho
+    // ------------------------------------------------------------------ cabeçalho
 
-    enum HeaderButton { None, Refresh, Info, Pin }
+    // linha 1: (estado) WSL · Syncthing ............ [versão / Atualizar para X] (ficha técnica) (pin)
+    // linha 2:          status ou operação ....................... Verificado às HH:mm:ss (recarregar)
+    enum HeaderButton { None, Version, Info, Pin, Status, Refresh }
+
+    void DrawHeader(Graphics g)
+    {
+        var h = Header;
+        int left = P(32);
+        Dot(g, P(18), Line1 / 2 + P(2), P(10), _snap?.Overall ?? Level.Off);
+        using (var bold = new Font("Segoe UI Semibold", 11f))
+            TextRenderer.DrawText(g, PanelHeader.Title, bold, new Rectangle(left, P(4), HeaderRect(HeaderButton.Version).Left - left, Line1 - P(4)),
+                _pal.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
+
+        // versão do app: discreta quando está em dia, botão de destaque quando há versão nova
+        var vr = HeaderRect(HeaderButton.Version);
+        if (h.VersionHighlight)
+            using (var b = new SolidBrush(_headerHover == HeaderButton.Version ? ControlPaint.Light(_pal.Accent, 0.25f) : _pal.Accent))
+                FillRound(g, b, vr, P(4));
+        else if (_headerHover == HeaderButton.Version && h.VersionAction != HeaderAction.None)
+            using (var b = new SolidBrush(_pal.Hover)) FillRound(g, b, vr, P(4));
+        TextRenderer.DrawText(g, h.Version, Font, vr, h.VersionHighlight ? Color.White : _pal.Dim,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+
+        using (var icons = new Font("Segoe MDL2 Assets", 10f))
+            foreach (var hb in HeaderIcons)
+            {
+                var r = HeaderRect(hb.Id);
+                if (_headerHover == hb.Id)
+                    using (var b = new SolidBrush(_pal.Hover)) FillRound(g, b, r, P(4));
+                TextRenderer.DrawText(g, hb.Glyph, icons, r, hb.Active ? _pal.Accent : _pal.Dim,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+
+        TextRenderer.DrawText(g, h.Checked, Font, CheckedRect(h), _pal.Dim, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+        TextRenderer.DrawText(g, h.Status, Font, HeaderRect(HeaderButton.Status),
+            h.StatusLevel is Level.Busy or Level.Warn or Level.Error ? Theme.For(h.StatusLevel) : _pal.Text,
+            TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+    }
 
     record struct HeaderIcon(HeaderButton Id, string Glyph, string Tip, bool Active);
 
-    // da direita para a esquerda: pin, ficha técnica, recarregar (glifos da Segoe MDL2 Assets)
-    IEnumerable<HeaderIcon> HeaderButtons =>
+    // glifos da Segoe MDL2 Assets
+    IEnumerable<HeaderIcon> HeaderIcons =>
     [
         new(HeaderButton.Pin, _locked ? "\uE840" : "\uE718", _locked ? "Liberar o painel" : "Fixar o painel aberto", _locked),
         new(HeaderButton.Info, "\uE946", "Ficha técnica", false),
-        new(HeaderButton.Refresh, "\uE72C", "Recarregar (F5)", false),
+        new(HeaderButton.Refresh, "\uE72C", PanelHeader.RefreshTip, false),
     ];
 
     Rectangle HeaderRect(HeaderButton id)
     {
-        int index = id switch { HeaderButton.Pin => 0, HeaderButton.Info => 1, _ => 2 };
-        int size = P(26), x = Width - P(12) - size * (index + 1) - P(2) * index;
-        return new Rectangle(x, (HeaderH - size) / 2, size, size);
+        int size = P(26), right = Width - P(10), y1 = (Line1 - size) / 2 + P(3), y2 = Line1 + (HeaderH - Line1 - size) / 2;
+        var pin = new Rectangle(right - size, y1, size, size);
+        var info = new Rectangle(pin.Left - P(2) - size, y1, size, size);
+        switch (id)
+        {
+            case HeaderButton.Pin: return pin;
+            case HeaderButton.Info: return info;
+            case HeaderButton.Refresh: return new Rectangle(right - size, y2, size, size);
+            case HeaderButton.Version:
+                int w = TextRenderer.MeasureText(Header.Version, Font).Width + P(16);
+                return new Rectangle(info.Left - P(6) - w, y1 + P(2), w, size - P(4));
+            case HeaderButton.Status:
+                int left = P(32), end = CheckedRect(Header).Left - P(8);
+                return new Rectangle(left, y2, Math.Max(0, end - left), size);
+            default: return Rectangle.Empty;
+        }
     }
 
-    HeaderButton HeaderButtonAt(Point p) => HeaderButtons.FirstOrDefault(b => HeaderRect(b.Id).Contains(p)).Id;
+    Rectangle CheckedRect(PanelHeader h)
+    {
+        var refresh = HeaderRect(HeaderButton.Refresh);
+        int w = h.Checked.Length == 0 ? 0 : TextRenderer.MeasureText(h.Checked, Font).Width;
+        return new Rectangle(refresh.Left - P(4) - w, refresh.Top, w, refresh.Height);
+    }
+
+    HeaderButton HeaderButtonAt(Point p)
+    {
+        if (p.Y >= HeaderH) return HeaderButton.None;
+        foreach (var id in new[] { HeaderButton.Pin, HeaderButton.Info, HeaderButton.Refresh, HeaderButton.Version, HeaderButton.Status })
+            if (HeaderRect(id).Contains(p)) return id;
+        return HeaderButton.None;
+    }
+
+    bool Clickable(HeaderButton id) => id switch
+    {
+        HeaderButton.None or HeaderButton.Status => false,
+        HeaderButton.Version => Header.VersionAction != HeaderAction.None,
+        _ => true,
+    };
+
+    /// <summary>Dica do item; o status só tem dica quando foi cortado.</summary>
+    string? TipFor(HeaderButton id)
+    {
+        var h = Header;
+        return id switch
+        {
+            HeaderButton.Version => h.VersionTip,
+            HeaderButton.Status => TextRenderer.MeasureText(h.Status, Font).Width > HeaderRect(id).Width ? h.Status : null,
+            HeaderButton.None => null,
+            _ => HeaderIcons.First(b => b.Id == id).Tip,
+        };
+    }
 
     HeaderButton _headerHover;
     readonly ToolTip _tip = new();
+
+    void RefreshAll()
+    {
+        _actions.RefreshNow();
+        _actions.CheckForUpdate();
+    }
 
     void ClickHeader(HeaderButton id)
     {
         switch (id)
         {
-            case HeaderButton.Refresh: _actions.RefreshNow(); break;
+            case HeaderButton.Refresh: RefreshAll(); break;
             case HeaderButton.Info: _actions.ShowTechInfo(); break;
+            case HeaderButton.Version:
+                if (Header.VersionAction == HeaderAction.InstallUpdate) _actions.InstallUpdate();
+                else if (Header.VersionAction == HeaderAction.CheckUpdate) _actions.CheckForUpdate();
+                break;
             case HeaderButton.Pin:
                 var s = PanelBehavior.ToggleLock(State);
                 _clicked = s.Clicked;
@@ -435,12 +521,12 @@ public sealed class DetailPopup : Form
         if (header != _headerHover)
         {
             _headerHover = header;
-            if (header != HeaderButton.None)
-                _tip.Show(HeaderButtons.First(b => b.Id == header).Tip, this, HeaderRect(header).Left, HeaderRect(header).Bottom + P(4), 2000);
+            if (TipFor(header) is { } tip)
+                _tip.Show(tip, this, HeaderRect(header).Left, HeaderRect(header).Bottom + P(4), 4000);
             else _tip.Hide(this);
             Invalidate();
         }
-        Cursor = idx >= 0 || header != HeaderButton.None || ItemAt(e.Location) != null ? Cursors.Hand : Cursors.Default;
+        Cursor = idx >= 0 || Clickable(header) || ItemAt(e.Location) != null ? Cursors.Hand : Cursors.Default;
         if (idx != _hoverButton) { _hoverButton = idx; Invalidate(); }
         base.OnMouseMove(e);
     }
@@ -460,7 +546,7 @@ public sealed class DetailPopup : Form
     {
         if (e.Button == MouseButtons.Left)
         {
-            if (HeaderButtonAt(e.Location) is var header and not HeaderButton.None) ClickHeader(header);
+            if (HeaderButtonAt(e.Location) is var header && Clickable(header)) ClickHeader(header);
             else if (_buttons.FirstOrDefault(b => b.Rect.Contains(e.Location)) is { Click: not null } button) button.Click();
             else if (ItemAt(e.Location) is { } item) _actions.ShowItemMenu(item, PointToScreen(e.Location));
         }

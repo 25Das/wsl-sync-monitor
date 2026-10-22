@@ -25,6 +25,8 @@ public class RenderingTests
     sealed class NoActions : IPopupActions
     {
         public void RefreshNow() { }
+        public void CheckForUpdate() { }
+        public void InstallUpdate() { }
         public void ShowTechInfo() { }
         public void RunFooterAction(FooterAction action) { }
         public void ShowItemMenu(PanelItem item, Point screen) { }
@@ -66,6 +68,25 @@ public class RenderingTests
         popup.DrawToBitmap(bmp, new Rectangle(Point.Empty, popup.Size));
 
         popup.SetSnapshot(new Snapshot { St = StState.DistroStopped, Target = new DistroInfo("Ubuntu-24.04", false, 2, true) });
+        popup.DrawToBitmap(bmp, new Rectangle(Point.Empty, popup.Size));
+    }
+
+    public static TheoryData<UpdateState> UpdateStates() =>
+    [
+        UpdateState.NotChecked, UpdateState.Checking, UpdateState.UpToDate(DateTime.Now),
+        UpdateState.Failed("sem rede"), UpdateState.Found(new Version(9, 9, 9), DateTime.Now),
+    ];
+
+    [Theory]
+    [MemberData(nameof(UpdateStates))]
+    public void Desenha_o_cabecalho_com_status_longo_e_cada_estado_da_atualizacao(UpdateState update)
+    {
+        using var popup = new DetailPopup(new NoActions());
+        popup.SetSnapshot(FullSnapshot());
+        popup.SetUpdate(update);
+        popup.SetBusy("Encerrando Ubuntu-24.04 com segurança: aguardando o Syncthing terminar de sincronizar 3 pastas…");
+        popup.Size = new Size(400, 600);
+        using var bmp = new Bitmap(popup.Width, popup.Height);
         popup.DrawToBitmap(bmp, new Rectangle(Point.Empty, popup.Size));
     }
 }

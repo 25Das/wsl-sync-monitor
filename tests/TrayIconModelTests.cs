@@ -57,7 +57,7 @@ public class TrayIconModelTests
     }
 
     [Fact]
-    public void Dica_explica_o_estado_e_cabe_no_limite_do_windows()
+    public void Dica_quebra_a_linha_depois_da_distro_usa_chave_valor_e_termina_com_mantida_ligada()
     {
         var s = Running(Level.Ok);
         s.Devices.Add(new DeviceInfo { Connected = true });
@@ -65,9 +65,32 @@ public class TrayIconModelTests
 
         var tip = TrayIconModel.Tooltip(s, keptAlive: "até 16:00", update: new Version(1, 9, 0));
 
-        Assert.Contains("1 de 2 dispositivos conectados", tip);
-        Assert.Contains("Mantida ligada até 16:00", tip);
-        Assert.Contains("versão 1.9.0", tip);
+        Assert.Equal(
+            "Ubuntu\nPastas: 1 de 1 atualizadas\nDispositivos: 1 de 2 conectados\nNova versão: 1.9.0\nMantida ligada até 16:00",
+            tip);
+    }
+
+    [Fact]
+    public void Dica_com_WSL_parado_ou_Syncthing_fora()
+    {
+        var off = new Snapshot { Target = new DistroInfo("Ubuntu", false, 2, true) };
+        Assert.Equal("Ubuntu\nWSL: parado", TrayIconModel.Tooltip(off, null, null));
+        var st = Running(); st.St = StState.Unreachable;
+        Assert.Equal("Ubuntu\nSyncthing: sem resposta da API", TrayIconModel.Tooltip(st, null, null));
+        Assert.Equal("WSL Sync Monitor\nCarregando…", TrayIconModel.Tooltip(null, null, null));
+    }
+
+    [Fact]
+    public void Dica_longa_sacrifica_a_versao_nova_e_mantem_a_linha_de_mantida_ligada()
+    {
+        var s = Running(Level.Ok);
+        s.Target = new DistroInfo(new string('x', 60), true, 2, true);
+        s.Devices.Add(new DeviceInfo { Connected = true });
+
+        var tip = TrayIconModel.Tooltip(s, keptAlive: "até você desligar", update: new Version(1, 9, 0));
+
         Assert.True(tip.Length <= 127, $"{tip.Length} caracteres");
+        Assert.EndsWith("Mantida ligada até você desligar", tip);
+        Assert.DoesNotContain("Nova versão", tip);
     }
 }

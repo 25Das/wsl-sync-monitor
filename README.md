@@ -43,13 +43,17 @@ Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo co
 | ✕ vermelho | erro (Syncthing parado, chave recusada, WSL ausente) |
 
 Marcas nos cantos: **azul em cima** = nova versão disponível; **clara embaixo** = distro mantida ligada pelo app.
-Passar o mouse mostra um resumo (pastas atualizadas, dispositivos conectados, até quando a distro fica ligada).
+Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 atualizadas*, *Dispositivos: 2 de 3 conectados*,
+*Nova versão* (quando houver) e, por último, até quando a distro fica ligada.
 
 **Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas atualizadas / dispositivos
 conectados). Acompanha a barra que se oculta; arraste para mudar de lugar.
 
 **Painel** (clique no ícone ou no widget):
-- **Cabeçalho:** ⟳ recarregar (F5), ⓘ ficha técnica e 📌 fixar (o painel fica aberto até ser liberado).
+- **Cabeçalho, linha 1:** versão do app, ⓘ ficha técnica e 📌 fixar (o painel fica aberto até ser liberado).
+  A versão vira o botão *Atualizar para X* quando há versão nova; clicar nela quando está em dia verifica de novo.
+- **Cabeçalho, linha 2:** o estado geral (ou a operação em andamento), *Verificado às HH:mm:ss* e ⟳, que
+  verifica o WSL, o Syncthing e se há versão nova do app (F5).
 - **WSL:** as distros; a que tem o Syncthing aparece com "· Syncthing".
 - **Proteção da sincronização:** o que a proteção está fazendo, sempre começando pelo nome da distro.
 - **Syncthing, Pastas e Dispositivos:** estado, tamanho, velocidade, conexões.

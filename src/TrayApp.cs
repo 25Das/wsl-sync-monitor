@@ -319,23 +319,40 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     // ------------------------------------------------------------------ atualização do app (GitHub)
 
+    UpdateState _updateState = UpdateState.NotChecked;
+
+    void SetUpdateState(UpdateState state)
+    {
+        _updateState = state;
+        _popup.SetUpdate(state);
+        UpdateTrayIcon(); // marca de atualização pendente
+    }
+
+    /// <summary>Painel: recarregar ou clique na versão. O resultado aparece no próprio painel.</summary>
+    public void CheckForUpdate() => _ = CheckUpdateAsync(manual: false);
+
     async Task CheckUpdateAsync(bool manual, bool retryOnFail = false)
     {
+        if (_updateState.Status == UpdateStatus.Checking) return;
+        var previous = _updateState;
+        SetUpdateState(UpdateState.Checking);
         try
         {
             var u = await _updater.CheckAsync();
-            UpdateTrayIcon(); // marca de atualização pendente
+            SetUpdateState(u != null ? UpdateState.Found(u.Version, DateTime.Now) : UpdateState.UpToDate(DateTime.Now));
             if (u != null && (manual || u.Version != _notifiedVersion))
             {
                 _notifiedVersion = u.Version;
                 _tray.ShowBalloonTip(10000, AppName,
-                    $"Versão {u.Version.ToString(3)} disponível. Clique aqui ou use o menu para atualizar.", ToolTipIcon.Info);
+                    $"Versão {u.Version.ToString(3)} disponível. Clique aqui, no painel ou no menu para atualizar.", ToolTipIcon.Info);
             }
             else if (u == null && manual)
                 _tray.ShowBalloonTip(4000, AppName, $"Você já está na versão mais recente ({Updater.Current.ToString(3)}).", ToolTipIcon.Info);
         }
         catch (Exception ex)
         {
+            // falhou mas já se sabia de uma versão nova: continua oferecendo
+            SetUpdateState(previous.Status == UpdateStatus.Available ? previous : UpdateState.Failed(ex.Message));
             if (manual) _tray.ShowBalloonTip(6000, AppName, "Não foi possível verificar atualizações: " + ex.Message, ToolTipIcon.Warning);
             else if (retryOnFail)
             {
@@ -346,7 +363,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         }
     }
 
-    async void InstallUpdate()
+    public async void InstallUpdate()
     {
         if (_updater.Available is not { } u || _busy) return;
         _busy = true;
