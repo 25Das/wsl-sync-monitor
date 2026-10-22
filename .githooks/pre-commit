@@ -1,0 +1,19 @@
+#!/bin/sh
+# Barreira rápida antes de cada commit: testes que rodam em qualquer sistema e compilação do app.
+# Os testes de interface (tests.windows) só rodam no Windows: ficam com o CI, que roda em todo branch.
+# Ativar uma vez por clone:  git config core.hooksPath .githooks
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-commit: testes (tests/)"
+dotnet test tests -c Release --nologo -v quiet
+
+echo "pre-commit: compilando o app (src/)"
+if ! out=$(dotnet build src -c Release --nologo -v quiet 2>&1); then
+  if echo "$out" | grep -q "MSB4019.*WindowsDesktop"; then
+    echo "pre-commit: aviso: este .NET SDK não compila apps Windows; a compilação fica com o CI."
+  else
+    echo "$out"
+    exit 1
+  fi
+fi

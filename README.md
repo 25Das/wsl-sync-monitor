@@ -169,7 +169,12 @@ foram encontrados e o erro do último script executado na distro. O botão *Copi
 ## Compilar
 
 Requer o [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). No Windows, `build.cmd` gera
-`dist\WslSyncMonitor.exe`. O projeto segue TDD: toda correção ou funcionalidade começa por um teste que falha. Os testes ficam
+`dist\WslSyncMonitor.exe`. **Fluxo de trabalho:** cada mudança vai para um branch; o GitHub Actions roda os testes no Linux (`tests/`) e no
+Windows (`tests.windows/`, código de interface) e compila; só com tudo verde ela entra na `main`, de onde sai a
+release. Um hook de pre-commit (`git config core.hooksPath .githooks`, uma vez por clone) roda os testes do Linux
+e a compilação antes de cada commit.
+
+O projeto segue TDD: toda correção ou funcionalidade começa por um teste que falha. Os testes ficam
 em `tests/` (xUnit) e cobrem o que não depende do Windows, como os scripts de shell executados dentro da
 distro, que rodam com o `sh` do Linux: `dotnet test tests`. O GitHub Actions roda os testes e depois compila
 a cada push; sem testes passando não há build nem release. Para publicar uma versão, altere `<Version>` em
