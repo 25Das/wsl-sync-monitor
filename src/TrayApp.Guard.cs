@@ -29,7 +29,8 @@ public sealed partial class TrayApp
         _shutdownWatcher.SessionEnded += () => { WslService.Release(); ExitThread(); };
     }
 
-    void SetGuardText(string? text) => _popup.SetGuard(text);
+    string? _guardText;
+    void SetGuardText(string? text) { _guardText = text; _popup.SetGuard(text); }
 
     /// <summary>A distro monitorada vai mudar: solta a atual e recomeça a proteção do zero na nova.</summary>
     void ResetGuardForDistroChange()

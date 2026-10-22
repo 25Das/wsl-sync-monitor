@@ -45,9 +45,15 @@ public static class SyncthingScripts
         return list;
     }
 
+    /// <summary>
+    /// Deixa o script com quebras de linha do Linux. Compilado no Windows (git com autocrlf), o texto dos scripts
+    /// no código vem com CRLF, e o sh não entende "then\r" nem "fi\r".
+    /// </summary>
+    public static string ForSh(string script) => script.Replace("\r\n", "\n").Replace('\r', '\n');
+
     /// <summary>Script que lista os config.xml candidatos (ou só <paramref name="customPath"/>, se definido).</summary>
     public static string ListConfigs(string customPath) =>
-        Emit + "\n" + (string.IsNullOrWhiteSpace(customPath)
+        ForSh(Emit + "\n" + (string.IsNullOrWhiteSpace(customPath)
             ? Discover
-            : $"emit '{customPath.Replace("'", "'\\''")}'\nexit 0");
+            : $"emit '{customPath.Replace("'", "'\\''")}'\nexit 0"));
 }

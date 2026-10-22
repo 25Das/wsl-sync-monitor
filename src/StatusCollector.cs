@@ -85,11 +85,14 @@ public sealed class StatusCollector : IDisposable
             await EnsureCredentialsAsync(s, distro);
             snap.Url = GuiUrl(s);
             await QuerySyncthingAsync(snap, s, snap.Url);
+            LastApiError = null;
+            if (!string.IsNullOrWhiteSpace(s.ApiKey)) ApiKeySource = "settings.json (ApiKey)";
         }
         catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             snap.St = StState.AuthError;
-            snap.StError = "Acesso negado pela API. " + (_credentialsInfo ?? "Verifique a chave da API.");
+            snap.StError = "Acesso negado pela API. " + (_credentialsInfo ?? "Verifique a chave da API.") + SeeTechInfo;
+            LastApiError = ex.Message;
             // a chave pode ter mudado: relê o config.xml já na próxima atualização (e depois no máximo 1x/min)
             _cachedKey = null;
             _configReadAt = default;
@@ -98,9 +101,11 @@ public sealed class StatusCollector : IDisposable
         {
             snap.St = StState.Unreachable;
             snap.StError = $"{GuiUrl(s)} não responde ({ex.Message}).";
+            LastApiError = ex.Message;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException)
         {
+            LastApiError = ex.Message;
             bool running = false;
             try { running = await WslService.IsProcessRunningAsync(distro, "syncthing"); } catch { }
 
@@ -122,7 +127,8 @@ public sealed class StatusCollector : IDisposable
         catch (Exception ex)
         {
             snap.St = StState.Unreachable;
-            snap.StError = ex.Message;
+            snap.StError = ex.Message + SeeTechInfo;
+            LastApiError = ex.ToString();
         }
         return snap;
     }
@@ -154,7 +160,12 @@ public sealed class StatusCollector : IDisposable
         if (_cachedUrl != null && DateTime.Now - _configReadAt < TimeSpan.FromMinutes(1)) return;
         _configReadAt = DateTime.Now;
 
-        var files = await WslService.ReadSyncthingConfigsAsync(distro, s.SyncthingConfigPath);
+        var (files, exit, error) = await WslService.ReadSyncthingConfigsAsync(distro, s.SyncthingConfigPath);
+        ConfigFiles = files.Select(f => f.Path).ToList();
+        ConfigFileUsed = null;
+        ApiKeySource = "não encontrada";
+        LastScriptExitCode = exit;
+        LastScriptError = error;
         _cachedDistro = distro;
         _cachedUrl = "http://127.0.0.1:8384";
         _credentialsInfo = files.Count == 0 ? "config.xml do Syncthing não encontrado na distro." : null;
@@ -186,12 +197,19 @@ public sealed class StatusCollector : IDisposable
         {
             var (ok, id) = await PingAsync(c.Url, c.Key);
             answeringId ??= id;
-            if (ok) { _cachedKey = c.Key; _cachedUrl = c.Url; return; }
+            if (ok)
+            {
+                _cachedKey = c.Key; _cachedUrl = c.Url;
+                ConfigFileUsed = c.Path; ApiKeySource = "config.xml (aceita pela API)";
+                return;
+            }
         }
 
         var first = candidates[0];
         _cachedKey = first.Key;
         _cachedUrl = first.Url;
+        ConfigFileUsed = first.Path;
+        ApiKeySource = "config.xml (recusada pela API)";
         if (answeringId != null && !candidates.Any(c => c.Devices.Contains(answeringId)))
             _credentialsInfo = $"Quem responde em {first.Url} é outro Syncthing (ID {answeringId[..Math.Min(7, answeringId.Length)]}), " +
                                "não o desta distro. Há um Syncthing no Windows usando a mesma porta?";
@@ -200,6 +218,16 @@ public sealed class StatusCollector : IDisposable
     }
 
     string? _credentialsInfo; // diagnóstico mostrado quando a API recusa a chave
+
+    // ---- informações técnicas (menu → Informações técnicas) ----
+    public IReadOnlyList<string> ConfigFiles { get; private set; } = [];
+    public string? ConfigFileUsed { get; private set; }
+    public string? ApiKeySource { get; private set; }
+    public int? LastScriptExitCode { get; private set; }
+    public string? LastScriptError { get; private set; }
+    public string? LastApiError { get; private set; }
+
+    const string SeeTechInfo = " Detalhes: menu → Informações técnicas.";
 
     async Task<(bool Ok, string? Id)> PingAsync(string url, string? key)
     {

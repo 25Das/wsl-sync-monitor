@@ -6,7 +6,7 @@ namespace WslSyncMonitor;
 /// <summary>Consulta o WSL através do wsl.exe.</summary>
 public static class WslService
 {
-    public sealed record Result(int ExitCode, string Output);
+    public sealed record Result(int ExitCode, string Output, string Error = "");
 
     static string WslExe
     {
@@ -89,7 +89,8 @@ public static class WslService
         lock (OwnPids) OwnPids.Add(pid);
         using var ms = new MemoryStream();
         var copyOut = p.StandardOutput.BaseStream.CopyToAsync(ms);
-        var drainErr = p.StandardError.BaseStream.CopyToAsync(Stream.Null);
+        using var err = new MemoryStream();
+        var drainErr = p.StandardError.BaseStream.CopyToAsync(err);
         using var cts = new CancellationTokenSource(timeoutMs);
         try
         {
@@ -102,7 +103,7 @@ public static class WslService
             throw new TimeoutException("wsl.exe não respondeu a tempo");
         }
         finally { lock (OwnPids) OwnPids.Remove(pid); }
-        return new Result(p.ExitCode, Decode(ms.ToArray()));
+        return new Result(p.ExitCode, Decode(ms.ToArray()), Decode(err.ToArray()).Trim());
     }
 
     /// <summary>wsl.exe antigo escreve UTF‑16LE; com WSL_UTF8=1 ou comandos Linux, UTF‑8.</summary>
@@ -145,7 +146,7 @@ public static class WslService
 
     /// <summary>Executa um script sh na distro. Atenção: inicia a distro se estiver parada.</summary>
     public static Task<Result> ShAsync(string distro, string script, int timeoutMs = 10000) =>
-        RunAsync(new[] { "-d", distro, "--exec", "sh", "-c", script }, timeoutMs);
+        RunAsync(new[] { "-d", distro, "--exec", "sh", "-c", SyncthingScripts.ForSh(script) }, timeoutMs);
 
     public static async Task<bool> IsProcessRunningAsync(string distro, string name)
     {
@@ -157,10 +158,22 @@ public static class WslService
     /// Lê os config.xml candidatos do Syncthing, na ordem de preferência: o que o processo em execução usa
     /// (--home/--config ou STHOMEDIR), o que `syncthing paths` informa e os locais padrão. Sem repetições.
     /// </summary>
-    public static async Task<List<(string Path, string Xml)>> ReadSyncthingConfigsAsync(string distro, string customPath)
+    public static async Task<(List<(string Path, string Xml)> Files, int ExitCode, string Error)> ReadSyncthingConfigsAsync(
+        string distro, string customPath)
     {
         var r = await ShAsync(distro, SyncthingScripts.ListConfigs(customPath));
-        return SyncthingScripts.ParseConfigs(r.Output);
+        return (SyncthingScripts.ParseConfigs(r.Output), r.ExitCode, r.Error);
+    }
+
+    /// <summary>Primeira linha de "wsl --version" (ex.: "Versão do WSL: 2.7.3.0"), ou null.</summary>
+    public static async Task<string?> GetVersionAsync()
+    {
+        try
+        {
+            var r = await RunAsync(new[] { "--version" });
+            return r.Output.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0);
+        }
+        catch { return null; }
     }
 
     public static async Task<string?> GetIpAsync(string distro)

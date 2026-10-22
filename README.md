@@ -118,6 +118,11 @@ Botão direito → *Editar configurações…* abre `%APPDATA%\WslSyncMonitor\se
 
 ## Problemas comuns
 
+Para qualquer problema, o menu tem **Informações técnicas…**: versão do app e do WSL, distro monitorada,
+estado da proteção, URL usada, de onde veio a chave da API (a chave em si nunca é mostrada), quais `config.xml`
+foram encontrados e o erro do último script executado na distro. O botão *Copiar* copia tudo para enviar.
+
+
 - **"Sem resposta da API"**: confirme que `localhostForwarding` não está desativado no `.wslconfig`
   ou use `networkingMode=mirrored`; ou defina `SyncthingUrl`.
 - **"Chave da API inválida"**: o painel mostra de onde a chave foi lida. Se disser que *outro Syncthing* responde

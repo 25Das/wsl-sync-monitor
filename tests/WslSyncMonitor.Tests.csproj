@@ -15,5 +15,6 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <Compile Include="../src/SyncthingScripts.cs" Link="src/SyncthingScripts.cs" />
+    <Compile Include="../src/Diagnostics.cs" Link="src/Diagnostics.cs" />
   </ItemGroup>
 </Project>

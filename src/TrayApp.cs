@@ -413,6 +413,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             try { Settings.StartWithWindows = !Settings.StartWithWindows; } catch (Exception ex) { MessageBox.Show(ex.Message); }
         });
+        var techInfo = new ToolStripMenuItem("Informações técnicas…", null, (_, _) => ShowTechInfo());
         var edit = new ToolStripMenuItem("Editar configurações…", null, (_, _) =>
         {
             SaveSettings();
@@ -432,7 +433,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             distrosHeader, shutdownAll, distrosEnd,
             folders, new ToolStripSeparator(),
             protect, periodic, new ToolStripSeparator(),
-            widget, resetPos, hover, autostart, edit, new ToolStripSeparator(),
+            widget, resetPos, hover, autostart, edit, techInfo, new ToolStripSeparator(),
             exit,
         });
 
@@ -494,6 +495,45 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         if (_settings.HiddenFolders.Count > 0)
             menu.DropDownItems.Add(new ToolStripMenuItem("Mostrar todas as ocultadas manualmente", null, (_, _) =>
             { _settings.HiddenFolders.Clear(); SaveSettings(); RefreshNow(); }));
+    }
+
+    // ------------------------------------------------------------------ informações técnicas
+
+    TechInfoForm? _techInfo;
+    string? _wslVersion;
+
+    async void ShowTechInfo()
+    {
+        if (_techInfo is { IsDisposed: false }) { _techInfo.Activate(); await _techInfo.LoadAsync(); return; }
+        _techInfo = new TechInfoForm(BuildTechInfoAsync);
+        _techInfo.Show();
+        await _techInfo.LoadAsync();
+    }
+
+    async Task<string> BuildTechInfoAsync()
+    {
+        _wslVersion ??= await WslService.GetVersionAsync();
+        int? sessions = null;
+        if (_snap?.Target is { Running: true } t)
+            try { sessions = WslService.CountExternalSessions(t.Name, DefaultDistro); } catch { }
+        return new Diagnostics
+        {
+            AppVersion = typeof(TrayApp).Assembly.GetName().Version?.ToString(3),
+            WslVersion = _wslVersion,
+            Distro = _snap?.Target is { } d ? $"{d.Name} ({(d.Running ? "em execução" : "parada")})" : null,
+            DefaultDistro = DefaultDistro,
+            Guard = $"{_guard}" + (_guardText != null ? $" · {_guardText}" : "") + (_settings.ProtectSync ? "" : " (desativada)"),
+            ExternalSessions = sessions,
+            GuiUrl = _collector.GuiUrl(_settings),
+            ApiKeySource = _collector.ApiKeySource,
+            ConfigFiles = _collector.ConfigFiles,
+            ConfigFileUsed = _collector.ConfigFileUsed,
+            LastScriptExitCode = _collector.LastScriptExitCode,
+            LastScriptError = _collector.LastScriptError,
+            LastApiError = _collector.LastApiError,
+            SettingsPath = Settings.FilePath,
+            Updated = _snap?.Time,
+        }.ToText();
     }
 
     void SelectDistro(string name)

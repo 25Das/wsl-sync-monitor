@@ -24,6 +24,13 @@ jobs:
       - name: Testes
         run: dotnet test tests -c Release
 
+      # o build do Windows já usou código com CRLF (git autocrlf), o que quebrou os scripts de shell;
+      # os testes rodam de novo com o código convertido para garantir que isso não volte a acontecer
+      - name: Testes com o código em CRLF
+        run: |
+          sed -i 's/$/\r/' src/*.cs
+          dotnet test tests -c Release
+
   build:
     needs: tests # sem testes passando não há build nem release
     runs-on: windows-latest

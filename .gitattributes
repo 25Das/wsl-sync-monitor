@@ -1,0 +1,4 @@
+# quebras de linha do Linux em tudo (os scripts de shell ficam dentro do código C#)
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.exe binary

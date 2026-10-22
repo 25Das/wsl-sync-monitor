@@ -116,3 +116,44 @@ public sealed class SyncthingScriptsTests : IDisposable
         finally { proc.Kill(true); proc.WaitForExit(); }
     }
 }
+
+public sealed class LineEndingTests
+{
+    static (int Exit, string Output, string Error) RunSh(string script)
+    {
+        var psi = new ProcessStartInfo("sh") { RedirectStandardOutput = true, RedirectStandardError = true };
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add(script);
+        using var p = Process.Start(psi)!;
+        var output = p.StandardOutput.ReadToEnd();
+        var error = p.StandardError.ReadToEnd();
+        p.WaitForExit();
+        return (p.ExitCode, output, error);
+    }
+
+    // Compilado no Windows (git com autocrlf), o texto dos scripts no código vem com CRLF.
+    const string ScriptWithCrlf = "if true; then\r\n  echo ok\r\nfi\r\n";
+
+    [Fact]
+    public void Script_com_CRLF_falha_no_sh() // documenta o defeito das versões 1.5.1 a 1.5.4
+    {
+        Assert.NotEqual("ok\n", RunSh(ScriptWithCrlf).Output);
+    }
+
+    [Fact]
+    public void ForSh_converte_CRLF_e_o_sh_executa()
+    {
+        var script = SyncthingScripts.ForSh(ScriptWithCrlf);
+
+        Assert.DoesNotContain('\r', script);
+        var (exit, output, error) = RunSh(script);
+        Assert.Equal((0, "ok\n", ""), (exit, output, error));
+    }
+
+    [Fact]
+    public void ListConfigs_nunca_tem_CR()
+    {
+        Assert.DoesNotContain('\r', SyncthingScripts.ListConfigs(""));
+        Assert.DoesNotContain('\r', SyncthingScripts.ListConfigs("/x/config.xml"));
+    }
+}
