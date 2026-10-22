@@ -38,7 +38,7 @@ public sealed class SyncthingScriptsTests : IDisposable
         return output.Split('\n').Where(l => l.StartsWith("@@FILE ")).Select(l => l["@@FILE ".Length..]).ToList();
     }
 
-    [Fact]
+    [ShFact]
     public void Lista_o_config_no_local_padrao()
     {
         var state = WriteConfig("home/.local/state/syncthing/config.xml");
@@ -46,7 +46,7 @@ public sealed class SyncthingScriptsTests : IDisposable
         Assert.Equal([state], ListedFiles(SyncthingScripts.ListConfigs("")));
     }
 
-    [Fact]
+    [ShFact]
     public void Lista_o_local_novo_antes_do_antigo()
     {
         var state = WriteConfig("home/.local/state/syncthing/config.xml");
@@ -55,7 +55,7 @@ public sealed class SyncthingScriptsTests : IDisposable
         Assert.Equal([state, legacy], ListedFiles(SyncthingScripts.ListConfigs("")));
     }
 
-    [Fact]
+    [ShFact]
     public void Com_caminho_definido_lista_so_ele()
     {
         WriteConfig("home/.local/state/syncthing/config.xml");
@@ -64,7 +64,7 @@ public sealed class SyncthingScriptsTests : IDisposable
         Assert.Equal([custom], ListedFiles(SyncthingScripts.ListConfigs(custom)));
     }
 
-    [Fact]
+    [ShFact]
     public void Caminho_definido_com_aspas_simples()
     {
         var custom = WriteConfig("it's here/config.xml");
@@ -72,7 +72,7 @@ public sealed class SyncthingScriptsTests : IDisposable
         Assert.Equal([custom], ListedFiles(SyncthingScripts.ListConfigs(custom)));
     }
 
-    [Fact]
+    [ShFact]
     public void Nao_repete_o_mesmo_arquivo_por_um_link()
     {
         var legacy = WriteConfig("home/.config/syncthing/config.xml");
@@ -82,7 +82,7 @@ public sealed class SyncthingScriptsTests : IDisposable
         Assert.Equal([legacy], ListedFiles(SyncthingScripts.ListConfigs(link) + $"\nemit '{legacy}'"));
     }
 
-    [Fact]
+    [ShFact]
     public void Sem_nenhum_config_nao_lista_nada_e_nao_falha()
     {
         Directory.CreateDirectory(Home);
@@ -90,7 +90,7 @@ public sealed class SyncthingScriptsTests : IDisposable
         Assert.Empty(ListedFiles(SyncthingScripts.ListConfigs("")));
     }
 
-    [Fact]
+    [ShFact]
     public void Nao_procura_pelo_processo_em_execucao_so_nos_locais_padrao()
     {
         var state = WriteConfig("home/.local/state/syncthing/config.xml");
@@ -130,13 +130,13 @@ public sealed class LineEndingTests
     // Compilado no Windows (git com autocrlf), o texto dos scripts no código vem com CRLF.
     const string ScriptWithCrlf = "if true; then\r\n  echo ok\r\nfi\r\n";
 
-    [Fact]
+    [ShFact]
     public void Script_com_CRLF_falha_no_sh() // documenta o defeito das versões 1.5.1 a 1.5.4
     {
         Assert.NotEqual("ok\n", RunSh(ScriptWithCrlf).Output);
     }
 
-    [Fact]
+    [ShFact]
     public void ForSh_converte_CRLF_e_o_sh_executa()
     {
         var script = SyncthingScripts.ForSh(ScriptWithCrlf);

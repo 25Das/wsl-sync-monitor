@@ -34,7 +34,7 @@ public class SyncthingParsersTests
     [Fact]
     public void Df_invalido() => Assert.Null(SyncthingParsers.Df("erro"));
 
-    [Fact]
+    [ShFact]
     public void Script_lista_arquivos_em_conflito_fora_das_versoes_antigas()
     {
         var root = Directory.CreateTempSubdirectory("wslsync-conflicts").FullName;
