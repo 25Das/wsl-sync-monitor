@@ -17,7 +17,7 @@ public static class SyncthingScripts
     /// O 1º argumento troca a pasta (testes).
     /// </summary>
     public const string KeepAlive =
-        "d=${1:-" + KeepAliveDir + "}; mkdir -p $d; rm -f $d/sync $d/synced $d/stop-syncthing $d/stopped; " +
+        "d=${1:-" + KeepAliveDir + "}; mkdir -p $d; rm -f $d/sync $d/synced $d/stop-syncthing $d/stopped; : > $d/ready; " +
         "while :; do " +
         "if [ -e $d/sync ]; then rm -f $d/sync; sync; : > $d/synced; fi; " +
         "if [ -e $d/stop-syncthing ]; then rm -f $d/stop-syncthing; pkill -TERM -x syncthing; n=0; " +

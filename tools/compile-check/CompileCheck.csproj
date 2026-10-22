@@ -20,6 +20,8 @@
     <Compile Include="../../src/**/*.cs" Exclude="../../src/obj/**;../../src/bin/**" />
     <Using Include="System.Drawing" />
     <Using Include="System.Windows.Forms" />
+    <!-- como no src/ (UseWPF tira este using automático) -->
+    <Using Remove="System.Net.Http" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
   </ItemGroup>
 </Project>

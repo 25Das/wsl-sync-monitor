@@ -177,12 +177,12 @@ public sealed class KeepAliveScriptTests : IDisposable
         psi.ArgumentList.Add(SyncthingScripts.KeepAliveMarker);
         psi.ArgumentList.Add(_dir);
         _p = Process.Start(psi)!;
-        for (int i = 0; i < 50 && !Directory.Exists(_dir); i++) Thread.Sleep(100);
+        Assert.True(WaitFile(Path.Combine(_dir, "ready"))); // só depois da limpeza inicial
     }
 
     static bool WaitFile(string path)
     {
-        for (int i = 0; i < 60; i++) { if (File.Exists(path)) return true; Thread.Sleep(100); }
+        for (int i = 0; i < 300; i++) { if (File.Exists(path)) return true; Thread.Sleep(100); } // sync no CI pode demorar
         return false;
     }
 
