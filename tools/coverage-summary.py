@@ -4,7 +4,7 @@ Microsoft), do menos ao mais coberto.
 Junta vários relatórios linha a linha: uma linha conta como coberta se algum conjunto de testes passou por ela.
 Uso: python tools/coverage-summary.py relatorio1.xml [relatorio2.xml ...] > cobertura.md
 """
-import sys, collections, xml.etree.ElementTree as ET
+import os, sys, collections, xml.etree.ElementTree as ET
 
 sys.stdout.reconfigure(encoding='utf-8')  # no Windows a saída padrão não é UTF-8
 
@@ -17,8 +17,10 @@ for path in sys.argv[1:]:
     sources = [s.text or '' for s in root.iter('source')] or ['']
     for c in root.iter('class'):
         filename = c.get('filename')
-        if len(sources) == 1 and not (filename.startswith('/') or filename[1:3] == ':\\'):
-            filename = sources[0].rstrip('/\\') + '/' + filename
+        if not (filename.startswith('/') or filename[1:3] == ':\\'):
+            # relativo: a origem onde o arquivo existe (o resumo roda na mesma máquina dos testes), senão a última
+            candidates = [os.path.join(src, filename) for src in sources]
+            filename = next((c for c in candidates if os.path.exists(c)), candidates[-1])
         path_ = filename.replace('\\', '/')
         if '/src/' not in '/' + path_ and not path_.startswith('src/'):
             continue  # só o código do app (fora: testes, bibliotecas, arquivos gerados)
@@ -27,7 +29,7 @@ for path in sys.argv[1:]:
             n = int(line.get('number'))
             lines[name][n] = lines[name].get(n, False) or int(line.get('hits')) > 0
             total_lines += 1; covered += int(line.get('hits')) > 0
-    per_report.append((path, covered, total_lines, len(root.findall('.//class')), sources))
+    per_report.append((path, covered, total_lines))
 
 rows = [(name, sum(v.values()), len(v)) for name, v in lines.items()]
 hit = sum(h for _, h, _ in rows); total = sum(t for _, _, t in rows)
@@ -37,5 +39,5 @@ print("| Arquivo | Linhas cobertas | % |\n|---|---|---|")
 for name, h, t in sorted(rows, key=lambda r: (r[1] / max(1, r[2]), r[0])):
     print(f"| {name} | {h}/{t} | {100 * h / max(1, t):.0f}% |")
 print("\nPor relatório (linhas de src/ cobertas):\n")
-for path, h, t, classes, sources in per_report:
-    print(f"- {path.replace(chr(92), '/').split('/')[-1]}: {h}/{t} ({classes} classes; origem: {', '.join(sources)})")
+for path, h, t in per_report:
+    print(f"- {path.replace(chr(92), '/').split('/')[-1]}: {h}/{t}")
