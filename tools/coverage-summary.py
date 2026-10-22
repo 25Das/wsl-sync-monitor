@@ -27,7 +27,7 @@ for path in sys.argv[1:]:
             n = int(line.get('number'))
             lines[name][n] = lines[name].get(n, False) or int(line.get('hits')) > 0
             total_lines += 1; covered += int(line.get('hits')) > 0
-    per_report.append((path, covered, total_lines))
+    per_report.append((path, covered, total_lines, len(root.findall('.//class')), sources))
 
 rows = [(name, sum(v.values()), len(v)) for name, v in lines.items()]
 hit = sum(h for _, h, _ in rows); total = sum(t for _, _, t in rows)
@@ -37,5 +37,5 @@ print("| Arquivo | Linhas cobertas | % |\n|---|---|---|")
 for name, h, t in sorted(rows, key=lambda r: (r[1] / max(1, r[2]), r[0])):
     print(f"| {name} | {h}/{t} | {100 * h / max(1, t):.0f}% |")
 print("\nPor relatório (linhas de src/ cobertas):\n")
-for path, h, t in per_report:
-    print(f"- {path.replace(chr(92), '/').split('/')[-1]}: {h}/{t}")
+for path, h, t, classes, sources in per_report:
+    print(f"- {path.replace(chr(92), '/').split('/')[-1]}: {h}/{t} ({classes} classes; origem: {', '.join(sources)})")
