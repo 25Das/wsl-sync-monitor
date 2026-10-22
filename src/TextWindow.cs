@@ -1,15 +1,15 @@
 namespace WslSyncMonitor;
 
-/// <summary>Janela com as informações técnicas (texto selecionável, botão para copiar).</summary>
-public sealed class TechInfoForm : Form
+/// <summary>Janela de texto só de leitura com Atualizar e Copiar (ficha técnica, erros, conflitos, listas).</summary>
+public sealed class TextWindow : Form
 {
     readonly TextBox _text;
     readonly Func<Task<string>> _build;
 
-    public TechInfoForm(Func<Task<string>> build)
+    public TextWindow(string title, Func<Task<string>> build)
     {
         _build = build;
-        Text = "WSL Sync Monitor - informações técnicas";
+        Text = $"WSL Sync Monitor - {title}";
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(720, 520);
         MinimumSize = new Size(480, 320);

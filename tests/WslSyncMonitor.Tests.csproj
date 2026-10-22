@@ -21,6 +21,12 @@
     <Compile Include="../src/UpdateInfo.cs" Link="src/UpdateInfo.cs" />
     <Compile Include="../src/WslCommandLine.cs" Link="src/WslCommandLine.cs" />
     <Compile Include="../src/IconLayout.cs" Link="src/IconLayout.cs" />
+    <Compile Include="../src/Models.cs" Link="src/Models.cs" />
+    <Compile Include="../src/GuardRules.cs" Link="src/GuardRules.cs" />
+    <Compile Include="../src/TrayIconModel.cs" Link="src/TrayIconModel.cs" />
+    <Compile Include="../src/PanelFooter.cs" Link="src/PanelFooter.cs" />
+    <Compile Include="../src/WslPaths.cs" Link="src/WslPaths.cs" />
+    <Compile Include="../src/SyncthingParsers.cs" Link="src/SyncthingParsers.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />

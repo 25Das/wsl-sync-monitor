@@ -209,31 +209,53 @@ public sealed class StatusCollector : IDisposable
     const string SeeTechInfo = " Detalhes: menu → Informações técnicas.";
 
     /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>
-    public async Task ShutdownSyncthingAsync(Settings s)
+    string ApiKey(Settings s) => !string.IsNullOrWhiteSpace(s.ApiKey) ? s.ApiKey : _cachedKey ?? "";
+
+    /// <summary>Envia um comando à API (POST, PATCH…); lança exceção se o Syncthing recusar.</summary>
+    async Task SendAsync(Settings s, HttpMethod method, string path, string? json = null)
     {
-        var key = !string.IsNullOrWhiteSpace(s.ApiKey) ? s.ApiKey : _cachedKey ?? "";
-        using var req = new HttpRequestMessage(HttpMethod.Post, GuiUrl(s) + "/rest/system/shutdown");
-        if (!string.IsNullOrEmpty(key)) req.Headers.Add("X-API-Key", key);
+        using var req = new HttpRequestMessage(method, GuiUrl(s) + path);
+        var key = ApiKey(s);
+        if (key.Length > 0) req.Headers.Add("X-API-Key", key);
+        if (json != null) req.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
         using var resp = await _http.SendAsync(req);
         resp.EnsureSuccessStatusCode();
     }
 
-    public sealed record SyncCheck(bool Synced, string Detail, TimeSpan Uptime, bool AllDevicesConnected);
+    static string Q(string value) => Uri.EscapeDataString(value);
 
-    /// <summary>Pede ao Syncthing para verificar já todas as pastas compartilhadas (sem esperar o atraso do monitoramento).</summary>
+    // ---- comandos (menus de Syncthing, pastas e dispositivos) ----
+
+    /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>
+    public Task ShutdownSyncthingAsync(Settings s) => SendAsync(s, HttpMethod.Post, "/rest/system/shutdown");
+    public Task RestartSyncthingAsync(Settings s) => SendAsync(s, HttpMethod.Post, "/rest/system/restart");
+
+    /// <summary>Pausa ou retoma todos os dispositivos (como "Pausar tudo" da interface do Syncthing).</summary>
+    public Task SetAllPausedAsync(Settings s, bool paused) =>
+        SendAsync(s, HttpMethod.Post, paused ? "/rest/system/pause" : "/rest/system/resume");
+
+    public Task SetDevicePausedAsync(Settings s, string deviceId, bool paused) =>
+        SendAsync(s, HttpMethod.Post, $"/rest/system/{(paused ? "pause" : "resume")}?device={Q(deviceId)}");
+
+    public Task SetFolderPausedAsync(Settings s, string folderId, bool paused) =>
+        SendAsync(s, HttpMethod.Patch, $"/rest/config/folders/{Q(folderId)}", paused ? """{"paused":true}""" : """{"paused":false}""");
+
+    public Task ScanFolderAsync(Settings s, string folderId) =>
+        SendAsync(s, HttpMethod.Post, $"/rest/db/scan?folder={Q(folderId)}");
+
+    /// <summary>Pede ao Syncthing para verificar já todas as pastas não pausadas (sem esperar o atraso do monitoramento).</summary>
     public async Task ScanAllAsync(Settings s)
     {
-        var key = !string.IsNullOrWhiteSpace(s.ApiKey) ? s.ApiKey : _cachedKey ?? "";
-        var url = GuiUrl(s);
-        var config = await GetAsync(url, key, "/rest/config");
+        var config = await GetAsync(GuiUrl(s), ApiKey(s), "/rest/config");
         foreach (var f in config.GetProperty("folders").EnumerateArray())
-        {
-            if (Bool(f, "paused")) continue;
-            using var req = new HttpRequestMessage(HttpMethod.Post, url + "/rest/db/scan?folder=" + Uri.EscapeDataString(Str(f, "id") ?? ""));
-            if (!string.IsNullOrEmpty(key)) req.Headers.Add("X-API-Key", key);
-            using var resp = await _http.SendAsync(req);
-        }
+            if (!Bool(f, "paused")) await ScanFolderAsync(s, Str(f, "id") ?? "");
     }
+
+    /// <summary>Erros recentes do Syncthing (GET /rest/system/error).</summary>
+    public async Task<List<(DateTimeOffset When, string Message)>> GetErrorsAsync(Settings s) =>
+        SyncthingParsers.Errors((await GetAsync(GuiUrl(s), ApiKey(s), "/rest/system/error")).GetRawText());
+
+    public sealed record SyncCheck(bool Synced, string Detail, TimeSpan Uptime, bool AllDevicesConnected);
 
     /// <summary>
     /// Verifica se tudo está sincronizado: pastas compartilhadas paradas e sem pendências, e todos os
@@ -241,7 +263,7 @@ public sealed class StatusCollector : IDisposable
     /// </summary>
     public async Task<SyncCheck> CheckSyncedAsync(Settings s)
     {
-        var key = !string.IsNullOrWhiteSpace(s.ApiKey) ? s.ApiKey : _cachedKey ?? "";
+        var key = ApiKey(s);
         var url = GuiUrl(s);
         var status = await GetAsync(url, key, "/rest/system/status");
         var myId = Str(status, "myID");
@@ -291,7 +313,7 @@ public sealed class StatusCollector : IDisposable
 
     async Task QuerySyncthingAsync(Snapshot snap, Settings s, string url)
     {
-        var key = !string.IsNullOrWhiteSpace(s.ApiKey) ? s.ApiKey : _cachedKey ?? "";
+        var key = ApiKey(s);
 
         var tStatus = GetAsync(url, key, "/rest/system/status");
         var tVersion = GetAsync(url, key, "/rest/system/version");
@@ -374,7 +396,10 @@ public sealed class StatusCollector : IDisposable
                     Paused = Bool(f, "paused"),
                 };
                 if (f.TryGetProperty("devices", out var fd))
-                    fi.SharedWith = fd.EnumerateArray().Count(x => Str(x, "deviceID") != snap.MyId);
+                {
+                    fi.DeviceIds = fd.EnumerateArray().Select(x => Str(x, "deviceID") ?? "").Where(id => id != snap.MyId).ToList();
+                    fi.SharedWith = fi.DeviceIds.Count;
+                }
                 snap.Folders.Add(fi);
             }
         }
@@ -409,6 +434,8 @@ public sealed class StatusCollector : IDisposable
 
         snap.AllFolders = snap.Folders;
         snap.Folders = snap.AllFolders.Where(f => !s.IsFolderHidden(f)).ToList();
+        snap.AllDevices = snap.Devices;
+        snap.Devices = snap.AllDevices.Where(d => !s.IsDeviceHidden(d)).ToList();
     }
 
     static string? Str(JsonElement e, string p) =>

@@ -12,6 +12,7 @@ public sealed class FolderInfo
     public long GlobalBytes, InSyncBytes, NeedBytes, NeedItems;
     public int Errors;
     public int SharedWith;
+    public List<string> DeviceIds = new(); // dispositivos (exceto este) com quem a pasta é compartilhada
     public string? Error;
 
     public double Percent => GlobalBytes <= 0 ? 100 : Math.Clamp(100.0 * InSyncBytes / GlobalBytes, 0, 100);
@@ -73,7 +74,8 @@ public sealed class Snapshot
     public double InRate, OutRate;
     public List<FolderInfo> Folders = new();     // pastas visíveis (após filtros)
     public List<FolderInfo> AllFolders = new();
-    public List<DeviceInfo> Devices = new();
+    public List<DeviceInfo> Devices = new();     // dispositivos visíveis (após filtros)
+    public List<DeviceInfo> AllDevices = new();
 
     public bool WslRunning => Target?.Running == true;
 
@@ -125,12 +127,15 @@ public sealed class Snapshot
 
 public static class Fmt
 {
+    // a interface é em português: números sempre no formato brasileiro, qualquer que seja o idioma do Windows
+    static readonly System.Globalization.CultureInfo PtBr = System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+
     public static string Bytes(double b)
     {
         string[] u = { "B", "KiB", "MiB", "GiB", "TiB" };
         int i = 0;
         while (b >= 1024 && i < u.Length - 1) { b /= 1024; i++; }
-        return i == 0 ? $"{b:0} {u[i]}" : $"{b:0.#} {u[i]}";
+        return i == 0 ? string.Format(PtBr, "{0:0} {1}", b, u[i]) : string.Format(PtBr, "{0:0.#} {1}", b, u[i]);
     }
 
     public static string Rate(double bps) => Bytes(bps) + "/s";

@@ -7,8 +7,6 @@ namespace WslSyncMonitor;
 /// </summary>
 public sealed partial class TrayApp
 {
-    enum GuardState { Off, InUse, Verifying, Released }
-
     GuardState _guard = GuardState.Off;
     CancellationTokenSource? _verifyCts;
     int _idleTicks;
@@ -25,6 +23,7 @@ public sealed partial class TrayApp
         Native.SetProcessShutdownParameters(0x3FF, 0);
         // depois de uma atualização: continua segurando a distro que a versão anterior segurava
         try { WslService.AdoptKeepAlives(); } catch { }
+        LoadKeepAlive();
         _shutdownWatcher = new ShutdownWatcher(NeedsShutdownProtection, ShutdownSequenceAsync,
             // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga
             () => _settings.ShutdownMaxWaitSeconds + 300);
@@ -45,50 +44,72 @@ public sealed partial class TrayApp
         _collector.InvalidateCredentials();
     }
 
-    /// <summary>Executado após cada atualização (dados recentes do WSL).</summary>
+    // ---- Manter ligada ----
+
+    KeepAliveRequest? _keepAliveRequest;
+
+    /// <summary>"Manter ligada" vale agora para a distro?</summary>
+    bool IsKeptAlive(string distro) =>
+        _keepAliveRequest is { } k && k.Distro.Equals(distro, StringComparison.OrdinalIgnoreCase) && k.IsActive(DateTime.Now);
+
+    string? KeepAliveText => _keepAliveRequest is { } k && k.IsActive(DateTime.Now) ? k.Describe() : null;
+
+    /// <summary>Pede para manter a distro ligada (null = até desligar) ou cancela o pedido (distro null).</summary>
+    void SetKeepAlive(string? distro, TimeSpan? duration)
+    {
+        _keepAliveRequest = distro == null ? null
+            : duration is { } d ? KeepAliveRequest.For(distro, d, DateTime.Now)
+            : KeepAliveRequest.UntilStopped(distro);
+        _settings.KeepAliveDistro = _keepAliveRequest is { Persist: true } r ? r.Distro : "";
+        SaveSettings();
+        if (distro != null && Distro(distro) is { Running: false }) _ = StartDistroAsync(distro);
+        RefreshNow();
+    }
+
+    void LoadKeepAlive()
+    {
+        if (!string.IsNullOrWhiteSpace(_settings.KeepAliveDistro))
+            _keepAliveRequest = KeepAliveRequest.UntilStopped(_settings.KeepAliveDistro);
+    }
+
+    /// <summary>Executado após cada atualização (dados recentes do WSL). As regras estão em <see cref="GuardRules"/>.</summary>
     void GuardTick()
     {
         var d = _snap?.Target;
         if (d == null || _exiting) return;
+        if (d.Running) _lastRunningAt = DateTime.Now;
 
-        if (!d.Running)
-        {
-            if (_guard != GuardState.Off) { CancelVerify(); WslService.Release(d.Name); _guard = GuardState.Off; }
-            SetGuardText(null);
-            PeriodicTick(d.Name);
-            return;
-        }
-        _lastRunningAt = DateTime.Now;
+        // "Manter ligada" por tempo: quando expira, deixa de valer
+        if (_keepAliveRequest is { Persist: false } k && !k.IsActive(DateTime.Now)) _keepAliveRequest = null;
 
-        if (!_settings.ProtectSync)
-        {
-            if (_guard != GuardState.Off) { CancelVerify(); WslService.Release(d.Name); _guard = GuardState.Off; }
-            SetGuardText(null);
-            return;
-        }
-        if (_busy) return;
+        bool canCount = d.Running && !_busy && (_settings.ProtectSync || IsKeptAlive(d.Name));
+        var input = new GuardInput(
+            Running: d.Running,
+            ProtectEnabled: _settings.ProtectSync,
+            Busy: _busy,
+            Sessions: canCount ? WslService.CountExternalSessions(d.Name, DefaultDistro) : 0,
+            KeepAliveActive: IsKeptAlive(d.Name),
+            IdleTicks: _idleTicks);
+        var step = GuardRules.Step(_guard, input);
 
-        int sessions = WslService.CountExternalSessions(d.Name, DefaultDistro);
-        if (sessions > 0)
-        {
-            _idleTicks = 0;
-            if (_guard == GuardState.Verifying) CancelVerify();
-            _guard = GuardState.InUse;
-            Hold(d.Name);
-            SetGuardText($"Em uso ({sessions} sessão(ões)) · ao fechar, o WSL espera a sincronização");
-            return;
-        }
+        if (step.Actions.HasFlag(GuardActions.CancelVerify)) CancelVerify();
+        if (step.Actions.HasFlag(GuardActions.Release)) WslService.Release(d.Name);
+        if (step.Actions.HasFlag(GuardActions.Hold)) Hold(d.Name);
+        _guard = step.State;
+        _idleTicks = step.IdleTicks;
+        if (step.Actions.HasFlag(GuardActions.StartVerify)) StartVerify(d.Name);
 
         switch (_guard)
         {
-            case GuardState.Off:
-                // ligada por outro meio (app, sincronização periódica) ou a sessão fechou antes de ser vista
-                Hold(d.Name);
-                StartVerify(d.Name);
+            case GuardState.KeptAlive:
+                SetGuardText($"{d.Name} mantida ligada pelo app {KeepAliveText}.");
                 break;
             case GuardState.InUse:
-                Hold(d.Name);
-                if (++_idleTicks >= 2) StartVerify(d.Name); // confirma que a sessão fechou mesmo
+                SetGuardText($"{d.Name} em uso por {input.Sessions} programa(s). Ao fechar, espera sincronizar antes de desligar.");
+                break;
+            case GuardState.Off:
+                SetGuardText(null);
+                if (!d.Running) PeriodicTick(d.Name);
                 break;
         }
     }
@@ -104,19 +125,20 @@ public sealed partial class TrayApp
     {
         _guard = GuardState.Verifying;
         _idleTicks = 0;
-        CancelVerify();
+        _verifyCts?.Cancel();
         _verifyCts = new CancellationTokenSource();
         _ = VerifyThenReleaseAsync(distro, _verifyCts.Token);
     }
 
     async Task VerifyThenReleaseAsync(string distro, CancellationToken ct)
     {
-        SetGuardText("Verificando a sincronização…");
-        bool ok = await WaitSyncedAsync(distro, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), ct, SetGuardText);
+        SetGuardText($"{distro}: verificando a sincronização antes de liberar o desligamento…");
+        bool ok = await WaitSyncedAsync(distro, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), ct, t => SetGuardText($"{distro}: {Lower(t)}"));
         if (ct.IsCancellationRequested || _guard != GuardState.Verifying) return;
         WslService.Release(distro);
         _guard = GuardState.Released;
-        SetGuardText(ok ? "Sincronizado · o WSL pode desligar" : $"Limite de {_settings.MaxHoldMinutes} min atingido · o WSL pode desligar");
+        SetGuardText(ok ? $"{distro}: sincronizado, o WSL pode desligar."
+                        : $"{distro}: limite de {_settings.MaxHoldMinutes} min atingido, o WSL pode desligar.");
     }
 
     /// <summary>
@@ -169,6 +191,8 @@ public sealed partial class TrayApp
         return false;
     }
 
+    static string Lower(string t) => t.Length > 0 ? char.ToLower(t[0]) + t[1..] : t;
+
     // ------------------------------------------------------------------ sincronização periódica
 
     void PeriodicTick(string distro)
@@ -197,7 +221,7 @@ public sealed partial class TrayApp
             _exitCts = new CancellationTokenSource();
             SetBusy("Aguardando a sincronização para sair…");
             await WaitSyncedAsync(d.Name, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), _exitCts.Token,
-                t => SetBusy("Para sair: " + char.ToLower(t[0]) + t[1..]));
+                t => SetBusy("Para sair: " + Lower(t)));
         }
         WslService.Release();
         ExitThread();

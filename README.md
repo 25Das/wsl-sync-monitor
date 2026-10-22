@@ -22,37 +22,72 @@ Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo co
 
 ## O que ele mostra
 
-**Na barra de tarefas (resumido)**
-- **Ícone na bandeja**: círculo colorido com o estado geral e o número de dispositivos conectados
-  (`W` = WSL parado, `!` = erro/Syncthing fora do ar).
-- **Mini‑widget sobre a barra** (ao lado da área de notificação; a largura se ajusta ao conteúdo):
-  `● WSL  ● Sync` / `📁 3/3  💻 2/3` (pastas atualizadas / dispositivos conectados).
-  Em barras pequenas vira uma linha só; em barras verticais, um bloco compacto.
+**Ícone da bandeja:** a cor indica o estado geral e o símbolo diz o que está acontecendo:
 
-**Ao passar o mouse ou clicar (detalhado)**
-- Distros do WSL (padrão, versão WSL1/2, em execução/parada).
-- Syncthing: versão, tempo ativo, ID local, taxa ↓/↑, URL.
-- Cada pasta: estado (Atualizada, Sincronizando 42%, Verificando, Fora de sincronia, Erro, Pausada),
-  tamanho, nº de dispositivos com quem é compartilhada, caminho e barra de progresso.
-- Cada dispositivo remoto: Conectado/Atualizado, Sincronizando %, Desconectado (visto há X), Pausado,
-  endereço, tipo de conexão (tcp/quic/relay), versão e taxa ↓/↑.
-- Botões **Abrir Syncthing** (abre a interface web no navegador padrão; só aparece com o Syncthing rodando), **Iniciar WSL / Encerrar WSL** e **Atualizar**.
-  Ao iniciar ou encerrar, o andamento aparece no cabeçalho ("iniciando WSL…", "aguardando Syncthing…") e o ponto do WSL no widget fica azul.
+| Símbolo | Estado |
+|---|---|
+| ⏻ cinza | WSL desligado |
+| ⟳ azul | sincronizando ou verificando |
+| ✓ verde | tudo atualizado |
+| ! amarelo | atenção (dispositivo desconectado, pasta fora de sincronia) |
+| ✕ vermelho | erro (Syncthing parado, chave recusada, WSL ausente) |
 
-**Ícone da bandeja**: clique esquerdo abre/fecha o painel; clique direito abre o menu; duplo clique abre o Syncthing.
-**Widget**: clique abre/fecha o painel; clique direito abre o menu. Opcional (menu → *Detalhes ao passar o mouse no widget*, desligado por padrão): passar o mouse mostra o painel.
-Aberto por clique, o painel fecha com Esc, clicando fora ou clicando de novo no ícone. O botão de **pin** no
-cabeçalho fixa o painel: ele fica aberto (clicar no ícone só o traz para frente) até ser liberado no mesmo botão.
+Marcas nos cantos: **azul em cima** = nova versão disponível; **clara embaixo** = distro mantida ligada pelo app.
+Passar o mouse mostra um resumo (pastas atualizadas, dispositivos conectados, até quando a distro fica ligada).
+
+**Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas atualizadas / dispositivos
+conectados). Acompanha a barra que se oculta; arraste para mudar de lugar.
+
+**Painel** (clique no ícone ou no widget):
+- **Cabeçalho:** ⟳ recarregar (F5), ⓘ ficha técnica e 📌 fixar (o painel fica aberto até ser liberado).
+- **WSL:** as distros; a que tem o Syncthing aparece com "· Syncthing".
+- **Proteção da sincronização:** o que a proteção está fazendo, sempre começando pelo nome da distro.
+- **Syncthing, Pastas e Dispositivos:** estado, tamanho, velocidade, conexões.
+- **Rodapé:** com a distro desligada, *Iniciar &lt;distro&gt;*; ligada, *Abrir interface do Syncthing* e
+  *Encerrar &lt;distro&gt;*.
+- **Toda linha com ▾ abre as ações daquele item** (as mesmas do menu).
+
+## Menu (botão direito)
+
+```
+Abrir interface do Syncthing
+Atualizar para a versão X                (quando houver)
+WSL ▸           cada distro ▸  Abrir terminal · Abrir no Explorer · Reiniciar… · Encerrar… / Iniciar
+                               Manter ligada ▸ (até eu desligar · por 1 hora · por 4 horas)
+                               Usar para o Syncthing · Definir como padrão do WSL · Exportar backup…
+                Encerrar todo o WSL… · Atualizar o WSL… · Editar .wslconfig…
+Syncthing ▸     Pausar tudo / Retomar tudo · Verificar todas as pastas agora · Reiniciar o Syncthing…
+                Copiar o ID deste dispositivo · Ver erros recentes…
+                Esperar a sincronização antes de desligar · Ligar o WSL a cada 60 min para sincronizar
+Pastas ▸        cada pasta ▸  Abrir no Explorer · Abrir terminal aqui · Verificar agora · Pausar/Retomar
+                              Arquivos em conflito… · Versões antigas · Copiar caminho · Mostrar no painel
+                Ocultar pastas não compartilhadas · Ocultar pastas pausadas
+Dispositivos ▸  cada dispositivo ▸  Pausar/Retomar · Copiar ID · Pastas compartilhadas… · Mostrar no painel
+Diagnóstico ▸   informações rápidas (versão, proteção, chave da API, memória e disco, último erro)
+                Ficha técnica completa… · Copiar ficha técnica
+Preferências ▸  Mostrar widget · Restaurar posição do widget · Abrir o painel ao passar o mouse no widget
+                Iniciar com o Windows · Verificar atualizações · Configurações avançadas (settings.json)…
+Sair
+```
+
+Operações que encerram, reiniciam ou alteram algo pedem confirmação.
+
+## Manter ligada
+
+Com só o app aberto, a distro é solta depois de sincronizar e o WSL desliga por ociosidade. Para usar a
+distro sem nenhum programa aberto nela (por exemplo, serviços em segundo plano), use **WSL ▸ distro ▸ Manter
+ligada**: *até eu desligar* (vale também depois de reiniciar o app), *por 1 hora* ou *por 4 horas*. Ao acabar,
+o app espera a sincronização e solta a distro normalmente. Encerrar a distro cancela o pedido.
 
 ## Proteção da sincronização
 
-Com **Segurar o WSL até sincronizar** (menu, ligado por padrão), o app mantém a distro monitorada ligada
+Com **Esperar a sincronização antes de desligar** (menu *Syncthing*, ligado por padrão), o app mantém a distro monitorada ligada
 enquanto ela estiver em uso e, quando o último programa (VS Code, terminal, dev container) fecha, só a solta
 depois de confirmar que o Syncthing terminou. Então o desligamento por ociosidade do WSL age normalmente.
-O mesmo vale ao sair do app e ao desligar o Windows. Com **Sincronização periódica**, o app liga o WSL a cada
-60 min (se estiver desligado) só para sincronizar.
+O mesmo vale ao sair do app e ao desligar o Windows. Com **Ligar o WSL a cada 60 min para sincronizar**, o app liga o WSL (se estiver desligado) só
+para sincronizar.
 
-O estado aparece no painel, na seção WSL ("Proteção: …"). Como funciona:
+O estado aparece no painel, na seção *Proteção da sincronização*. Como funciona:
 
 - **Em uso:** enquanto há sessões de outros programas na distro (processos `wsl.exe` do Windows que apontam
   para ela: VS Code, dev containers, terminais), o app mantém a distro ligada.
@@ -67,28 +102,9 @@ O estado aparece no painel, na seção WSL ("Proteção: …"). Como funciona:
   *Desligar mesmo assim* do Windows continua disponível.
 - Há limites para todas as esperas (veja *Configurações*); passado o limite, o app solta/encerra mesmo assim.
 
-## Distros
-
-O menu (botão direito) lista todas as distros, com um ponto verde para as que estão em execução. Cada uma tem:
-- **Abrir terminal**;
-- **Iniciar** / **Encerrar…**;
-- **Monitorar o Syncthing desta distro** (a monitorada aparece com "· Syncthing" no nome);
-- **Definir como padrão do WSL**.
-
-As mesmas ações aparecem ao clicar numa distro no painel detalhado. **Encerrar todo o WSL…** encerra todas as distros e a máquina virtual (`wsl --shutdown`).
-
-## Pastas exibidas
-
-Menu → *Pastas exibidas*:
-- marque/desmarque cada pasta para mostrá‑la ou ocultá‑la;
-- **Ocultar pastas não compartilhadas** (ligado por padrão): esconde pastas sem nenhum dispositivo remoto, como a "Default Folder" que o Syncthing cria e muitas vezes não é usada;
-- **Ocultar pastas pausadas** (desligado por padrão).
-
-Pastas ocultas não entram na contagem do widget nem na cor do estado geral.
-
 ## Encerrar (modo seguro)
 
-Encerrar uma distro (ou todo o WSL) pede confirmação e então:
+Encerrar ou reiniciar uma distro (ou todo o WSL, inclusive antes de *Atualizar o WSL*) pede confirmação e então:
 1. para o Syncthing de forma limpa: pela API (`/rest/system/shutdown`) na distro monitorada, ou com `SIGTERM` nas demais; espera o processo sair (até 30 s);
 2. executa `sync` para gravar os dados em disco;
 3. executa `wsl --terminate <distro>` (ou `wsl --shutdown` para todo o WSL).
@@ -121,11 +137,13 @@ Botão direito → *Editar configurações…* abre `%APPDATA%\WslSyncMonitor\se
 | `StartupGraceSeconds` | `90` | Tempo para o Syncthing conectar após ligar. |
 | `StableSeconds` | `10` | Tempo que "sincronizado" precisa durar. |
 | `PeriodicSyncMinutes` | `60` | Sincronização periódica (0 = desligada). |
+| `KeepAliveDistro` | `""` | Distro mantida ligada "até eu desligar". |
+| `HiddenDevices` | `[]` | IDs dos dispositivos ocultados do painel. |
 | `HoverDelayMs` | `450` | Atraso do hover. |
 
 ## Problemas comuns
 
-Para qualquer problema, o menu tem **Informações técnicas…**: versão do app e do WSL, distro monitorada,
+Para qualquer problema, use **Diagnóstico ▸ Ficha técnica completa…** (ou o ⓘ do painel): versão do app e do WSL, distro monitorada,
 estado da proteção, URL usada, de onde veio a chave da API (a chave em si nunca é mostrada), quais `config.xml`
 foram encontrados e o erro do último script executado na distro. O botão *Copiar* copia tudo para enviar.
 

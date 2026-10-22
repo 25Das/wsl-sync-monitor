@@ -3,13 +3,13 @@ using System.Runtime.InteropServices;
 
 namespace WslSyncMonitor;
 
+/// <summary>O que o painel pede ao app (o painel só desenha e repassa cliques).</summary>
 public interface IPopupActions
 {
-    void OpenSyncthing();
     void RefreshNow();
-    void StartWsl();
-    void StopWsl();
-    void ShowDistroMenu(string name, Point screen);
+    void ShowTechInfo();
+    void RunFooterAction(FooterAction action);
+    void ShowItemMenu(PanelItem item, Point screen);
 }
 
 /// <summary>Painel detalhado (aberto ao passar o mouse ou clicar no ícone/widget).</summary>
@@ -22,7 +22,7 @@ public sealed class DetailPopup : Form
     Theme.Palette _pal = Theme.Current;
     readonly List<(Rectangle Rect, string Label, Action Click, bool Primary)> _buttons = new();
     int _hoverButton = -1;
-    readonly List<(Rectangle Rect, string Name)> _distroRows = new();
+    readonly List<(Rectangle Rect, PanelItem Item)> _itemRows = new(); // linhas clicáveis (distro, Syncthing, pasta, dispositivo)
 
     bool _clicked, _locked;
 
@@ -100,7 +100,7 @@ public sealed class DetailPopup : Form
     {
         if (!Visible || (_locked && !evenIfLocked)) return;
         _clicked = _locked = false;
-        _pinTip.Hide(this);
+        _tip.Hide(this);
         Hide();
         LastHiddenAt = DateTime.Now;
     }
@@ -159,16 +159,13 @@ public sealed class DetailPopup : Form
     void BuildButtons()
     {
         _buttons.Clear();
+        var t = _snap?.Target;
+        foreach (var b in PanelFooter.For(t?.Name, t?.Running == true, _snap?.St == StState.Running, _busy))
+            _buttons.Add((Rectangle.Empty, b.Label, () => _actions.RunFooterAction(b.Action), b.Primary));
+        if (_buttons.Count == 0) return;
+
         // botões de mesma largura dividindo o rodapé
         int h = P(28), gap = P(8), margin = P(12), y = Height - FooterH + (FooterH - h) / 2;
-        void Add(string label, int _, Action a, bool primary) => _buttons.Add((Rectangle.Empty, label, a, primary));
-        // "Abrir Syncthing" só aparece quando há uma interface para abrir
-        if (_snap?.St == StState.Running) Add("Abrir Syncthing", P(150), _actions.OpenSyncthing, true);
-        if (_busy != null) Add("Aguarde…", P(130), () => { }, false);
-        else if (_snap?.WslRunning == true) Add("Encerrar WSL", P(130), _actions.StopWsl, false);
-        else if (_snap?.Target != null) Add("Iniciar WSL", P(150), _actions.StartWsl, true);
-        Add("Atualizar", 0, _actions.RefreshNow, false);
-
         int n = _buttons.Count, w = (Width - 2 * margin - gap * (n - 1)) / n;
         for (int i = 0; i < n; i++)
             _buttons[i] = _buttons[i] with { Rect = new Rectangle(margin + i * (w + gap), y, w, h) };
@@ -189,15 +186,18 @@ public sealed class DetailPopup : Form
         using (var bold = new Font("Segoe UI Semibold", 11f))
             TextRenderer.DrawText(g, "WSL · Syncthing", bold, new Rectangle(P(32), 0, P(220), HeaderH), _pal.Text,
                 TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);
-        var pin = PinRect;
-        if (_pinHover)
-            using (var b = new SolidBrush(_pal.Hover)) FillRound(g, b, pin, P(4));
         using (var icons = new Font("Segoe MDL2 Assets", 10f))
-            TextRenderer.DrawText(g, _locked ? "\uE840" : "\uE718", icons, pin, _locked ? _pal.Accent : _pal.Dim,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            foreach (var hb in HeaderButtons)
+            {
+                var r = HeaderRect(hb.Id);
+                if (_headerHover == hb.Id)
+                    using (var b = new SolidBrush(_pal.Hover)) FillRound(g, b, r, P(4));
+                TextRenderer.DrawText(g, hb.Glyph, icons, r, hb.Active ? _pal.Accent : _pal.Dim,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
         var when = _busy ?? (_snap == null ? "Carregando…" : $"Atualizado às {_snap.Time:HH:mm:ss}");
-        TextRenderer.DrawText(g, when, Font, new Rectangle(0, 0, pin.Left - P(4), HeaderH), _busy != null ? Theme.For(Level.Busy) : _pal.Dim,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+        TextRenderer.DrawText(g, when, Font, new Rectangle(0, 0, HeaderRect(HeaderButton.Refresh).Left - P(4), HeaderH),
+            _busy != null ? Theme.For(Level.Busy) : _pal.Dim, TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
         using (var pen = new Pen(_pal.Border)) g.DrawLine(pen, 0, HeaderH, Width, HeaderH);
 
         // corpo rolável
@@ -235,6 +235,8 @@ public sealed class DetailPopup : Form
     const TextFormatFlags Clip = TextFormatFlags.PreserveGraphicsClipping;
 
     /// <summary>Desenha (ou só mede) o conteúdo. Retorna a altura total.</summary>
+    const string Menu = " ▾"; // indica que a linha abre um menu
+
     int DrawBody(Graphics g, int y, bool measureOnly)
     {
         int left = P(14), right = W - P(14), rowH = P(22), subH = P(18);
@@ -295,7 +297,8 @@ public sealed class DetailPopup : Form
             }
 
             var s = _snap;
-            if (!measureOnly) _distroRows.Clear();
+            if (!measureOnly) _itemRows.Clear();
+            void Clickable(PanelItem item) { if (!measureOnly) _itemRows.Add((new Rectangle(0, y, W, rowH), item)); }
             if (s == null) { Section("Estado"); Row(Level.Off, "Consultando…", ""); return y + P(10); }
 
             // ---- WSL ----
@@ -304,16 +307,24 @@ public sealed class DetailPopup : Form
             foreach (var d in s.Distros)
             {
                 bool target = d == s.Target;
-                var name = d.Name + (d.IsDefault ? " (padrão)" : "") + (d.Version > 0 ? $" · WSL{d.Version}" : "");
-                if (!measureOnly) _distroRows.Add((new Rectangle(0, y, W, rowH), d.Name));
-                Row(d.Running ? Level.Ok : Level.Off, name, (d.Running ? "Em execução" : "Parada") + " ▾", target ? bold : null);
+                var name = d.Name + (d.IsDefault ? " (padrão)" : "") + (d.Version > 0 ? $" · WSL{d.Version}" : "") + (target ? " · Syncthing" : "");
+                Clickable(new(PanelItemKind.Distro, d.Name));
+                Row(d.Running ? Level.Ok : Level.Off, name, (d.Running ? "Em execução" : "Parada") + Menu, target ? bold : null);
             }
             if (s.WslError != null) Wrap(s.WslError, Theme.For(Level.Error));
-            if (_guard != null) Wrap("Proteção: " + char.ToLower(_guard[0]) + _guard[1..], _guard.StartsWith("Sincronizado") || _guard.StartsWith("Em uso") ? _pal.Dim : Theme.For(Level.Busy));
+
+            // ---- Proteção (seção própria: o texto começa pelo nome da distro) ----
+            if (_guard != null)
+            {
+                Section("Proteção da sincronização");
+                bool working = _guard.Contains("verificando") || _guard.Contains("aguardando") || _guard.Contains("confirmando");
+                Wrap(_guard, working ? Theme.For(Level.Busy) : _pal.Text);
+            }
 
             // ---- Syncthing ----
             Section("Syncthing");
-            Row(s.StLevel, "Syncthing" + (s.Target != null ? $" em {s.Target.Name}" : ""), s.StStatusText, bold);
+            Clickable(new(PanelItemKind.Syncthing, ""));
+            Row(s.StLevel, "Syncthing" + (s.Target != null ? $" em {s.Target.Name}" : ""), s.StStatusText + Menu, bold);
             if (s.St == StState.Running)
             {
                 Sub($"Ativo há {Fmt.Duration(s.StUptime)} · ID {s.MyId?[..Math.Min(7, s.MyId.Length)]} · ↓ {Fmt.Rate(s.InRate)}  ↑ {Fmt.Rate(s.OutRate)}");
@@ -330,7 +341,8 @@ public sealed class DetailPopup : Form
             foreach (var f in s.Folders.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
             {
                 var (txt, lvl) = f.Status;
-                Row(lvl, f.Label, txt);
+                Clickable(new(PanelItemKind.Folder, f.Id));
+                Row(lvl, f.Label, txt + Menu);
                 var type = f.Type switch { "sendonly" => " · somente envio", "receiveonly" => " · somente recebimento", "receiveencrypted" => " · criptografada", _ => "" };
                 Sub($"{Fmt.Bytes(f.GlobalBytes)} · {f.SharedWith} dispositivo(s){type} · {f.Path}");
                 if (lvl == Level.Busy && f.State == "syncing") Bar(f.Percent, lvl);
@@ -342,7 +354,8 @@ public sealed class DetailPopup : Form
             foreach (var d in s.Devices.OrderByDescending(d => d.Connected).ThenBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
             {
                 var (txt, lvl) = d.Status;
-                Row(lvl, d.Name, txt);
+                Clickable(new(PanelItemKind.Device, d.Id));
+                Row(lvl, d.Name, txt + Menu);
                 if (d.Connected)
                 {
                     var addr = d.Address;
@@ -369,35 +382,65 @@ public sealed class DetailPopup : Form
         base.OnMouseWheel(e);
     }
 
-    // ------------------------------------------------------------------ botão de fixar (pin)
+    // ------------------------------------------------------------------ botões do cabeçalho
 
-    Rectangle PinRect => new(Width - P(12) - P(26), (HeaderH - P(26)) / 2, P(26), P(26));
-    bool _pinHover;
-    readonly ToolTip _pinTip = new();
+    enum HeaderButton { None, Refresh, Info, Pin }
 
-    void TogglePin()
+    record struct HeaderIcon(HeaderButton Id, string Glyph, string Tip, bool Active);
+
+    // da direita para a esquerda: pin, ficha técnica, recarregar (glifos da Segoe MDL2 Assets)
+    IEnumerable<HeaderIcon> HeaderButtons =>
+    [
+        new(HeaderButton.Pin, _locked ? "\uE840" : "\uE718", _locked ? "Liberar o painel" : "Fixar o painel aberto", _locked),
+        new(HeaderButton.Info, "\uE946", "Ficha técnica", false),
+        new(HeaderButton.Refresh, "\uE72C", "Recarregar (F5)", false),
+    ];
+
+    Rectangle HeaderRect(HeaderButton id)
     {
-        var s = PanelBehavior.ToggleLock(State);
-        _clicked = s.Clicked;
-        _locked = s.Locked;
-        _pinTip.Show(_locked ? "Fixado: o painel fica aberto até ser liberado" : "Liberado", this,
-            PinRect.Left, PinRect.Bottom + P(4), 1500);
-        Invalidate();
+        int index = id switch { HeaderButton.Pin => 0, HeaderButton.Info => 1, _ => 2 };
+        int size = P(26), x = Width - P(12) - size * (index + 1) - P(2) * index;
+        return new Rectangle(x, (HeaderH - size) / 2, size, size);
     }
+
+    HeaderButton HeaderButtonAt(Point p) => HeaderButtons.FirstOrDefault(b => HeaderRect(b.Id).Contains(p)).Id;
+
+    HeaderButton _headerHover;
+    readonly ToolTip _tip = new();
+
+    void ClickHeader(HeaderButton id)
+    {
+        switch (id)
+        {
+            case HeaderButton.Refresh: _actions.RefreshNow(); break;
+            case HeaderButton.Info: _actions.ShowTechInfo(); break;
+            case HeaderButton.Pin:
+                var s = PanelBehavior.ToggleLock(State);
+                _clicked = s.Clicked;
+                _locked = s.Locked;
+                _tip.Show(_locked ? "Fixado: o painel fica aberto até ser liberado" : "Liberado", this,
+                    HeaderRect(id).Left, HeaderRect(id).Bottom + P(4), 1500);
+                Invalidate();
+                break;
+        }
+    }
+
+    PanelItem? ItemAt(Point p) =>
+        InBody(p) && _itemRows.FirstOrDefault(r => r.Rect.Contains(p)) is { Rect.Width: > 0 } row ? row.Item : null;
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
         int idx = _buttons.FindIndex(b => b.Rect.Contains(e.Location));
-        bool overDistro = InBody(e.Location) && _distroRows.Any(r => r.Rect.Contains(e.Location));
-        bool overPin = PinRect.Contains(e.Location);
-        if (overPin != _pinHover)
+        var header = HeaderButtonAt(e.Location);
+        if (header != _headerHover)
         {
-            _pinHover = overPin;
-            if (overPin) _pinTip.Show(_locked ? "Liberar o painel" : "Fixar o painel aberto", this, PinRect.Left, PinRect.Bottom + P(4), 2000);
-            else _pinTip.Hide(this);
+            _headerHover = header;
+            if (header != HeaderButton.None)
+                _tip.Show(HeaderButtons.First(b => b.Id == header).Tip, this, HeaderRect(header).Left, HeaderRect(header).Bottom + P(4), 2000);
+            else _tip.Hide(this);
             Invalidate();
         }
-        Cursor = idx >= 0 || overDistro || overPin ? Cursors.Hand : Cursors.Default;
+        Cursor = idx >= 0 || header != HeaderButton.None || ItemAt(e.Location) != null ? Cursors.Hand : Cursors.Default;
         if (idx != _hoverButton) { _hoverButton = idx; Invalidate(); }
         base.OnMouseMove(e);
     }
@@ -406,19 +449,20 @@ public sealed class DetailPopup : Form
 
     protected override void OnMouseLeave(EventArgs e)
     {
-        if (_hoverButton != -1 || _pinHover) { _hoverButton = -1; _pinHover = false; _pinTip.Hide(this); Invalidate(); }
+        if (_hoverButton != -1 || _headerHover != HeaderButton.None)
+        {
+            _hoverButton = -1; _headerHover = HeaderButton.None; _tip.Hide(this); Invalidate();
+        }
         base.OnMouseLeave(e);
     }
 
     protected override void OnMouseUp(MouseEventArgs e)
     {
-        if (e.Button == MouseButtons.Left && PinRect.Contains(e.Location)) TogglePin();
-        else if (e.Button == MouseButtons.Left)
+        if (e.Button == MouseButtons.Left)
         {
-            var b = _buttons.FirstOrDefault(b => b.Rect.Contains(e.Location));
-            b.Click?.Invoke();
-            if (b.Click == null && InBody(e.Location) && _distroRows.FirstOrDefault(r => r.Rect.Contains(e.Location)) is { Name: not null } row)
-                _actions.ShowDistroMenu(row.Name, PointToScreen(e.Location));
+            if (HeaderButtonAt(e.Location) is var header and not HeaderButton.None) ClickHeader(header);
+            else if (_buttons.FirstOrDefault(b => b.Rect.Contains(e.Location)) is { Click: not null } button) button.Click();
+            else if (ItemAt(e.Location) is { } item) _actions.ShowItemMenu(item, PointToScreen(e.Location));
         }
         base.OnMouseUp(e);
     }

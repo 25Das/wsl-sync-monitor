@@ -56,8 +56,8 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
         _tray = new NotifyIcon
         {
-            Icon = _icons.Render(null),
-            Text = "WSL Sync Monitor",
+            Icon = _icons.Render(TrayIconModel.From(null, false, false)),
+            Text = AppName,
             Visible = true,
         };
         // menu e painel são tratados manualmente: esquerdo = painel, direito = menu (nunca os dois)
@@ -93,7 +93,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _ = RefreshAsync();
     }
 
-    // ------------------------------------------------------------------ atualização
+    // ------------------------------------------------------------------ estado (atualização periódica)
 
     async Task RefreshAsync()
     {
@@ -105,11 +105,11 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             // depois de soltar a distro, não executa nada dentro dela (deixa o WSL desligar por ociosidade)
             var snap = await _collector.RefreshAsync(_settings, allowDistroCommands: _guard != GuardState.Released);
             _snap = snap;
-            _tray.Icon = _icons.Render(snap);
-            _tray.Text = Trim(_busyText != null ? "WSL Sync Monitor · " + _busyText : snap.ShortSummary(), 127);
             _popup.SetSnapshot(snap);
             _widget.SetSnapshot(snap);
             GuardTick();
+            UpdateTrayIcon();
+            _ = RefreshDiskFreeAsync();
         }
         catch (Exception ex)
         {
@@ -119,6 +119,16 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     }
 
     static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
+
+    /// <summary>Ícone e texto da bandeja a partir do estado (regras em <see cref="TrayIconModel"/>).</summary>
+    void UpdateTrayIcon()
+    {
+        var kept = _snap?.Target is { } t && IsKeptAlive(t.Name);
+        _tray.Icon = _icons.Render(TrayIconModel.From(_snap, kept, _updater.Available != null));
+        _tray.Text = _busyText != null
+            ? Trim($"{AppName} · {_busyText}", 127)
+            : TrayIconModel.Tooltip(_snap, kept ? KeepAliveText : null, _updater.Available?.Version);
+    }
 
     static DateTime SettingsMtime() { try { return File.GetLastWriteTimeUtc(Settings.FilePath); } catch { return default; } }
 
@@ -149,7 +159,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     bool _settingsErrorShown;
 
     void WarnInvalidSettings(string? error, bool startup) =>
-        _tray.ShowBalloonTip(8000, "WSL Sync Monitor",
+        _tray.ShowBalloonTip(8000, AppName,
             (startup ? "settings.json inválido; usando os padrões (cópia em settings.json.invalido). "
                      : "settings.json inválido; as configurações atuais foram mantidas. ") + error, ToolTipIcon.Warning);
 
@@ -178,7 +188,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         if (state.Visible && (state.Clicked || state.Locked))
         {
             _widgetHover = false;
-            bool inMenu = (_distroMenu is { Visible: true } dm && dm.Bounds.Contains(cur)) || (_menu.Visible && _menu.Bounds.Contains(cur));
+            bool inMenu = (_itemMenu is { Visible: true } im && im.Bounds.Contains(cur)) || (_menu.Visible && _menu.Bounds.Contains(cur));
             if (Control.MouseButtons != MouseButtons.None && !_popup.Bounds.Contains(cur) && !inMenu) _popup.Apply(PanelEvent.ClickOutside);
             return;
         }
@@ -241,344 +251,47 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     // ------------------------------------------------------------------ ações
 
-    string? TargetDistro => _snap?.Target?.Name ?? (string.IsNullOrWhiteSpace(_settings.Distro) ? _snap?.Distros.FirstOrDefault(d => d.IsDefault)?.Name : _settings.Distro);
-
-    public void OpenSyncthing()
-    {
-        var url = _collector.GuiUrl(_settings);
-        try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch (Exception ex) { MessageBox.Show("Não foi possível abrir " + url + "\n" + ex.Message, "WSL Sync Monitor"); }
-        _popup.HidePopup();
-    }
-
     public void RefreshNow() => _ = RefreshAsync();
 
-    // ------------------------------------------------------------------ gerenciamento de distros
-
-    public void StartWsl() { if (TargetDistro is { } d) _ = StartDistroAsync(d); }
-    public void StopWsl() { if (TargetDistro is { } d) _ = StopDistroAsync(d); }
-
-    bool IsMonitored(string distro) => distro.Equals(TargetDistro, StringComparison.OrdinalIgnoreCase);
-    DistroInfo? Distro(string name) => _snap?.Distros.FirstOrDefault(d => d.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>Executa uma operação demorada com indicação de andamento (uma por vez).</summary>
-    async Task RunBusyAsync(Func<Task> op)
+    /// <summary>Botões do rodapé do painel (definidos em <see cref="PanelFooter"/>).</summary>
+    public void RunFooterAction(FooterAction action)
     {
-        if (_busy) return;
-        _busy = true;
-        try { await op(); }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "WSL Sync Monitor", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
-        finally
+        switch (action)
         {
-            _busy = false;
-            SetBusy(null);
-            await RefreshAsync();
+            case FooterAction.OpenSyncthing: OpenSyncthing(); break;
+            case FooterAction.StartDistro when TargetDistro is { } d: _ = StartDistroAsync(d); break;
+            case FooterAction.StopDistro when TargetDistro is { } d: _ = StopDistroAsync(d); break;
         }
     }
-
-    Task StartDistroAsync(string d) => RunBusyAsync(async () =>
-    {
-        if (Distro(d)?.Running == true) return;
-        SetBusy($"Iniciando {d}…");
-        WslService.StartDistro(d);
-        var end = DateTime.Now.AddSeconds(90);
-        while (Distro(d)?.Running != true && DateTime.Now < end) { await Task.Delay(1000); await RefreshAsync(); }
-        if (Distro(d)?.Running != true) throw new InvalidOperationException($"A distro \"{d}\" não iniciou em 90 s.");
-
-        // a distro monitorada subiu: espera o Syncthing (se ele inicia junto)
-        if (IsMonitored(d))
-        {
-            SetBusy("Aguardando Syncthing…");
-            end = DateTime.Now.AddSeconds(45);
-            while (_snap?.St != StState.Running && DateTime.Now < end) { await Task.Delay(1500); await RefreshAsync(); }
-        }
-    });
-
-    /// <summary>
-    /// Para o Syncthing da distro de forma limpa: pela API se for a distro monitorada, senão por SIGTERM.
-    /// Se ele não parar, lança exceção e nada é encerrado.
-    /// </summary>
-    async Task StopSyncthingInAsync(string d)
-    {
-        if (!await WslService.IsProcessRunningAsync(d, "syncthing")) return;
-        SetBusy($"Parando Syncthing em {d}…");
-        bool viaApi = false;
-        if (IsMonitored(d) && _snap?.St == StState.Running)
-        {
-            try { await _collector.ShutdownSyncthingAsync(_settings); viaApi = true; } catch { }
-        }
-        if (!viaApi) await WslService.SignalSyncthingAsync(d);
-        if (!await WslService.WaitProcessExitAsync(d, "syncthing", TimeSpan.FromSeconds(30)))
-            throw new InvalidOperationException($"O Syncthing em \"{d}\" não encerrou em 30 s (talvez um serviço o reinicie ou ele rode com outro usuário). Nada foi encerrado.");
-    }
-
-    async Task StopDistroAsync(string d)
-    {
-        if (Distro(d)?.Running != true || _busy) return;
-        _popup.HidePopup();
-        if (MessageBox.Show($"Encerrar a distro \"{d}\"?\n\nSe o Syncthing estiver rodando nela, ele será parado primeiro e os dados serão gravados em disco antes de encerrar.",
-                "WSL Sync Monitor", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-        if (IsMonitored(d)) { CancelVerify(); _guard = GuardState.Off; }
-        await RunBusyAsync(async () =>
-        {
-            await StopSyncthingInAsync(d);
-            SetBusy($"Encerrando {d}…");
-            await WslService.TerminateSafelyAsync(d);
-        });
-    }
-
-    async Task ShutdownAllAsync()
-    {
-        var running = _snap?.Distros.Where(x => x.Running).Select(x => x.Name).ToList() ?? new();
-        if (running.Count == 0 || _busy) return;
-        _popup.HidePopup();
-        if (MessageBox.Show($"Encerrar todo o WSL ({string.Join(", ", running)})?\n\nO Syncthing será parado primeiro onde estiver rodando, os dados serão gravados em disco e então todas as distros e a máquina virtual do WSL serão encerradas.",
-                "WSL Sync Monitor", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
-        CancelVerify(); _guard = GuardState.Off;
-        await RunBusyAsync(async () =>
-        {
-            foreach (var d in running) await StopSyncthingInAsync(d);
-            SetBusy("Encerrando o WSL…");
-            await WslService.ShutdownAllSafelyAsync(running);
-        });
-    }
-
-    Task SetDefaultDistroAsync(string d) => RunBusyAsync(async () =>
-    {
-        SetBusy($"Definindo {d} como padrão…");
-        await WslService.SetDefaultAsync(d);
-    });
-
-    void OpenTerminal(string d)
-    {
-        try { WslService.OpenTerminal(d); } catch (Exception ex) { MessageBox.Show(ex.Message, "WSL Sync Monitor"); }
-    }
-
-    /// <summary>Ações de uma distro (usadas no menu principal e ao clicar numa distro no painel).</summary>
-    ToolStripItem[] DistroActions(DistroInfo d)
-    {
-        var name = d.Name;
-        return new ToolStripItem[]
-        {
-            new ToolStripMenuItem("Abrir terminal", null, (_, _) => OpenTerminal(name)),
-            d.Running
-                ? new ToolStripMenuItem("Encerrar…", null, (_, _) => _ = StopDistroAsync(name)) { Enabled = !_busy }
-                : new ToolStripMenuItem("Iniciar", null, (_, _) => _ = StartDistroAsync(name)) { Enabled = !_busy },
-            new ToolStripSeparator(),
-            new ToolStripMenuItem("Monitorar o Syncthing desta distro", null, (_, _) => SelectDistro(name)) { Checked = IsMonitored(name) },
-            new ToolStripMenuItem("Definir como padrão do WSL", null, (_, _) => _ = SetDefaultDistroAsync(name)) { Checked = d.IsDefault, Enabled = !d.IsDefault && !_busy },
-        };
-    }
-
-    static readonly Dictionary<Level, Bitmap> _dots = new();
-    static Bitmap DotImage(Level l)
-    {
-        if (_dots.TryGetValue(l, out var b)) return b;
-        b = new Bitmap(16, 16);
-        using (var g = Graphics.FromImage(b))
-        using (var br = new SolidBrush(Theme.For(l)))
-        {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.FillEllipse(br, 4, 4, 8, 8);
-        }
-        return _dots[l] = b;
-    }
-
-    static string DistroLabel(DistroInfo d) => d.Name + (d.IsDefault ? " (padrão)" : "");
-
-    /// <summary>Clique numa distro no painel detalhado: mostra as ações dela.</summary>
-    public void ShowDistroMenu(string name, Point screen)
-    {
-        if (Distro(name) is not { } d) return;
-        _distroMenu?.Dispose();
-        _distroMenu = new ContextMenuStrip();
-        _distroMenu.Items.AddRange(DistroActions(d));
-        _distroMenu.Show(_popup, _popup.PointToClient(screen));
-    }
-    ContextMenuStrip? _distroMenu;
 
     void SetBusy(string? text)
     {
         _busyText = text;
         _popup.SetBusy(text);
         _widget.Busy = text != null;
-        _tray.Text = Trim(text != null ? "WSL Sync Monitor · " + text : _snap?.ShortSummary() ?? "WSL Sync Monitor", 127);
+        UpdateTrayIcon();
     }
 
-    // ------------------------------------------------------------------ menu
-
-    ContextMenuStrip BuildMenu()
-    {
-        var m = new ContextMenuStrip();
-        var open = new ToolStripMenuItem("Abrir Syncthing no navegador", null, (_, _) => OpenSyncthing()) { Font = new Font(m.Font, FontStyle.Bold) };
-        var refresh = new ToolStripMenuItem("Atualizar agora", null, (_, _) => RefreshNow());
-        var distrosHeader = new ToolStripMenuItem("Distros do WSL") { Enabled = false };
-        var distrosEnd = new ToolStripSeparator();
-        var shutdownAll = new ToolStripMenuItem("Encerrar todo o WSL…", null, (_, _) => _ = ShutdownAllAsync());
-        var folders = new ToolStripMenuItem("Pastas exibidas");
-        var widget = new ToolStripMenuItem("Widget na barra de tarefas", null, (_, _) => { _settings.ShowTaskbarWidget = !_settings.ShowTaskbarWidget; SaveSettings(); ApplySettings(); });
-        var resetPos = new ToolStripMenuItem("Restaurar posição do widget", null, (_, _) => { _settings.WidgetOffset = 0; SaveSettings(); });
-        var hover = new ToolStripMenuItem("Detalhes ao passar o mouse no widget", null, (_, _) => { _settings.HoverPopup = !_settings.HoverPopup; SaveSettings(); RefreshNow(); });
-        var autostart = new ToolStripMenuItem("Iniciar com o Windows", null, (_, _) =>
-        {
-            try { Settings.StartWithWindows = !Settings.StartWithWindows; } catch (Exception ex) { MessageBox.Show(ex.Message); }
-        });
-        var techInfo = new ToolStripMenuItem("Informações técnicas…", null, (_, _) => ShowTechInfo());
-        var update = new ToolStripMenuItem("Atualizar", null, (_, _) => InstallUpdate()) { Font = new Font(m.Font, FontStyle.Bold), Visible = false };
-        var checkUpdate = new ToolStripMenuItem("Verificar atualizações", null, async (_, _) => await CheckUpdateAsync(manual: true));
-        var edit = new ToolStripMenuItem("Editar configurações…", null, (_, _) =>
-        {
-            SaveSettings();
-            Process.Start(new ProcessStartInfo("notepad.exe", $"\"{Settings.FilePath}\"") { UseShellExecute = true });
-        });
-        var protect = new ToolStripMenuItem("Segurar o WSL até sincronizar", null, (_, _) => { _settings.ProtectSync = !_settings.ProtectSync; SaveSettings(); RefreshNow(); });
-        var periodic = new ToolStripMenuItem("Sincronização periódica", null, (_, _) =>
-        {
-            _settings.PeriodicSyncMinutes = _settings.PeriodicSyncMinutes > 0 ? 0 : 60;
-            SaveSettings();
-        });
-        var exit = new ToolStripMenuItem("Sair", null, (_, _) => RequestExit());
-
-        m.Items.AddRange(new ToolStripItem[]
-        {
-            open, refresh, new ToolStripSeparator(),
-            distrosHeader, shutdownAll, distrosEnd,
-            folders, new ToolStripSeparator(),
-            protect, periodic, new ToolStripSeparator(),
-            widget, resetPos, hover, autostart, edit, techInfo, checkUpdate, new ToolStripSeparator(),
-            exit,
-        });
-
-        m.Opening += (_, _) =>
-        {
-            _popup.HidePopup();
-            open.Enabled = _snap?.St == StState.Running;
-            update.Visible = _updater.Available != null;
-            if (_updater.Available is { } avail) update.Text = $"Atualizar para a versão {avail.Version.ToString(3)}";
-            update.Enabled = !_busy;
-            widget.Checked = _settings.ShowTaskbarWidget;
-            hover.Checked = _settings.HoverPopup;
-            protect.Checked = _settings.ProtectSync;
-            periodic.Checked = _settings.PeriodicSyncMinutes > 0;
-            periodic.Enabled = _settings.ProtectSync;
-            periodic.Text = _settings.PeriodicSyncMinutes > 0 ? $"Sincronização periódica (a cada {_settings.PeriodicSyncMinutes} min)" : "Sincronização periódica";
-            exit.Text = _exiting ? "Sair agora (sem esperar)" : "Sair";
-            try { autostart.Checked = Settings.StartWithWindows; } catch { }
-
-            // uma entrada por distro (entre o cabeçalho e "Encerrar todo o WSL"), cada uma com suas ações
-            int at = m.Items.IndexOf(distrosHeader) + 1;
-            while (m.Items[at] != shutdownAll) m.Items.RemoveAt(at);
-            foreach (var d in _snap?.Distros ?? new())
-            {
-                var item = new ToolStripMenuItem(DistroLabel(d) + (IsMonitored(d.Name) ? " · Syncthing" : ""), DotImage(d.Running ? Level.Ok : Level.Off));
-                item.DropDownItems.AddRange(DistroActions(d));
-                m.Items.Insert(at++, item);
-            }
-            shutdownAll.Enabled = !_busy && _snap?.Distros.Any(d => d.Running) == true;
-
-            BuildFoldersMenu(folders);
-        };
-        return m;
-    }
-
-    void BuildFoldersMenu(ToolStripMenuItem menu)
-    {
-        menu.DropDownItems.Clear();
-        var all = _snap?.AllFolders ?? new();
-        foreach (var f in all.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
-        {
-            var id = f.Id;
-            bool manual = _settings.HiddenFolders.Contains(id);
-            bool byRule = !manual && _settings.IsFolderHidden(f);
-            var note = byRule ? (f.SharedWith == 0 && _settings.HideUnsharedFolders ? " (não compartilhada)" : " (pausada)") : "";
-            menu.DropDownItems.Add(new ToolStripMenuItem(f.Label + note, null, (_, _) =>
-            {
-                if (!_settings.HiddenFolders.Remove(id)) _settings.HiddenFolders.Add(id);
-                SaveSettings(); RefreshNow();
-            })
-            { Checked = !manual && !byRule, Enabled = !byRule });
-        }
-        if (all.Count == 0) menu.DropDownItems.Add(new ToolStripMenuItem("Nenhuma pasta encontrada") { Enabled = false });
-
-        menu.DropDownItems.Add(new ToolStripSeparator());
-        menu.DropDownItems.Add(new ToolStripMenuItem("Ocultar pastas não compartilhadas", null, (_, _) =>
-        { _settings.HideUnsharedFolders = !_settings.HideUnsharedFolders; SaveSettings(); RefreshNow(); })
-        { Checked = _settings.HideUnsharedFolders });
-        menu.DropDownItems.Add(new ToolStripMenuItem("Ocultar pastas pausadas", null, (_, _) =>
-        { _settings.HidePausedFolders = !_settings.HidePausedFolders; SaveSettings(); RefreshNow(); })
-        { Checked = _settings.HidePausedFolders });
-        if (_settings.HiddenFolders.Count > 0)
-            menu.DropDownItems.Add(new ToolStripMenuItem("Mostrar todas as ocultadas manualmente", null, (_, _) =>
-            { _settings.HiddenFolders.Clear(); SaveSettings(); RefreshNow(); }));
-    }
-
-    // ------------------------------------------------------------------ informações técnicas
-
-    TechInfoForm? _techInfo;
-    string? _wslVersion;
-
-    async void ShowTechInfo()
-    {
-        if (_techInfo is { IsDisposed: false }) { _techInfo.Activate(); await _techInfo.LoadAsync(); return; }
-        _techInfo = new TechInfoForm(BuildTechInfoAsync);
-        _techInfo.Show();
-        await _techInfo.LoadAsync();
-    }
-
-    async Task<string> BuildTechInfoAsync()
-    {
-        _wslVersion ??= await WslService.GetVersionAsync();
-        int? sessions = null;
-        if (_snap?.Target is { Running: true } t)
-            try { sessions = WslService.CountExternalSessions(t.Name, DefaultDistro); } catch { }
-        return new Diagnostics
-        {
-            AppVersion = typeof(TrayApp).Assembly.GetName().Version?.ToString(3),
-            WslVersion = _wslVersion,
-            Distro = _snap?.Target is { } d ? $"{d.Name} ({(d.Running ? "em execução" : "parada")})" : null,
-            DefaultDistro = DefaultDistro,
-            Guard = $"{_guard}" + (_guardText != null ? $" · {_guardText}" : "") + (_settings.ProtectSync ? "" : " (desativada)"),
-            ExternalSessions = sessions,
-            GuiUrl = _collector.GuiUrl(_settings),
-            ApiKeySource = _collector.ApiKeySource,
-            ConfigFiles = _collector.ConfigFiles,
-            ConfigFileUsed = _collector.ConfigFileUsed,
-            LastScriptExitCode = _collector.LastScriptExitCode,
-            LastScriptError = _collector.LastScriptError,
-            LastApiError = _collector.LastApiError,
-            SettingsPath = Settings.FilePath,
-            Updated = _snap?.Time,
-        }.ToText();
-    }
-
-    void SelectDistro(string name)
-    {
-        ResetGuardForDistroChange();
-        _settings.Distro = name;
-        SaveSettings();
-        _collector.InvalidateCredentials();
-        RefreshNow();
-    }
-
-    // ------------------------------------------------------------------ atualização
+    // ------------------------------------------------------------------ atualização do app (GitHub)
 
     async Task CheckUpdateAsync(bool manual)
     {
         try
         {
             var u = await _updater.CheckAsync();
+            UpdateTrayIcon(); // marca de atualização pendente
             if (u != null && (manual || u.Version != _notifiedVersion))
             {
                 _notifiedVersion = u.Version;
-                _tray.ShowBalloonTip(10000, "WSL Sync Monitor",
+                _tray.ShowBalloonTip(10000, AppName,
                     $"Versão {u.Version.ToString(3)} disponível. Clique aqui ou use o menu para atualizar.", ToolTipIcon.Info);
             }
             else if (u == null && manual)
-                _tray.ShowBalloonTip(4000, "WSL Sync Monitor", $"Você já está na versão mais recente ({Updater.Current.ToString(3)}).", ToolTipIcon.Info);
+                _tray.ShowBalloonTip(4000, AppName, $"Você já está na versão mais recente ({Updater.Current.ToString(3)}).", ToolTipIcon.Info);
         }
         catch (Exception ex)
         {
-            if (manual) _tray.ShowBalloonTip(6000, "WSL Sync Monitor", "Não foi possível verificar atualizações: " + ex.Message, ToolTipIcon.Warning);
+            if (manual) _tray.ShowBalloonTip(6000, AppName, "Não foi possível verificar atualizações: " + ex.Message, ToolTipIcon.Warning);
         }
     }
 
@@ -599,7 +312,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             _busy = false;
             SetBusy(null);
             if (MessageBox.Show($"Não foi possível atualizar: {ex.Message}\n\nAbrir a página da versão para baixar manualmente?",
-                    "WSL Sync Monitor", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+                    AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 try { Process.Start(new ProcessStartInfo(u.PageUrl) { UseShellExecute = true }); } catch { }
         }
     }

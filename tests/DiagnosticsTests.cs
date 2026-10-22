@@ -33,6 +33,16 @@ public class DiagnosticsTests
     }
 
     [Fact]
+    public void Relatorio_mostra_memoria_e_disco_em_unidades_legiveis()
+    {
+        var text = (Sample() with { VmMemory = 2_254_857_830, VhdSize = 9_985_798_144, DiskFree = 1_016_858_365_952 }).ToText();
+
+        Assert.Contains("Memória do WSL: 2,1 GiB", text);
+        Assert.Contains("Arquivo de disco da distro: 9,3 GiB", text);
+        Assert.Contains("Espaço livre na distro: 947 GiB", text);
+    }
+
+    [Fact]
     public void Relatorio_sem_dados_nao_falha_e_indica_ausencia()
     {
         var text = new Diagnostics().ToText();

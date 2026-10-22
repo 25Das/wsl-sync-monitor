@@ -29,6 +29,11 @@ public sealed class Settings
     /// <summary>IDs de pastas ocultadas manualmente.</summary>
     public List<string> HiddenFolders { get; set; } = new();
 
+    /// <summary>IDs de dispositivos ocultados do painel (menu do dispositivo → Mostrar no painel).</summary>
+    public List<string> HiddenDevices { get; set; } = new();
+
+    public bool IsDeviceHidden(DeviceInfo d) => HiddenDevices.Contains(d.Id);
+
     public bool IsFolderHidden(FolderInfo f) =>
         HiddenFolders.Contains(f.Id) || (HideUnsharedFolders && f.SharedWith == 0) || (HidePausedFolders && f.Paused);
 
@@ -49,6 +54,9 @@ public sealed class Settings
 
     /// <summary>Por quanto tempo o estado "sincronizado" precisa se manter antes de soltar o WSL.</summary>
     public int StableSeconds { get; set; } = 10;
+
+    /// <summary>Distro mantida ligada "até você desligar" (menu da distro → Manter ligada). Vazio = nenhuma.</summary>
+    public string KeepAliveDistro { get; set; } = "";
 
     /// <summary>Liga o WSL a cada N minutos (desligado há N min) só para sincronizar. 0 = desativado.</summary>
     public int PeriodicSyncMinutes { get; set; } = 60;

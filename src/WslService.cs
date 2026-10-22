@@ -243,9 +243,77 @@ public static class WslService
         if (r.ExitCode != 0) throw new InvalidOperationException(r.Output.Trim());
     }
 
-    /// <summary>Abre um terminal na distro (usa o terminal padrão do Windows).</summary>
-    public static void OpenTerminal(string distro) =>
-        Process.Start(new ProcessStartInfo(WslExe, $"-d {distro} --cd ~") { UseShellExecute = true });
+    // ---- informações e operações (menus de WSL e pastas) ----
+
+    static readonly Dictionary<string, string> _homes = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Pasta home do usuário padrão da distro (lida uma vez; executa um comando na distro).</summary>
+    public static async Task<string> GetHomeAsync(string distro)
+    {
+        if (_homes.TryGetValue(distro, out var home)) return home;
+        var r = await ShAsync(distro, SyncthingScripts.Home);
+        home = r.ExitCode == 0 && r.Output.StartsWith('/') ? r.Output.Trim() : "/root";
+        return _homes[distro] = home;
+    }
+
+    /// <summary>Espaço total e livre do disco da distro (executa "df" nela).</summary>
+    public static async Task<(long Total, long Free)?> GetDiskSpaceAsync(string distro) =>
+        SyncthingParsers.Df((await ShAsync(distro, SyncthingScripts.DiskUsage)).Output);
+
+    /// <summary>Tamanho do arquivo de disco (ext4.vhdx) da distro no Windows; não executa nada na distro.</summary>
+    public static long? GetVhdSize(string distro)
+    {
+        try
+        {
+            using var lxss = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Lxss");
+            foreach (var id in lxss?.GetSubKeyNames() ?? [])
+            {
+                using var k = lxss!.OpenSubKey(id);
+                if (!string.Equals(k?.GetValue("DistributionName") as string, distro, StringComparison.OrdinalIgnoreCase)) continue;
+                var vhd = Path.Combine(k!.GetValue("BasePath") as string ?? "", "ext4.vhdx");
+                return File.Exists(vhd) ? new FileInfo(vhd).Length : null;
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Memória ocupada pela máquina virtual do WSL (processo vmmemWSL/vmmem), se o Windows deixar ler.</summary>
+    public static long? GetVmMemory()
+    {
+        foreach (var name in new[] { "vmmemWSL", "vmmem" })
+            foreach (var p in Process.GetProcessesByName(name))
+                using (p)
+                    try { return p.WorkingSet64; } catch { }
+        return null;
+    }
+
+    /// <summary>Copia a distro para um arquivo .tar.gz ("wsl --export").</summary>
+    public static async Task ExportAsync(string distro, string file)
+    {
+        var r = await RunAsync(new[] { "--export", distro, file, "--format", "tar.gz" }, (int)TimeSpan.FromHours(2).TotalMilliseconds);
+        if (r.ExitCode != 0) throw new InvalidOperationException(FirstLine(r.Output, r.Error, "Falha ao exportar a distro."));
+    }
+
+    /// <summary>"wsl --update" (com o WSL desligado). Retorna a mensagem do wsl.exe.</summary>
+    public static async Task<string> UpdateWslAsync()
+    {
+        var r = await RunAsync(new[] { "--update" }, (int)TimeSpan.FromMinutes(20).TotalMilliseconds);
+        if (r.ExitCode != 0) throw new InvalidOperationException(FirstLine(r.Output, r.Error, "Falha ao atualizar o WSL."));
+        return r.Output.Trim();
+    }
+
+    static string FirstLine(string output, string error, string fallback) =>
+        (output + "\n" + error).Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.Length > 0) ?? fallback;
+
+    /// <summary>Abre um terminal na distro, numa pasta (padrão: home).</summary>
+    public static void OpenTerminal(string distro, string linuxPath = "~") =>
+        Process.Start(new ProcessStartInfo(WslExe, $"-d {distro} --cd \"{linuxPath}\"") { UseShellExecute = true });
+
+    /// <summary>Abre um caminho no Explorer (pasta ou arquivo).</summary>
+    public static void OpenInExplorer(string windowsPath) =>
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{windowsPath}\"") { UseShellExecute = true });
+
 
     /// <summary>Espera um processo sumir da distro. Retorna false se ainda existir após o timeout.</summary>
     public static async Task<bool> WaitProcessExitAsync(string distro, string name, TimeSpan timeout)

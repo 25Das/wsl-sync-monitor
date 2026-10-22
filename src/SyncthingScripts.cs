@@ -23,6 +23,16 @@ public static class SyncthingScripts
         exit 0
         """;
 
+    /// <summary>Arquivos em conflito do Syncthing numa pasta (fora das versões antigas), no máximo 200.</summary>
+    public static string ListConflicts(string folderPath) =>
+        ForSh($"find {WslPaths.ShQuote(folderPath)} -name '*.sync-conflict-*' -not -path '*/.stversions/*' 2>/dev/null | head -200");
+
+    /// <summary>Espaço do disco da distro: "df -B1 --output=size,avail /".</summary>
+    public const string DiskUsage = "df -B1 --output=size,avail /";
+
+    /// <summary>Pasta home do usuário padrão da distro.</summary>
+    public const string Home = "printf '%s' \"$HOME\"";
+
     /// <summary>Interpreta a saída de <see cref="ListConfigs"/>: caminho e conteúdo de cada config.xml válido.</summary>
     public static List<(string Path, string Xml)> ParseConfigs(string output)
     {
