@@ -1,0 +1,270 @@
+using System.Runtime.InteropServices;
+using Microsoft.Win32;
+
+namespace WslSyncMonitor;
+
+static class Native
+{
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; public Rectangle ToRectangle() => Rectangle.FromLTRB(Left, Top, Right, Bottom); }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct APPBARDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uCallbackMessage;
+        public uint uEdge;
+        public RECT rc;
+        public IntPtr lParam;
+    }
+
+    public const uint ABM_GETSTATE = 4, ABM_GETTASKBARPOS = 5;
+    public const int ABS_AUTOHIDE = 1;
+
+    [DllImport("shell32.dll")] public static extern IntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
+    [DllImport("shell32.dll")] public static extern int SHQueryUserNotificationState(out int state);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string? cls, string? title);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string? cls, string? title);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr hIcon);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    public delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
+    [DllImport("user32.dll")] public static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmod, WinEventProc proc, uint pid, uint tid, uint flags);
+    [DllImport("user32.dll")] public static extern bool UnhookWinEvent(IntPtr hook);
+    public const uint EVENT_SYSTEM_FOREGROUND = 3, WINEVENT_OUTOFCONTEXT = 0;
+
+    // ---- CreateProcess sem herança de handles ----
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct STARTUPINFO
+    {
+        public int cb; public string? lpReserved, lpDesktop, lpTitle;
+        public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+        public short wShowWindow, cbReserved2; public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    struct PROCESS_INFORMATION { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern bool CreateProcess(string? app, System.Text.StringBuilder cmd, IntPtr pa, IntPtr ta, bool inherit,
+        uint flags, IntPtr env, string? dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    const uint CREATE_NO_WINDOW = 0x08000000;
+
+    /// <summary>Inicia um processo oculto que não herda nenhum handle deste processo.</summary>
+    public static System.Diagnostics.Process? StartDetached(string commandLine)
+    {
+        var si = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
+        if (!CreateProcess(null, new System.Text.StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero, false,
+                CREATE_NO_WINDOW, IntPtr.Zero, null, ref si, out var pi))
+            throw new System.ComponentModel.Win32Exception();
+        CloseHandle(pi.hThread);
+        try { return System.Diagnostics.Process.GetProcessById(pi.dwProcessId); }
+        catch { return null; }
+        finally { CloseHandle(pi.hProcess); }
+    }
+
+    // ---- linha de comando de outro processo ----
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("ntdll.dll")] static extern int NtQueryInformationProcess(IntPtr h, int cls, IntPtr buf, int len, out int retLen);
+    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+    const int ProcessCommandLineInformation = 60;
+
+    /// <summary>Lê a linha de comando de um processo (Windows 8.1+). null se não for possível.</summary>
+    public static string? GetCommandLine(int pid)
+    {
+        var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == IntPtr.Zero) return null;
+        try
+        {
+            NtQueryInformationProcess(h, ProcessCommandLineInformation, IntPtr.Zero, 0, out int len);
+            if (len <= 0) return null;
+            var buf = Marshal.AllocHGlobal(len);
+            try
+            {
+                if (NtQueryInformationProcess(h, ProcessCommandLineInformation, buf, len, out _) != 0) return null;
+                // UNICODE_STRING { ushort Length; ushort MaximumLength; IntPtr Buffer }
+                int bytes = Marshal.ReadInt16(buf) & 0xFFFF;
+                var str = Marshal.ReadIntPtr(buf, IntPtr.Size);
+                return str == IntPtr.Zero ? null : Marshal.PtrToStringUni(str, bytes / 2);
+            }
+            finally { Marshal.FreeHGlobal(buf); }
+        }
+        finally { CloseHandle(h); }
+    }
+
+    // ---- desligamento do Windows ----
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool ShutdownBlockReasonCreate(IntPtr hWnd, string reason);
+    [DllImport("user32.dll")] public static extern bool ShutdownBlockReasonDestroy(IntPtr hWnd);
+    [DllImport("kernel32.dll")] public static extern bool SetProcessShutdownParameters(uint level, uint flags);
+    public const int WM_QUERYENDSESSION = 0x11, WM_ENDSESSION = 0x16;
+
+    public static readonly IntPtr HWND_TOPMOST = new(-1);
+    public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
+
+    // ---- janela em camadas (alpha por pixel) ----
+    [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] public struct SIZE { public int cx, cy; }
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+
+    [DllImport("user32.dll")] public static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+    [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr hDC);
+    [DllImport("gdi32.dll")] public static extern bool DeleteDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] public static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
+    [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr hObject);
+    public const int ULW_ALPHA = 2;
+    public const byte AC_SRC_OVER = 0, AC_SRC_ALPHA = 1;
+
+    public const int WS_EX_LAYERED = 0x80000, WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8, WS_EX_NOACTIVATE = 0x8000000;
+
+    /// <summary>Exibe um bitmap ARGB 32bpp numa janela WS_EX_LAYERED.</summary>
+    public static void SetLayeredBitmap(IntPtr hwnd, Bitmap bmp, int x, int y)
+    {
+        IntPtr screenDc = GetDC(IntPtr.Zero), memDc = CreateCompatibleDC(screenDc);
+        IntPtr hBmp = IntPtr.Zero, old = IntPtr.Zero;
+        try
+        {
+            hBmp = bmp.GetHbitmap(Color.FromArgb(0));
+            old = SelectObject(memDc, hBmp);
+            var size = new SIZE { cx = bmp.Width, cy = bmp.Height };
+            var src = new POINT();
+            var dst = new POINT { X = x, Y = y };
+            var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = 255, AlphaFormat = AC_SRC_ALPHA };
+            UpdateLayeredWindow(hwnd, screenDc, ref dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
+        }
+        finally
+        {
+            ReleaseDC(IntPtr.Zero, screenDc);
+            if (hBmp != IntPtr.Zero) { SelectObject(memDc, old); DeleteObject(hBmp); }
+            DeleteDC(memDc);
+        }
+    }
+}
+
+public enum TaskbarEdge { Left = 0, Top = 1, Right = 2, Bottom = 3 }
+
+/// <summary>Posição/estado atual da barra de tarefas principal (inclui auto‑ocultar).</summary>
+public sealed class TaskbarInfo
+{
+    public IntPtr Hwnd;
+    public TaskbarEdge Edge = TaskbarEdge.Bottom;
+    public Rectangle Rect;          // posição atual da janela (desliza para fora da tela quando oculta)
+    public Rectangle ScreenBounds;
+    public Rectangle? NotifyRect;   // área de notificação (bandeja)
+    public bool AutoHide;
+    public bool FullscreenApp;
+    public int Dpi = 96;
+
+    public bool Horizontal => Edge is TaskbarEdge.Top or TaskbarEdge.Bottom;
+    public int Thickness => Horizontal ? Rect.Height : Rect.Width;
+
+    /// <summary>A barra está totalmente exibida na tela agora?</summary>
+    public bool FullyShown
+    {
+        get
+        {
+            if (Hwnd == IntPtr.Zero || !Native.IsWindowVisible(Hwnd)) return false;
+            var inter = Rectangle.Intersect(Rect, ScreenBounds);
+            return Horizontal ? inter.Height >= Rect.Height - 2 : inter.Width >= Rect.Width - 2;
+        }
+    }
+
+    public static TaskbarInfo Get()
+    {
+        var t = new TaskbarInfo { Hwnd = Native.FindWindow("Shell_TrayWnd", null) };
+        var abd = new Native.APPBARDATA { cbSize = Marshal.SizeOf<Native.APPBARDATA>() };
+        if (Native.SHAppBarMessage(Native.ABM_GETTASKBARPOS, ref abd) != IntPtr.Zero)
+        {
+            t.Edge = (TaskbarEdge)abd.uEdge;
+            t.Rect = abd.rc.ToRectangle();
+        }
+        abd = new Native.APPBARDATA { cbSize = Marshal.SizeOf<Native.APPBARDATA>() };
+        t.AutoHide = ((long)Native.SHAppBarMessage(Native.ABM_GETSTATE, ref abd) & Native.ABS_AUTOHIDE) != 0;
+
+        if (t.Hwnd != IntPtr.Zero)
+        {
+            if (Native.GetWindowRect(t.Hwnd, out var r)) t.Rect = r.ToRectangle();
+            try { t.Dpi = (int)Native.GetDpiForWindow(t.Hwnd); } catch { }
+            var notify = Native.FindWindowEx(t.Hwnd, IntPtr.Zero, "TrayNotifyWnd", null);
+            if (notify != IntPtr.Zero && Native.GetWindowRect(notify, out var nr))
+            {
+                var rr = nr.ToRectangle();
+                if (rr.Width > 0 && rr.Height > 0) t.NotifyRect = rr;
+            }
+        }
+        if (t.Dpi <= 0) t.Dpi = 96;
+
+        t.ScreenBounds = (t.Hwnd != IntPtr.Zero ? Screen.FromHandle(t.Hwnd) : Screen.PrimaryScreen!).Bounds;
+
+        // 2 = QUNS_BUSY (app em tela cheia), 3 = D3D tela cheia, 4 = modo apresentação
+        if (Native.SHQueryUserNotificationState(out var q) == 0) t.FullscreenApp = q is 2 or 3 or 4;
+        return t;
+    }
+
+    /// <summary>
+    /// Calcula onde abrir um painel ao lado da barra. Usa a espessura da barra em relação à borda da
+    /// tela (não a posição atual), então funciona mesmo quando a barra está auto‑oculta.
+    /// </summary>
+    public Point PlacePopup(Size size, Point anchor, int margin)
+    {
+        var screen = Screen.FromPoint(anchor).Bounds;
+        if (!screen.IntersectsWith(ScreenBounds)) screen = ScreenBounds;
+        int thick = Thickness > 0 ? Thickness : 48;
+        int x, y;
+        switch (Edge)
+        {
+            case TaskbarEdge.Top:
+                x = anchor.X - size.Width / 2; y = screen.Top + thick + margin; break;
+            case TaskbarEdge.Left:
+                x = screen.Left + thick + margin; y = anchor.Y - size.Height / 2; break;
+            case TaskbarEdge.Right:
+                x = screen.Right - thick - margin - size.Width; y = anchor.Y - size.Height / 2; break;
+            default:
+                x = anchor.X - size.Width / 2; y = screen.Bottom - thick - margin - size.Height; break;
+        }
+        x = Math.Clamp(x, screen.Left + margin, Math.Max(screen.Left + margin, screen.Right - size.Width - margin));
+        y = Math.Clamp(y, screen.Top + margin, Math.Max(screen.Top + margin, screen.Bottom - size.Height - margin));
+        return new Point(x, y);
+    }
+}
+
+/// <summary>Cores e tema claro/escuro do Windows.</summary>
+public static class Theme
+{
+    static bool ReadLight(string name)
+    {
+        try
+        {
+            using var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return k?.GetValue(name) is int v && v == 1;
+        }
+        catch { return false; }
+    }
+
+    public static bool AppsLight => ReadLight("AppsUseLightTheme");
+    public static bool TaskbarLight => ReadLight("SystemUsesLightTheme");
+
+    public static Color For(Level l) => l switch
+    {
+        Level.Ok => Color.FromArgb(0x3F, 0xB9, 0x50),
+        Level.Busy => Color.FromArgb(0x3B, 0x8E, 0xF6),
+        Level.Warn => Color.FromArgb(0xE3, 0xA0, 0x08),
+        Level.Error => Color.FromArgb(0xF8, 0x51, 0x49),
+        _ => Color.FromArgb(0x8B, 0x94, 0x9E),
+    };
+
+    public sealed record Palette(Color Bg, Color Card, Color Border, Color Text, Color Dim, Color Accent, Color Hover);
+
+    public static Palette Current => AppsLight
+        ? new(Color.FromArgb(249, 249, 249), Color.White, Color.FromArgb(222, 222, 222), Color.FromArgb(28, 28, 28), Color.FromArgb(110, 110, 110), Color.FromArgb(0, 95, 184), Color.FromArgb(235, 235, 235))
+        : new(Color.FromArgb(32, 32, 32), Color.FromArgb(43, 43, 43), Color.FromArgb(60, 60, 60), Color.FromArgb(240, 240, 240), Color.FromArgb(160, 160, 160), Color.FromArgb(96, 205, 255), Color.FromArgb(58, 58, 58));
+}

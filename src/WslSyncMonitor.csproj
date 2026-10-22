@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>WslSyncMonitor</AssemblyName>
+    <RootNamespace>WslSyncMonitor</RootNamespace>
+    <Version>1.5.0</Version>
+    <Product>WSL Sync Monitor</Product>
+  </PropertyGroup>
+
+</Project>
