@@ -61,6 +61,9 @@ public sealed class Settings
     /// <summary>Liga o WSL a cada N minutos (desligado há N min) só para sincronizar. 0 = desativado.</summary>
     public int PeriodicSyncMinutes { get; set; } = 60;
 
+    /// <summary>Não perguntar mais se deve se instalar ao rodar fora da pasta de instalação.</summary>
+    public bool InstallPromptDismissed { get; set; }
+
     /// <summary>Mostra o mini‑widget sobre a barra de tarefas (além do ícone na bandeja).</summary>
     public bool ShowTaskbarWidget { get; set; } = true;
 
@@ -151,11 +154,14 @@ public sealed class Settings
             using var k = Registry.CurrentUser.OpenSubKey(RunKey);
             return k?.GetValue(RunName) is string;
         }
-        set
-        {
-            using var k = Registry.CurrentUser.CreateSubKey(RunKey);
-            if (value) k.SetValue(RunName, $"\"{Environment.ProcessPath}\"");
-            else k.DeleteValue(RunName, false);
-        }
+        set => SetStartWithWindows(value ? Environment.ProcessPath : null);
+    }
+
+    /// <summary>Inicia com o Windows o .exe indicado (null = não iniciar).</summary>
+    public static void SetStartWithWindows(string? exe)
+    {
+        using var k = Registry.CurrentUser.CreateSubKey(RunKey);
+        if (exe != null) k.SetValue(RunName, $"\"{exe}\"");
+        else k.DeleteValue(RunName, false);
     }
 }

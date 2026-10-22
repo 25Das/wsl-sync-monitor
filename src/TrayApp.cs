@@ -17,7 +17,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     readonly System.Windows.Forms.Timer _hoverTimer = new() { Interval = 100 };
     readonly Updater _updater = new();
     readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 24 * 60 * 60 * 1000 };
-    bool _updating;
+    bool _handingOver; // fechando para outra instância (atualização ou instalação) assumir: não solta a distro
+    EventWaitHandle? _exitEvent;
+    RegisteredWaitHandle? _exitWait;
     Version? _notifiedVersion;
 
     Snapshot? _snap;
@@ -88,9 +90,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _updateTimer.Tick += async (_, _) => await CheckUpdateAsync(manual: false);
         _updateTimer.Start();
         _tray.BalloonTipClicked += (_, _) => { if (_updater.Available != null) InstallUpdate(); };
-        _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => CheckUpdateAsync(manual: false),
-            TaskScheduler.FromCurrentSynchronizationContext());
         _ = RefreshAsync();
+        _ = CheckUpdateAsync(manual: false); // procura atualização logo ao iniciar (e depois a cada 24 h)
+        ListenForExitRequests();
     }
 
     // ------------------------------------------------------------------ estado (atualização periódica)
@@ -272,6 +274,35 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         UpdateTrayIcon();
     }
 
+    /// <summary>Outra instância (instalador, desinstalação) pede para esta fechar: sai com a saída segura.</summary>
+    void ListenForExitRequests()
+    {
+        try
+        {
+            _exitEvent = AppInstance.CreateExitEvent();
+            var ui = SynchronizationContext.Current!;
+            _exitWait = ThreadPool.RegisterWaitForSingleObject(_exitEvent, (_, _) => ui.Post(_ => RequestExit(), null),
+                null, Timeout.Infinite, executeOnlyOnce: false);
+        }
+        catch (Exception ex) { ErrorLog.Write("escutar pedidos de saída", ex); }
+    }
+
+    /// <summary>Preferências → Instalar…: instala esta cópia e passa para a instalada.</summary>
+    void InstallFromMenu()
+    {
+        var installer = Installer.ForCurrentUser();
+        using var form = new InstallForm(installer.Paths.Directory, offerDontAsk: false);
+        if (form.ShowDialog() != DialogResult.OK) return;
+        if (!Program.InstallAndStart(installer, form.Options)) return;
+        _handingOver = true;
+        ExitThread();
+    }
+
+    static bool IsInstalled => InstallPaths.Current.IsInstalledExe(Environment.ProcessPath!);
+
+    static void Uninstall() => Try(() =>
+        Process.Start(new ProcessStartInfo(Environment.ProcessPath!, Program.UninstallArg) { UseShellExecute = true }));
+
     // ------------------------------------------------------------------ atualização do app (GitHub)
 
     async Task CheckUpdateAsync(bool manual)
@@ -304,7 +335,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             await _updater.InstallAsync(u);
             // a nova versão assume a distro (AdoptKeepAlives): não solta nada ao sair
-            _updating = true;
+            _handingOver = true;
             ExitThread();
         }
         catch (Exception ex)
@@ -319,7 +350,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     protected override void ExitThreadCore()
     {
-        if (!_updating) WslService.Release();
+        if (!_handingOver) WslService.Release();
+        _exitWait?.Unregister(null);
+        _exitEvent?.Dispose();
         _updateTimer.Stop();
         _updater.Dispose();
         _shutdownWatcher?.DestroyHandle();

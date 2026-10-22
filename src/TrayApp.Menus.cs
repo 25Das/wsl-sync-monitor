@@ -246,6 +246,7 @@ public sealed partial class TrayApp
         yield return Item("Iniciar com o Windows", () => Try(() => Settings.StartWithWindows = !Settings.StartWithWindows), check: autostart);
         yield return Sep();
         yield return Item("Verificar atualizações", () => CheckUpdateAsync(manual: true));
+        yield return IsInstalled ? Item("Desinstalar…", Uninstall) : Item("Instalar…", InstallFromMenu);
         yield return Item("Configurações avançadas (settings.json)…", () =>
         {
             SaveSettings();

@@ -10,6 +10,7 @@ public sealed class TextWindow : Form
     {
         _build = build;
         Text = $"WSL Sync Monitor - {title}";
+        Icon = AppIcon.Get();
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(720, 520);
         MinimumSize = new Size(480, 320);
