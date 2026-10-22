@@ -11,7 +11,9 @@ dotnet test tests -c Release --nologo -v quiet
 echo "pre-commit: compilando o app (src/)"
 if ! out=$(dotnet build src -c Release --nologo -v quiet 2>&1); then
   if echo "$out" | grep -q "MSB4019.*WindowsDesktop"; then
-    echo "pre-commit: aviso: este .NET SDK não compila apps Windows; a compilação fica com o CI."
+    # SDK sem suporte a WinForms (ex.: Linux): compila os mesmos fontes contra as bibliotecas do Windows
+    echo "pre-commit: SDK sem WinForms; compilando com tools/compile-check"
+    dotnet build tools/compile-check -c Release --nologo -v quiet
   else
     echo "$out"
     exit 1

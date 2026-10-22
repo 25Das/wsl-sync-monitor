@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Verifica se o app compila mesmo onde o .NET SDK não tem o suporte a WinForms (ex.: SDK do Ubuntu/apt):
+    compila os mesmos fontes de src/ contra as bibliotecas do Windows Desktop. Usado pelo hook de pre-commit.
+    Não gera o app para distribuir (isso é o src/ no CI, em Windows).
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>CA1416</NoWarn>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>WslSyncMonitor</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/**/*.cs" Exclude="../../src/obj/**;../../src/bin/**" />
+    <Using Include="System.Drawing" />
+    <Using Include="System.Windows.Forms" />
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App" />
+  </ItemGroup>
+</Project>

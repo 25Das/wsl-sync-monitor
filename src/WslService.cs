@@ -260,8 +260,8 @@ public static class WslService
     public static async Task<(long Total, long Free)?> GetDiskSpaceAsync(string distro) =>
         SyncthingParsers.Df((await ShAsync(distro, SyncthingScripts.DiskUsage)).Output);
 
-    /// <summary>Tamanho do arquivo de disco (ext4.vhdx) da distro no Windows; não executa nada na distro.</summary>
-    public static long? GetVhdSize(string distro)
+    /// <summary>Arquivo de disco (ext4.vhdx) da distro no Windows, pelo registro do WSL; não executa nada na distro.</summary>
+    public static string? GetVhdPath(string distro)
     {
         try
         {
@@ -270,12 +270,26 @@ public static class WslService
             {
                 using var k = lxss!.OpenSubKey(id);
                 if (!string.Equals(k?.GetValue("DistributionName") as string, distro, StringComparison.OrdinalIgnoreCase)) continue;
-                var vhd = Path.Combine(k!.GetValue("BasePath") as string ?? "", "ext4.vhdx");
-                return File.Exists(vhd) ? new FileInfo(vhd).Length : null;
+                var vhd = Path.Combine((k!.GetValue("BasePath") as string ?? "").Replace(@"\\?\", ""), "ext4.vhdx");
+                return File.Exists(vhd) ? vhd : null;
             }
         }
         catch { }
         return null;
+    }
+
+    public static long? GetVhdSize(string distro) => GetVhdPath(distro) is { } vhd ? new FileInfo(vhd).Length : null;
+
+    /// <summary>Espaço livre na unidade do Windows onde fica o disco da distro (o limite real de crescimento dele).</summary>
+    public static (long Free, string Drive)? GetHostFreeSpace(string distro)
+    {
+        try
+        {
+            if (GetVhdPath(distro) is not { } vhd) return null;
+            var drive = new DriveInfo(Path.GetPathRoot(vhd)!);
+            return (drive.AvailableFreeSpace, drive.Name.TrimEnd('\\'));
+        }
+        catch { return null; }
     }
 
     /// <summary>Memória ocupada pela máquina virtual do WSL (processo vmmemWSL/vmmem), se o Windows deixar ler.</summary>

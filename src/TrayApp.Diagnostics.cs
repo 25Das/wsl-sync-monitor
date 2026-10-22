@@ -18,6 +18,14 @@ public sealed partial class TrayApp
         try { _diskFree = (await WslService.GetDiskSpaceAsync(t.Name))?.Free; } catch { }
     }
 
+    /// <summary>Espaço livre real: o menor entre o livre na distro e o livre na unidade do Windows do .vhdx.</summary>
+    DiskSpace? DiskOf(DistroInfo? t)
+    {
+        if (t == null) return null;
+        var host = WslService.GetHostFreeSpace(t.Name);
+        return DiskSpace.Effective(_diskFree, host?.Free, host?.Drive);
+    }
+
     IEnumerable<ToolStripItem> DiagnosticsMenu()
     {
         var t = _snap?.Target;
@@ -26,8 +34,8 @@ public sealed partial class TrayApp
         yield return Info($"Chave da API: {_collector.ApiKeySource ?? "—"}");
         var memory = WslService.GetVmMemory();
         var vhd = t != null ? WslService.GetVhdSize(t.Name) : null;
-        yield return Info($"Memória do WSL: {(memory is { } m ? Fmt.Bytes(m) : "—")} · Disco: {(vhd is { } v ? Fmt.Bytes(v) : "—")}"
-                          + (_diskFree is { } f ? $" ({Fmt.Bytes(f)} livres)" : ""));
+        yield return Info($"Memória do WSL: {(memory is { } m ? Fmt.Bytes(m) : "—")} · Disco da distro: {(vhd is { } v ? Fmt.Bytes(v) : "—")}");
+        if (DiskOf(t) is { Free: not null } disk) yield return Info($"Espaço: {disk.Describe()}");
         var error = _snap?.StError ?? _snap?.WslError ?? _collector.LastApiError;
         yield return Info("Último erro: " + (error == null ? "nenhum" : error.Length > 80 ? error[..80] + "…" : error));
         yield return Sep();
@@ -63,7 +71,7 @@ public sealed partial class TrayApp
             ExternalSessions = sessions,
             VmMemory = WslService.GetVmMemory(),
             VhdSize = t != null ? WslService.GetVhdSize(t.Name) : null,
-            DiskFree = _diskFree,
+            Disk = DiskOf(t),
             GuiUrl = _collector.GuiUrl(_settings),
             ApiKeySource = _collector.ApiKeySource,
             ConfigFiles = _collector.ConfigFiles,
