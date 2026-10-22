@@ -199,3 +199,13 @@ distro, que rodam com o `sh` do Linux: `dotnet test tests`. O GitHub Actions rod
 a cada push; sem testes passando não há build nem release. Para publicar uma versão, altere `<Version>` em
 `src/WslSyncMonitor.csproj` e faça push na `main`: o workflow cria a tag `v<versão>` e a release com o
 `WslSyncMonitor.exe` anexado.
+
+**Ferramentas de qualidade:**
+- **Analisadores do .NET** no nível recomendado (`Directory.Build.props`; regras que não se aplicam estão
+  desligadas e explicadas no `.editorconfig`). A compilação do pre-commit trata alertas como erro.
+- **Capturas de tela e cobertura:** a cada push, o job do Windows desenha o painel, o widget e o ícone em vários
+  estados (temas claro e escuro) e mede a cobertura dos testes; tudo vai para o branch
+  [`ci-evidencias`](../../tree/ci-evidencias), numa pasta com o nome do branch (`index.md` com as imagens e
+  `cobertura.md`). Dá para conferir o visual sem um Windows.
+- **Testes de regras também no Windows:** os testes de `tests/` rodam nas duas plataformas (os que executam o
+  `sh` do Linux, marcados com `[ShFact]`, só no Linux).
