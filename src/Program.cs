@@ -12,7 +12,7 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
-        ErrorLog.Install();
+        Log.Install();
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -37,7 +37,7 @@ static class Program
         {
             Updater.CleanupOld();
             // a cópia instalada pode ter sido atualizada pelo próprio app: mantém "Aplicativos instalados" em dia
-            if (isInstalledCopy) try { installer.RefreshRegistration(Updater.Current); } catch (Exception ex) { ErrorLog.Write("atualizar registro", ex); }
+            if (isInstalledCopy) try { installer.RefreshRegistration(Updater.Current); } catch (Exception ex) { Log.Warn("instalação", "atualizar o registro em Aplicativos instalados", ex); }
             Application.Run(new TrayApp());
         }
         finally { mutex.ReleaseMutex(); }

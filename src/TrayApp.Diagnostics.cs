@@ -41,6 +41,11 @@ public sealed partial class TrayApp
         yield return Sep();
         yield return Item("Ficha técnica completa…", ShowTechInfo);
         yield return Item("Copiar ficha técnica", async () => CopyToClipboard(await BuildTechInfoAsync()));
+        yield return Item("Abrir a pasta de logs", () => Try(() =>
+        {
+            Directory.CreateDirectory(Log.Dir);
+            WslService.OpenInExplorer(Log.Dir);
+        }));
     }
 
     TextWindow? _techInfo;
@@ -81,7 +86,7 @@ public sealed partial class TrayApp
             LastScriptError = _collector.LastScriptError,
             LastApiError = _collector.LastApiError,
             SettingsPath = Settings.FilePath,
-            ErrorLogTail = ErrorLog.Tail(),
+            LogTail = Log.Tail(),
             Updated = _snap?.Time,
         }.ToText();
     }

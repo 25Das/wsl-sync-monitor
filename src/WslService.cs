@@ -49,7 +49,44 @@ public static class WslService
 
     public static bool IsInstalled => File.Exists(WslExe) || WslExe == "wsl.exe";
 
+    // ---- Windows encerrando a sessão ----
+
+    static volatile bool _sessionEnding;
+    static readonly AsyncLocal<bool> _inShutdownSequence = new();
+
+    /// <summary>
+    /// O Windows está encerrando a sessão (desligar, reiniciar, sair). A partir daí, um wsl.exe novo falha ao iniciar
+    /// ("0xc0000142") e o Windows ainda mostra uma janela de erro. Por isso só a sequência de desligamento
+    /// (<see cref="EnterShutdownSequence"/>) executa o wsl.exe; o resto (atualizações, proteção) para.
+    /// </summary>
+    public static bool SessionEnding
+    {
+        get => _sessionEnding;
+        set => _sessionEnding = value;
+    }
+
+    /// <summary>Marca o fluxo atual (e o que ele aguarda) como a sequência de desligamento, que pode executar o wsl.exe.</summary>
+    public static void EnterShutdownSequence() => _inShutdownSequence.Value = true;
+
+    static bool Blocked => _sessionEnding && !_inShutdownSequence.Value;
+
+    public sealed class SessionEndingException() : InvalidOperationException("O Windows está encerrando a sessão.");
+
     public static async Task<Result> RunAsync(IEnumerable<string> args, int timeoutMs = 10000)
+    {
+        var argList = args.ToList();
+        if (Blocked) throw new SessionEndingException();
+        var described = WslExitCodes.DescribeArgs(argList);
+        var result = await RunCoreAsync(argList, timeoutMs, described);
+        // códigos diferentes de zero às vezes são normais (ex.: nenhuma distro ligada): registra quando muda
+        if (WslExitCodes.Describe(result.ExitCode) is { } code)
+            Log.Failure("wsl", "wsl " + described, $"wsl.exe {described} → {code}" +
+                (result.Error.Length > 0 ? ": " + result.Error.Split('\n')[0].Trim() : ""));
+        else Log.Recovered("wsl", "wsl " + described, $"wsl.exe {described} voltou a funcionar");
+        return result;
+    }
+
+    static async Task<Result> RunCoreAsync(List<string> args, int timeoutMs, string described)
     {
         var psi = new ProcessStartInfo(WslExe)
         {
@@ -62,7 +99,12 @@ public static class WslService
         psi.Environment["WSL_UTF8"] = "1";
 
         using var p = new Process { StartInfo = psi };
-        p.Start();
+        try { p.Start(); }
+        catch (Exception ex)
+        {
+            Log.Warn("wsl", $"wsl.exe {described} não iniciou", ex);
+            throw;
+        }
         int pid = p.Id;
         lock (OwnPids) OwnPids.Add(pid);
         using var ms = new MemoryStream();
@@ -77,7 +119,8 @@ public static class WslService
         }
         catch (OperationCanceledException)
         {
-            try { p.Kill(true); } catch { }
+            try { p.Kill(true); } catch { /* já saiu */ }
+            Log.Warn("wsl", $"wsl.exe {described} não respondeu em {timeoutMs / 1000} s");
             throw new TimeoutException("wsl.exe não respondeu a tempo");
         }
         finally { lock (OwnPids) OwnPids.Remove(pid); }
@@ -172,6 +215,7 @@ public static class WslService
     /// <summary>Inicia a distro e mantém um processo oculto vivo para que ela não desligue por inatividade.</summary>
     public static void StartDistro(string distro)
     {
+        if (Blocked) return; // Windows encerrando a sessão: não liga nada (e o wsl.exe falharia)
         if (_keepAlive.TryGetValue(distro, out var p))
         {
             if (!p.HasExited) return;
@@ -181,6 +225,7 @@ public static class WslService
         // vive enquanto o WSL estiver ligado, o executável ficaria travado mesmo após fechar o app.
         // Por isso é criado via CreateProcess sem herança de handles.
         _keepAlive[distro] = Native.DetachedProcess.Start($"\"{WslExe}\" -d {distro} --exec sleep infinity");
+        Log.Info("proteção", $"{distro} mantida ligada pelo app");
     }
 
     /// <summary>
@@ -212,9 +257,10 @@ public static class WslService
         foreach (var name in _keepAlive.Keys.ToList())
         {
             if (distro != null && !name.Equals(distro, StringComparison.OrdinalIgnoreCase)) continue;
-            try { _keepAlive[name].Kill(); } catch { }
+            try { _keepAlive[name].Kill(); } catch { /* já tinha saído */ }
             _keepAlive[name].Dispose();
             _keepAlive.Remove(name);
+            Log.Info("proteção", $"{name} liberada (o WSL pode desligar por ociosidade)");
         }
     }
 

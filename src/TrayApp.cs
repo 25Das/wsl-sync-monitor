@@ -101,7 +101,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     async Task RefreshAsync()
     {
-        if (_refreshing) return;
+        if (_refreshing || WslService.SessionEnding) return; // sessão terminando: nada de wsl.exe novos
         _refreshing = true;
         try
         {
@@ -115,8 +115,10 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             UpdateTrayIcon();
             _ = RefreshDiskFreeAsync();
         }
+        catch (WslService.SessionEndingException) { /* o Windows começou a encerrar a sessão no meio da atualização */ }
         catch (Exception ex)
         {
+            Log.Failure("atualização", "refresh", "falha ao atualizar o estado: " + ex.Message);
             _tray.Text = Trim("Erro: " + ex.Message, 127);
         }
         finally { _refreshing = false; }
@@ -287,7 +289,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             _exitWait = ThreadPool.RegisterWaitForSingleObject(_exitEvent, (_, _) => ui.Post(_ => { if (!_exiting) RequestExit(); }, null), // já saindo: não vira "sair agora"
                 null, Timeout.Infinite, executeOnlyOnce: false);
         }
-        catch (Exception ex) { ErrorLog.Write("escutar pedidos de saída", ex); }
+        catch (Exception ex) { Log.Warn("app", "escutar pedidos de saída", ex); }
     }
 
     /// <summary>Preferências → Instalar…: instala esta cópia (ou abre a instalada, se for mais nova) e passa para ela.</summary>
@@ -347,6 +349,8 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             var u = await _updater.CheckAsync();
             SetUpdateState(u != null ? UpdateState.Found(u.Version, DateTime.Now) : UpdateState.UpToDate(DateTime.Now));
+            Log.Recovered("atualização do app", "update", "verificação de atualizações voltou a funcionar");
+            if (u != null && u.Version != _notifiedVersion) Log.Info("atualização do app", $"versão {u.Version.ToString(3)} disponível");
             if (UpdateNotice.ShouldNotify(u?.Version, _notifiedVersion, UiOpen))
                 _tray.ShowBalloonTip(10000, AppName,
                     $"Versão {u!.Version.ToString(3)} disponível. Clique aqui, no painel ou no menu para atualizar.", ToolTipIcon.Info);
@@ -354,6 +358,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         }
         catch (Exception ex)
         {
+            Log.Failure("atualização do app", "update", "verificar atualizações: " + ex.Message);
             // falhou mas já se sabia de uma versão nova: continua oferecendo
             SetUpdateState(previous.Status == UpdateStatus.Available ? previous : UpdateState.Failed(ex.Message));
             if (retryOnFail)
@@ -372,6 +377,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         SetBusy($"Baixando a versão {u.Version.ToString(3)}…");
         try
         {
+            Log.Info("atualização do app", $"instalando a versão {u.Version.ToString(3)}");
             await _updater.InstallAsync(u);
             // a nova versão assume a distro (AdoptKeepAlives): não solta nada ao sair
             _handingOver = true;
@@ -381,6 +387,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             _busy = false;
             SetBusy(null);
+            Log.Error("atualização do app", $"instalar a versão {u.Version.ToString(3)}", ex);
             if (MessageBox.Show($"Não foi possível atualizar: {ex.Message}\n\nAbrir a página da versão para baixar manualmente?",
                     AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 try { Process.Start(new ProcessStartInfo(u.PageUrl) { UseShellExecute = true }); } catch { }
@@ -389,6 +396,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     protected override void ExitThreadCore()
     {
+        Log.Info("app", _handingOver ? "fechado para a nova versão assumir" : "fechado");
         if (!_handingOver) WslService.Release();
         _exitWait?.Unregister(null);
         _exitEvent?.Dispose();

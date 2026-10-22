@@ -59,7 +59,11 @@ public sealed class StatusCollector : IDisposable
         if (!WslService.IsInstalled) { snap.WslInstalled = false; snap.WslError = "wsl.exe não encontrado"; return snap; }
 
         try { snap.Distros = await WslService.GetDistrosAsync(); }
-        catch (Exception ex) { snap.WslError = ex.Message; }
+        catch (Exception ex)
+        {
+            snap.WslError = ex.Message;
+            if (ex is WslService.SessionEndingException) throw; // nada a mostrar: o app está para fechar
+        }
 
         if (snap.Distros.Count == 0 && snap.WslError == null) snap.WslError = "Nenhuma distro instalada";
 
@@ -110,7 +114,8 @@ public sealed class StatusCollector : IDisposable
         {
             LastApiError = ex.Message;
             bool running = false;
-            try { running = await WslService.IsProcessRunningAsync(distro, "syncthing"); } catch { }
+            try { running = await WslService.IsProcessRunningAsync(distro, "syncthing"); }
+            catch (Exception pex) { Log.Failure("syncthing", "pgrep", "não foi possível saber se o Syncthing roda: " + pex.Message); }
 
             if (!running)
             {
@@ -133,6 +138,8 @@ public sealed class StatusCollector : IDisposable
             snap.StError = ex.Message + SeeTechInfo;
             LastApiError = ex.ToString();
         }
+        if (snap.St == StState.Running) Log.Recovered("syncthing", "api", "a API do Syncthing voltou a responder");
+        else Log.Failure("syncthing", "api", $"{snap.StStatusText}: {snap.StError ?? LastApiError}");
         return snap;
     }
 
@@ -209,7 +216,12 @@ public sealed class StatusCollector : IDisposable
     const string SeeTechInfo = " Detalhes: menu → Informações técnicas.";
 
     /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>
-    string ApiKey(Settings s) => !string.IsNullOrWhiteSpace(s.ApiKey) ? s.ApiKey : _cachedKey ?? "";
+    string ApiKey(Settings s)
+    {
+        var key = !string.IsNullOrWhiteSpace(s.ApiKey) ? s.ApiKey : _cachedKey ?? "";
+        Log.AddSecret(key); // a chave nunca aparece no log, mesmo dentro de uma mensagem de erro
+        return key;
+    }
 
     /// <summary>Envia um comando à API (POST, PATCH…); lança exceção se o Syncthing recusar.</summary>
     async Task SendAsync(Settings s, HttpMethod method, string path, string? json = null)
@@ -228,6 +240,22 @@ public sealed class StatusCollector : IDisposable
 
     /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>
     public Task ShutdownSyncthingAsync(Settings s) => SendAsync(s, HttpMethod.Post, "/rest/system/shutdown");
+
+    /// <summary>
+    /// Espera a API parar de responder (o Syncthing terminou de fechar) sem executar nada na distro: no
+    /// desligamento do Windows, cada wsl.exe novo pode falhar. true = parou dentro do prazo.
+    /// </summary>
+    public async Task<bool> WaitApiDownAsync(Settings s, TimeSpan timeout)
+    {
+        var end = DateTime.Now + timeout;
+        while (DateTime.Now < end)
+        {
+            try { await GetAsync(GuiUrl(s), ApiKey(s), "/rest/system/ping"); }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException) { return true; }
+            await Task.Delay(500);
+        }
+        return false;
+    }
     public Task RestartSyncthingAsync(Settings s) => SendAsync(s, HttpMethod.Post, "/rest/system/restart");
 
     /// <summary>Pausa ou retoma todos os dispositivos (como "Pausar tudo" da interface do Syncthing).</summary>

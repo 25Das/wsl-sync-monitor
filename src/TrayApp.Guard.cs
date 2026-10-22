@@ -22,7 +22,7 @@ public sealed partial class TrayApp
         // pede para ser avisado do desligamento do Windows antes dos outros apps
         Native.SetProcessShutdownParameters(0x3FF, 0);
         // depois de uma atualização: continua segurando a distro que a versão anterior segurava
-        try { WslService.AdoptKeepAlives(); } catch { }
+        try { WslService.AdoptKeepAlives(); } catch (Exception ex) { Log.Warn("proteção", "assumir as distros da versão anterior", ex); }
         LoadKeepAlive();
         _shutdownWatcher = new ShutdownWatcher(NeedsShutdownProtection, ShutdownSequenceAsync,
             // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga
@@ -76,7 +76,7 @@ public sealed partial class TrayApp
     void GuardTick()
     {
         var d = _snap?.Target;
-        if (d == null || _exiting) return;
+        if (d == null || _exiting || WslService.SessionEnding) return;
         if (d.Running) _lastRunningAt = DateTime.Now;
 
         // "Manter ligada" por tempo: quando expira, deixa de valer
@@ -133,11 +133,13 @@ public sealed partial class TrayApp
     async Task VerifyThenReleaseAsync(string distro, CancellationToken ct)
     {
         SetGuardText($"{distro}: verificando a sincronização antes de liberar o desligamento…");
+        Log.Info("proteção", $"{distro}: sem sessões; verificando a sincronização antes de liberar");
         bool ok = await WaitSyncedAsync(distro, TimeSpan.FromMinutes(_settings.MaxHoldMinutes), StartupGrace,
             t => SetGuardText($"{distro}: {Lower(t)}"), ct);
         if (ct.IsCancellationRequested || _guard != GuardState.Verifying) return;
         WslService.Release(distro);
         _guard = GuardState.Released;
+        Log.Info("proteção", ok ? $"{distro}: sincronizado" : $"{distro}: limite de {_settings.MaxHoldMinutes} min atingido sem confirmar a sincronização");
         SetGuardText(ok ? $"{distro}: sincronizado, o WSL pode desligar."
                         : $"{distro}: limite de {_settings.MaxHoldMinutes} min atingido, o WSL pode desligar.");
     }
@@ -209,7 +211,13 @@ public sealed partial class TrayApp
         if (DateTime.Now - _lastRunningAt < TimeSpan.FromMinutes(_settings.PeriodicSyncMinutes)) return;
         _lastRunningAt = DateTime.Now;
         // liga a distro; o ciclo normal espera sincronizar e depois solta
-        try { WslService.StartDistro(distro); SetGuardText("Sincronização periódica…"); } catch { }
+        try
+        {
+            Log.Info("proteção", $"{distro}: ligando para a sincronização periódica");
+            WslService.StartDistro(distro);
+            SetGuardText("Sincronização periódica…");
+        }
+        catch (Exception ex) { Log.Warn("proteção", $"{distro}: ligar para a sincronização periódica", ex); }
     }
 
     // ------------------------------------------------------------------ saída do app
@@ -217,8 +225,9 @@ public sealed partial class TrayApp
     /// <summary>Sair: se a distro está ligada só por causa do app, espera sincronizar antes de soltá-la.</summary>
     async void RequestExit()
     {
-        if (_exiting) { _exitCts?.Cancel(); return; } // segundo clique: sair agora
+        if (_exiting) { _exitCts?.Cancel(); Log.Info("app", "sair agora (sem esperar)"); return; } // segundo clique
         _exiting = true;
+        Log.Info("app", "saindo");
         _popup.HidePopup();
         var d = _snap?.Target;
         if (_settings.ProtectSync && d is { Running: true } && _guard != GuardState.Released &&
@@ -239,25 +248,49 @@ public sealed partial class TrayApp
 
     bool NeedsShutdownProtection() => _settings.ProtectSync && _snap?.Target is { Running: true };
 
-    /// <summary>Roda numa thread de fundo enquanto o Windows espera (sem tocar na interface).</summary>
+    /// <summary>
+    /// Roda numa thread de fundo enquanto o Windows espera (sem tocar na interface). Executa o mínimo de wsl.exe
+    /// possível (com a sessão terminando, cada um pode falhar): espera e para o Syncthing pela API, e só usa o
+    /// wsl.exe para o sinal de reserva e para gravar o disco e encerrar a distro. Cada passo vai para o log.
+    /// </summary>
     async Task ShutdownSequenceAsync()
     {
+        WslService.EnterShutdownSequence();
         var d = _snap?.Target?.Name;
         if (d == null) return;
+        var total = System.Diagnostics.Stopwatch.StartNew();
         _verifyCts?.Cancel();
-        await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), TimeSpan.Zero, null, CancellationToken.None);
+
+        Log.Info("desligamento", $"{d}: esperando a sincronização (até {_settings.ShutdownMaxWaitSeconds} s)");
+        bool synced = await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), TimeSpan.Zero, null, CancellationToken.None);
+        Log.Info("desligamento", synced ? $"{d}: sincronizado ({total.Elapsed.TotalSeconds:0} s)" : $"{d}: limite de espera atingido, seguindo");
+
         try
         {
-            if (await WslService.ProcessMayBeRunningAsync(d, "syncthing"))
+            await _collector.ShutdownSyncthingAsync(_settings);
+            bool down = await _collector.WaitApiDownAsync(_settings, TimeSpan.FromSeconds(30));
+            Log.Info("desligamento", down ? "Syncthing parado pela API" : "Syncthing não parou em 30 s após o pedido");
+        }
+        catch (Exception ex)
+        {
+            // sem a API (não está rodando, ou não responde): sinal de término, que também fecha o banco de dados
+            Log.Info("desligamento", $"API não atendeu ao pedido de parar ({ex.Message}); enviando SIGTERM");
+            try
             {
-                try { await _collector.ShutdownSyncthingAsync(_settings); }
-                catch { await WslService.SignalSyncthingAsync(d); }
+                await WslService.SignalSyncthingAsync(d);
                 await WslService.WaitProcessExitAsync(d, "syncthing", TimeSpan.FromSeconds(30));
             }
+            catch (Exception ex2) { Log.Warn("desligamento", "parar o Syncthing por sinal", ex2); }
         }
-        catch { }
-        try { await WslService.TerminateSafelyAsync(d); } catch { }
+
+        try
+        {
+            await WslService.TerminateSafelyAsync(d);
+            Log.Info("desligamento", $"{d}: dados gravados e distro encerrada");
+        }
+        catch (Exception ex) { Log.Warn("desligamento", $"{d}: encerrar a distro", ex); }
         WslService.Release();
+        Log.Info("desligamento", $"sequência concluída em {total.Elapsed.TotalSeconds:0} s");
     }
 }
 
@@ -272,6 +305,7 @@ sealed class ShutdownWatcher : NativeWindow
     readonly Func<Task> _sequence;
     readonly Func<int> _timeoutSeconds;
     bool _done;
+    const long ENDSESSION_CLOSEAPP = 0x1;
 
     public event Action? SessionEnded;
 
@@ -286,10 +320,23 @@ sealed class ShutdownWatcher : NativeWindow
     {
         if (m.Msg == Native.WM_QUERYENDSESSION)
         {
+            // ENDSESSION_CLOSEAPP: um instalador pede para fechar o app; a sessão continua
+            bool sessionEnding = ((long)m.LParam & ENDSESSION_CLOSEAPP) == 0;
+            if (sessionEnding && !WslService.SessionEnding)
+            {
+                // a partir daqui, wsl.exe novos falhariam (0xc0000142): as atualizações e a proteção param
+                WslService.SessionEnding = true;
+                Log.Info("desligamento", "o Windows está encerrando a sessão");
+            }
             if (!_done && _needed())
             {
                 Native.ShutdownBlockReasonCreate(Handle, "Aguardando o Syncthing terminar a sincronização e encerrando o WSL…");
-                try { Task.Run(_sequence).Wait(TimeSpan.FromSeconds(_timeoutSeconds())); } catch { }
+                try
+                {
+                    if (!Task.Run(_sequence).Wait(TimeSpan.FromSeconds(_timeoutSeconds())))
+                        Log.Warn("desligamento", $"sequência não terminou em {_timeoutSeconds()} s; liberando o desligamento");
+                }
+                catch (Exception ex) { Log.Error("desligamento", "sequência de desligamento", ex); }
                 Native.ShutdownBlockReasonDestroy(Handle);
                 _done = true;
             }
@@ -298,8 +345,18 @@ sealed class ShutdownWatcher : NativeWindow
         }
         if (m.Msg == Native.WM_ENDSESSION)
         {
-            if (m.WParam != IntPtr.Zero) SessionEnded?.Invoke();
-            else _done = false; // desligamento cancelado
+            if (m.WParam != IntPtr.Zero)
+            {
+                Log.Info("desligamento", "sessão encerrada; saindo");
+                SessionEnded?.Invoke();
+            }
+            else if (WslService.SessionEnding || _done)
+            {
+                // desligamento cancelado (pelo usuário ou por outro app): volta ao normal
+                _done = false;
+                WslService.SessionEnding = false;
+                Log.Info("desligamento", "cancelado; o monitoramento continua");
+            }
             m.Result = IntPtr.Zero;
             return;
         }

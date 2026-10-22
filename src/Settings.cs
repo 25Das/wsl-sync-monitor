@@ -119,6 +119,7 @@ public sealed class Settings
         catch (Exception ex)
         {
             error = ex.Message;
+            Log.Warn("configurações", "settings.json inválido: " + ex.Message);
             return null;
         }
     }
@@ -128,7 +129,7 @@ public sealed class Settings
     {
         var s = TryLoad(out error);
         if (s != null) return s;
-        try { File.Copy(FilePath, FilePath + ".invalido", overwrite: true); } catch { }
+        try { File.Copy(FilePath, FilePath + ".invalido", overwrite: true); } catch { /* sem o arquivo, nada a guardar */ }
         return new Settings { SettingsVersion = CurrentVersion };
     }
 
@@ -139,7 +140,7 @@ public sealed class Settings
             Directory.CreateDirectory(Dir);
             File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts));
         }
-        catch { }
+        catch (Exception ex) { Log.Warn("configurações", "salvar settings.json", ex); }
     }
 
     // ---- Iniciar com o Windows ----

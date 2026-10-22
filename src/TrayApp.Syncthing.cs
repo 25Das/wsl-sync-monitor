@@ -13,7 +13,7 @@ public sealed partial class TrayApp
     async Task SyncthingCommandAsync(Func<Task> command)
     {
         try { await command(); }
-        catch (Exception ex) { ShowError("O Syncthing recusou o comando: " + ex.Message); }
+        catch (Exception ex) { ShowError("O Syncthing recusou o comando: " + ex.Message, ex); }
         await RefreshAsync();
     }
 
@@ -32,7 +32,7 @@ public sealed partial class TrayApp
     {
         var url = _collector.GuiUrl(_settings);
         try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
-        catch (Exception ex) { ShowError($"Não foi possível abrir {url}\n{ex.Message}"); }
+        catch (Exception ex) { ShowError($"Não foi possível abrir {url}\n{ex.Message}", ex); }
         _popup.HidePopup();
     }
 
@@ -78,7 +78,7 @@ public sealed partial class TrayApp
             if (Directory.Exists(unc)) WslService.OpenInExplorer(unc);
             else MessageBox.Show($"{f.Label} ainda não tem versões antigas guardadas (o controle de versões está desligado ou nada foi substituído).", AppName);
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(ex.Message, ex); }
     }
 
     /// <summary>Terminal na pasta (o wsl.exe --cd só entende "~" sozinho, então o caminho vira absoluto).</summary>
@@ -86,7 +86,7 @@ public sealed partial class TrayApp
     {
         if (SyncthingDistro is not { } d) return;
         try { OpenTerminal(d, WslPaths.ToAbsolute(f.Path, await WslService.GetHomeAsync(d))); }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(ex.Message, ex); }
     }
 
     Task ScanFolderAsync(FolderInfo f) => SyncthingCommandAsync(() => _collector.ScanFolderAsync(_settings, f.Id));

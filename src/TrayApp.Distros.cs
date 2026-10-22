@@ -15,7 +15,12 @@ public sealed partial class TrayApp
     static bool Confirm(string text) =>
         MessageBox.Show(text, AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
 
-    static void ShowError(string text) => MessageBox.Show(text, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    /// <summary>Mostra a falha de uma ação do usuário e a registra no log (com a exceção, quando houver).</summary>
+    static void ShowError(string text, Exception? ex = null)
+    {
+        Log.Error("ação", text, ex);
+        MessageBox.Show(text, AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
 
     /// <summary>Executa uma operação demorada com indicação de andamento (uma por vez); erros viram aviso.</summary>
     async Task RunBusyAsync(Func<Task> op)
@@ -23,7 +28,7 @@ public sealed partial class TrayApp
         if (_busy) return;
         _busy = true;
         try { await op(); }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(ex.Message, ex); }
         finally
         {
             _busy = false;
@@ -35,7 +40,7 @@ public sealed partial class TrayApp
     /// <summary>Executa uma ação rápida; erros viram aviso.</summary>
     static void Try(Action action)
     {
-        try { action(); } catch (Exception ex) { ShowError(ex.Message); }
+        try { action(); } catch (Exception ex) { ShowError(ex.Message, ex); }
     }
 
     // ------------------------------------------------------------------ iniciar / encerrar / reiniciar
@@ -190,7 +195,7 @@ public sealed partial class TrayApp
             var home = await WslService.GetHomeAsync(d);
             WslService.OpenInExplorer(WslPaths.ToUnc(d, linuxPath, home));
         }
-        catch (Exception ex) { ShowError(ex.Message); }
+        catch (Exception ex) { ShowError(ex.Message, ex); }
     }
 
     static void EditWslConfig() => Try(() =>

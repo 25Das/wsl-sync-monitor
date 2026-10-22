@@ -166,6 +166,12 @@ Para qualquer problema, use **Diagnóstico ▸ Ficha técnica completa…** (ou 
 estado da proteção, URL usada, de onde veio a chave da API (a chave em si nunca é mostrada), quais `config.xml`
 foram encontrados e o erro do último script executado na distro. O botão *Copiar* copia tudo para enviar.
 
+**Log:** *Diagnóstico ▸ Abrir a pasta de logs* abre `%APPDATA%\WslSyncMonitor\logs`, com um arquivo por dia
+(`app-AAAAMMDD.log`, mantidos por 14 dias). Ficam registrados o início e a saída do app, o que a proteção faz
+(segurar, verificar, liberar a distro), cada passo do desligamento do Windows, falhas do `wsl.exe` (com o código
+explicado), da API do Syncthing e da busca de atualizações, e erros das ações. Falhas que se repetem a cada
+atualização entram uma vez, e de novo quando voltam ao normal. A chave da API nunca é gravada. O final do log
+aparece na ficha técnica.
 
 - **"Sem resposta da API"**: confirme que `localhostForwarding` não está desativado no `.wslconfig`
   ou use `networkingMode=mirrored`; ou defina `SyncthingUrl`.
@@ -174,6 +180,11 @@ foram encontrados e o erro do último script executado na distro. O botão *Copi
 - **Widget sobre os ícones da barra** (Windows 11 com ícones à esquerda, etc.): arraste o widget para outro ponto
   ou desative em *Widget na barra de tarefas* e use só o ícone da bandeja.
 - Apenas a barra de tarefas do monitor principal é acompanhada.
+- **"wsl.exe – Erro de aplicativo (0xc0000142)" ao desligar o Windows** (até a 1.10.5): com o Windows encerrando
+  a sessão, um `wsl.exe` novo não consegue iniciar. O app continuava atualizando o estado e tentando segurar a
+  distro depois de liberar o desligamento. Desde a 1.11.0, ao receber o aviso de desligamento ele para tudo e só
+  a sequência de desligamento executa o `wsl.exe` (o mínimo possível: o Syncthing é parado pela API). O log mostra
+  cada passo.
 - **O painel mostra "em uso" sem nenhum programa aberto** (ou o contrário): a detecção usa os processos
   `wsl.exe` do Windows; algum programa pode estar mantendo uma sessão aberta na distro.
 
