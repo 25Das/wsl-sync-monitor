@@ -24,7 +24,7 @@ public sealed record Diagnostics
     public string? SettingsPath { get; init; }
     public long? VmMemory { get; init; }
     public long? VhdSize { get; init; }
-    public long? DiskFree { get; init; }
+    public DiskSpace? Disk { get; init; }
     public string? ErrorLogTail { get; init; }
     public DateTime? Updated { get; init; }
 
@@ -56,7 +56,7 @@ public sealed record Diagnostics
         Line("Sessões de outros programas", ExternalSessions);
         Line("Memória do WSL", VmMemory is { } m ? Fmt.Bytes(m) : null);
         Line("Arquivo de disco da distro", VhdSize is { } v ? Fmt.Bytes(v) : null);
-        Line("Espaço livre na distro", DiskFree is { } f ? Fmt.Bytes(f) : null);
+        Line("Espaço livre", Disk?.Free != null ? Disk.Describe() : null);
         sb.AppendLine();
         sb.AppendLine("[Syncthing]");
         Line("URL da interface", GuiUrl);

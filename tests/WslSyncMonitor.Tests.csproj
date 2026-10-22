@@ -29,6 +29,8 @@
     <Compile Include="../src/PanelFooter.cs" Link="src/PanelFooter.cs" />
     <Compile Include="../src/WslPaths.cs" Link="src/WslPaths.cs" />
     <Compile Include="../src/SyncthingParsers.cs" Link="src/SyncthingParsers.cs" />
+    <Compile Include="../src/DiskSpace.cs" Link="src/DiskSpace.cs" />
+    <Compile Include="../src/InstallPaths.cs" Link="src/InstallPaths.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />

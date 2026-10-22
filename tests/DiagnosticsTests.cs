@@ -35,11 +35,13 @@ public class DiagnosticsTests
     [Fact]
     public void Relatorio_mostra_memoria_e_disco_em_unidades_legiveis()
     {
-        var text = (Sample() with { VmMemory = 2_254_857_830, VhdSize = 9_985_798_144, DiskFree = 1_016_858_365_952 }).ToText();
+        var disk = DiskSpace.Effective(distroFree: 1_016_858_365_952, hostFree: 38_654_705_664, hostDrive: "C:");
+        var text = (Sample() with { VmMemory = 2_254_857_830, VhdSize = 9_985_798_144, Disk = disk }).ToText();
 
         Assert.Contains("Memória do WSL: 2,1 GiB", text);
         Assert.Contains("Arquivo de disco da distro: 9,3 GiB", text);
-        Assert.Contains("Espaço livre na distro: 947 GiB", text);
+        Assert.Contains("Espaço livre: 36 GiB livres (limitado pela unidade C:)", text);
+        Assert.DoesNotContain("947 GiB", text); // o disco virtual da distro não é o espaço que sobra de verdade
     }
 
     [Fact]
