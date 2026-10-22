@@ -90,6 +90,24 @@ public sealed class TaskbarWidget : Form
     float S => (_tb?.Dpi ?? 96) / 96f;
     int P(float v) => (int)Math.Round(v * S);
 
+    // ícones da barra (Iniciar, apps, clima…), lidos pela UIA num thread de fundo a cada poucos segundos
+    volatile List<(int Start, int End)>? _taskbarIcons;
+    DateTime _iconsReadAt;
+    bool _readingIcons;
+
+    void RefreshTaskbarIcons(TaskbarInfo tb)
+    {
+        if (_readingIcons || DateTime.Now - _iconsReadAt < TimeSpan.FromSeconds(5)) return;
+        _readingIcons = true;
+        _iconsReadAt = DateTime.Now;
+        var (hwnd, notify) = (tb.Hwnd, tb.NotifyRect);
+        Task.Run(() => TaskbarIcons.Read(hwnd, notify)).ContinueWith(t =>
+        {
+            _taskbarIcons = t.Result;
+            _readingIcons = false;
+        }, TaskScheduler.Default);
+    }
+
     static readonly DateTime AppStart = System.Diagnostics.Process.GetCurrentProcess().StartTime;
     bool _everShown;
 
@@ -126,8 +144,10 @@ public sealed class TaskbarWidget : Form
         if (tb.Horizontal)
         {
             int trayLeft = tb.NotifyRect is { } n && n.Left > tb.Rect.Left ? n.Left : tb.Rect.Right - P(220);
-            int x = trayLeft - size.Width - P(6) - _settings.WidgetOffset;
-            x = Math.Clamp(x, tb.Rect.Left, tb.Rect.Right - size.Width);
+            RefreshTaskbarIcons(tb);
+            // sem espaço junto da bandeja, vai para o outro lado; enquanto o usuário arrasta, segue o mouse
+            int x = WidgetPlacement.ChooseX(tb.Rect.Left, trayLeft, _dragging ? [] : _taskbarIcons ?? [],
+                size.Width, P(6), _settings.WidgetOffset);
             loc = new Point(x, tb.Rect.Top + (tb.Rect.Height - size.Height) / 2);
         }
         else

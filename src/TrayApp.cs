@@ -91,7 +91,12 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         ApplySettings();
         _updateTimer.Tick += async (_, _) => await CheckUpdateAsync();
         _updateTimer.Start();
-        _tray.BalloonTipClicked += (_, _) => { if (_updater.Available != null) InstallUpdate(); };
+        _tray.BalloonTipClicked += (_, _) =>
+        {
+            // cada notificação leva para onde se resolve o que ela avisa
+            if (_balloon == BalloonKind.Update && _updater.Available != null) InstallUpdate();
+            else if (_balloon == BalloonKind.Health) ShowPopup(_widget.Visible ? _widget.PopupAnchor : Cursor.Position, pin: true);
+        };
         _ = RefreshAsync();
         _ = CheckUpdateAsync(retryOnFail: true); // procura atualização logo ao iniciar (e depois a cada 24 h)
         ListenForExitRequests();
@@ -112,6 +117,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
                 Log.Info("atualização", $"primeira leitura do estado em {(DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).TotalSeconds:0.0} s " +
                     $"(WSL: {(snap.WslError ?? (snap.WslRunning ? "ligado" : "desligado"))}, Syncthing: {snap.StStatusText})");
             _snap = snap;
+            StartupHealthCheck(snap);
             _popup.SetSnapshot(snap);
             _widget.SetSnapshot(snap);
             GuardTick();
@@ -167,8 +173,48 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     bool _settingsErrorShown;
 
+    enum BalloonKind { Other, Update, Health }
+    BalloonKind _balloon;
+
+    void ShowBalloon(BalloonKind kind, int ms, string title, string text, ToolTipIcon icon)
+    {
+        _balloon = kind;
+        _tray.ShowBalloonTip(ms, title, text, icon);
+    }
+
+    // ------------------------------------------------------------------ verificação de pastas e dispositivos
+
+    bool _healthChecked;
+
+    /// <summary>
+    /// Ao iniciar (como a busca de atualização): na primeira vez que o Syncthing estiver pronto nesta sessão,
+    /// procura problemas em pastas e dispositivos e avisa só se houver algo e com o painel e os menus fechados.
+    /// Com a distro desligada ao iniciar, acontece quando o Syncthing responder pela primeira vez.
+    /// </summary>
+    void StartupHealthCheck(Snapshot snap)
+    {
+        if (_healthChecked || !HealthCheck.Ready(snap, _settings.StartupGraceSeconds)) return;
+        _healthChecked = true;
+        var issues = HealthCheck.Find(snap, DateTime.Now, _settings.DeviceStaleDays);
+        Log.Info("verificação", issues.Count == 0 ? "pastas e dispositivos: tudo certo"
+            : $"pastas e dispositivos: {string.Join("; ", issues.Select(i => i.Text))}");
+        if (issues.Count > 0 && !UiOpen)
+            ShowBalloon(BalloonKind.Health, 10000, "Pastas e dispositivos", HealthCheck.Summary(issues),
+                issues.Any(i => i.Level == Level.Error) ? ToolTipIcon.Error : ToolTipIcon.Warning);
+    }
+
+    /// <summary>Syncthing → Verificar pastas e dispositivos: o resultado numa janela.</summary>
+    void ShowHealthCheck()
+    {
+        if (_snap == null) return;
+        var issues = HealthCheck.Find(_snap, DateTime.Now, _settings.DeviceStaleDays);
+        ShowText("Pastas e dispositivos", () => Task.FromResult(issues.Count == 0
+            ? "Nenhum problema encontrado nas pastas e nos dispositivos mostrados no painel."
+            : string.Join(Environment.NewLine, issues.Select(i => (i.Level == Level.Error ? "✕ " : "! ") + i.Text))));
+    }
+
     void WarnInvalidSettings(string? error, bool startup) =>
-        _tray.ShowBalloonTip(8000, AppName,
+        ShowBalloon(BalloonKind.Other, 8000, AppName,
             (startup ? "settings.json inválido; usando os padrões (cópia em settings.json.invalido). "
                      : "settings.json inválido; as configurações atuais foram mantidas. ") + error, ToolTipIcon.Warning);
 
@@ -355,7 +401,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             Log.Recovered("atualização do app", "update", "verificação de atualizações voltou a funcionar");
             if (u != null && u.Version != _notifiedVersion) Log.Info("atualização do app", $"versão {u.Version.ToString(3)} disponível");
             if (UpdateNotice.ShouldNotify(u?.Version, _notifiedVersion, UiOpen))
-                _tray.ShowBalloonTip(10000, AppName,
+                ShowBalloon(BalloonKind.Update, 10000, AppName,
                     $"Versão {u!.Version.ToString(3)} disponível. Clique aqui, no painel ou no menu para atualizar.", ToolTipIcon.Info);
             if (u != null) _notifiedVersion = u.Version; // vista no painel ou no menu também conta: não repete
         }

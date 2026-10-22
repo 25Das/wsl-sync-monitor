@@ -52,6 +52,9 @@ public sealed class Settings
     /// <summary>Após ligar, tempo para o Syncthing conectar e trocar índices antes de considerar "sincronizado".</summary>
     public int StartupGraceSeconds { get; set; } = 90;
 
+    /// <summary>Verificação de pastas e dispositivos: avisa de um dispositivo que não conecta há este número de dias.</summary>
+    public int DeviceStaleDays { get; set; } = 7;
+
     /// <summary>Por quanto tempo o estado "sincronizado" precisa se manter antes de soltar o WSL.</summary>
     public int StableSeconds { get; set; } = 10;
 

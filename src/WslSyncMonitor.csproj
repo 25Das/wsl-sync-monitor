@@ -4,13 +4,15 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- só para a automação de interface (System.Windows.Automation): achar os ícones da barra no Windows 11 -->
+    <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>WslSyncMonitor</AssemblyName>
     <RootNamespace>WslSyncMonitor</RootNamespace>
-    <Version>1.11.3</Version>
+    <Version>1.12.0</Version>
     <Product>WSL Sync Monitor</Product>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>

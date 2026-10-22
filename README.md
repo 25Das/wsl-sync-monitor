@@ -51,7 +51,14 @@ Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 atualizadas*, *Disposi
 *Nova versão* (quando houver) e, por último, até quando a distro fica ligada.
 
 **Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas atualizadas / dispositivos
-conectados). Acompanha a barra que se oculta; arraste para mudar de lugar.
+conectados). Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
+junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado.
+
+**Verificação de pastas e dispositivos:** ao iniciar, assim que o Syncthing responde e teve tempo de conectar,
+o app procura pastas com erro, fora de sincronia ou pausadas e dispositivos pausados, que nunca conectaram ou
+que não conectam há mais de 7 dias (`DeviceStaleDays`), e avisa numa notificação só se encontrar algo (com o
+painel e o menu fechados; clicar nela abre o painel). Considera só o que aparece no painel. Também em
+*Syncthing ▸ Verificar pastas e dispositivos…*.
 
 **Painel** (clique no ícone ou no widget):
 - **Cabeçalho, linha 1:** versão do app, ⓘ ficha técnica e 📌 fixar (o painel fica aberto até ser liberado).
@@ -75,7 +82,7 @@ WSL ▸           cada distro ▸  Abrir terminal · Abrir no Explorer · Reinic
                                Usar para o Syncthing · Definir como padrão do WSL · Exportar backup…
                 Encerrar todo o WSL… · Atualizar o WSL… · Editar .wslconfig…
 Syncthing ▸     Pausar tudo / Retomar tudo · Verificar todas as pastas agora · Reiniciar o Syncthing…
-                Copiar o ID deste dispositivo · Ver erros recentes…
+                Verificar pastas e dispositivos… · Copiar o ID deste dispositivo · Ver erros recentes…
                 Esperar a sincronização antes de desligar · Ligar o WSL a cada 60 min para sincronizar
 Pastas ▸        cada pasta ▸  Abrir no Explorer · Abrir terminal aqui · Verificar agora · Pausar/Retomar
                               Arquivos em conflito… · Versões antigas · Copiar caminho · Mostrar no painel
@@ -156,6 +163,7 @@ Botão direito → *Editar configurações…* abre `%APPDATA%\WslSyncMonitor\se
 | `StartupGraceSeconds` | `90` | Tempo para o Syncthing conectar após ligar. |
 | `StableSeconds` | `10` | Tempo que "sincronizado" precisa durar. |
 | `PeriodicSyncMinutes` | `60` | Sincronização periódica (0 = desligada). |
+| `DeviceStaleDays` | `7` | Verificação de pastas e dispositivos: avisa de dispositivo que não conecta há tantos dias. |
 | `KeepAliveDistro` | `""` | Distro mantida ligada "até eu desligar". |
 | `HiddenDevices` | `[]` | IDs dos dispositivos ocultados do painel. |
 | `HoverDelayMs` | `450` | Atraso do hover. |

@@ -309,3 +309,37 @@ public static class Theme
         ? new(Color.FromArgb(249, 249, 249), Color.White, Color.FromArgb(222, 222, 222), Color.FromArgb(28, 28, 28), Color.FromArgb(110, 110, 110), Color.FromArgb(0, 95, 184), Color.FromArgb(235, 235, 235))
         : new(Color.FromArgb(32, 32, 32), Color.FromArgb(43, 43, 43), Color.FromArgb(60, 60, 60), Color.FromArgb(240, 240, 240), Color.FromArgb(160, 160, 160), Color.FromArgb(96, 205, 255), Color.FromArgb(58, 58, 58));
 }
+
+/// <summary>
+/// Onde estão os ícones da barra de tarefas (botão Iniciar, apps fixados e abertos, clima…). No Windows 11 a barra
+/// é desenhada em XAML, sem uma janela por botão: só a automação de interface (UIA) enxerga os botões.
+/// </summary>
+static class TaskbarIcons
+{
+    /// <summary>Intervalos horizontais ocupados (fora da bandeja), ou null se não deu para ler.</summary>
+    public static List<(int Start, int End)>? Read(IntPtr taskbar, Rectangle? notify)
+    {
+        if (taskbar == IntPtr.Zero) return null;
+        try
+        {
+            var root = System.Windows.Automation.AutomationElement.FromHandle(taskbar);
+            var buttons = root.FindAll(System.Windows.Automation.TreeScope.Descendants,
+                new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.ControlTypeProperty,
+                    System.Windows.Automation.ControlType.Button));
+            var list = new List<(int Start, int End)>();
+            foreach (System.Windows.Automation.AutomationElement b in buttons)
+            {
+                var r = b.Current.BoundingRectangle;
+                if (r.IsEmpty || r.Width <= 0 || double.IsInfinity(r.Left)) continue;
+                if (notify is { } n && r.Left >= n.Left - 1) continue; // bandeja e relógio
+                list.Add(((int)r.Left, (int)Math.Ceiling(r.Right)));
+            }
+            return list;
+        }
+        catch (Exception ex)
+        {
+            Log.Failure("widget", "icones", "não foi possível ler os ícones da barra: " + ex.Message);
+            return null;
+        }
+    }
+}

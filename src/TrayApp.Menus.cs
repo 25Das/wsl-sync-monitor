@@ -141,6 +141,7 @@ public sealed partial class TrayApp
             ? Item("Retomar tudo", () => SetAllPausedAsync(false), enabled: on)
             : Item("Pausar tudo", () => SetAllPausedAsync(true), enabled: on);
         yield return Item("Verificar todas as pastas agora", ScanAllNowAsync, enabled: on);
+        yield return Item("Verificar pastas e dispositivos…", ShowHealthCheck, enabled: on);
         yield return Item("Reiniciar o Syncthing…", RestartSyncthingAsync, enabled: on);
         yield return Item("Copiar o ID deste dispositivo", CopyMyId, enabled: _snap?.MyId != null);
         yield return Item("Ver erros recentes…", ShowSyncthingErrors, enabled: on);

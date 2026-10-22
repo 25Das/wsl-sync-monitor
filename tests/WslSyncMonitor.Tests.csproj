@@ -39,6 +39,8 @@
     <Compile Include="../src/PanelHeader.cs" Link="src/PanelHeader.cs" />
     <Compile Include="../src/LogRules.cs" Link="src/LogRules.cs" />
     <Compile Include="../src/SyncthingApi.cs" Link="src/SyncthingApi.cs" />
+    <Compile Include="../src/HealthCheck.cs" Link="src/HealthCheck.cs" />
+    <Compile Include="../src/WidgetPlacement.cs" Link="src/WidgetPlacement.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
