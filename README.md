@@ -231,5 +231,10 @@ a cada push; sem testes passando não há build nem release. Para publicar uma v
   estados (temas claro e escuro) e mede a cobertura dos testes; tudo vai para o branch
   [`ci-evidencias`](../../tree/ci-evidencias), numa pasta com o nome do branch (`index.md` com as imagens e
   `cobertura.md`). Dá para conferir o visual sem um Windows.
+- **Testes de ponta a ponta** (`tests.windows/E2E`, FlaUI): no Windows do CI, o app de verdade é aberto e usado
+  com mouse e teclado (oferta de instalação, widget, menu, busca de atualização pelo menu, painel, Sair), com um
+  servidor falso de atualizações e uma pasta de dados temporária (`WSLSYNCMONITOR_UPDATE_URL`,
+  `WSLSYNCMONITOR_HOME`). Cada passo deixa uma captura da tela real (`e2e-*.png` em `ci-evidencias`). Só rodam
+  com `WSM_E2E=1`, para não atrapalhar quem roda os testes no próprio PC.
 - **Testes de regras também no Windows:** os testes de `tests/` rodam nas duas plataformas (os que executam o
   `sh` do Linux, marcados com `[ShFact]`, só no Linux).

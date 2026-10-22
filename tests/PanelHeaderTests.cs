@@ -106,3 +106,14 @@ public class PanelHeaderTests
     public void Recarregar_explica_que_tambem_procura_versao_nova() =>
         Assert.Contains("versão nova do app", PanelHeader.RefreshTip);
 }
+
+public class PanelHeaderWslErrorTests
+{
+    [Fact]
+    public void Sem_distro_o_status_diz_o_motivo_e_nao_WSL_parado()
+    {
+        var s = new Snapshot { WslError = "Nenhuma distro instalada" };
+        var h = PanelHeader.For(s, null, new Version(1, 0, 0), UpdateState.NotChecked);
+        Assert.Equal(("Nenhuma distro instalada", Level.Error), (h.Status, h.StatusLevel));
+    }
+}

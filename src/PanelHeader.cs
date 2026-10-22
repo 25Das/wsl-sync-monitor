@@ -52,6 +52,7 @@ public sealed record PanelHeader(
     {
         if (s == null) return ("Carregando…", Level.Off);
         if (!s.WslInstalled) return ("WSL não encontrado", Level.Error);
+        if (s.Target == null && s.WslError != null) return (s.WslError, Level.Error); // sem distro, distro inexistente…
         if (!s.WslRunning) return ("WSL parado", Level.Off);
         if (s.St != StState.Running) return ("Syncthing: " + Lower(s.StStatusText), Level.Error);
         return s.Overall switch
