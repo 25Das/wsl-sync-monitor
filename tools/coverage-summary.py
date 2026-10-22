@@ -6,12 +6,20 @@ Uso: python tools/coverage-summary.py relatorio1.xml [relatorio2.xml ...] > cobe
 """
 import sys, collections, xml.etree.ElementTree as ET
 
+sys.stdout.reconfigure(encoding='utf-8')  # no Windows a saída padrão não é UTF-8
+
 lines = collections.defaultdict(dict)  # arquivo -> {número da linha: coberta?}
 per_report = []
 for path in sys.argv[1:]:
     covered = total_lines = 0
-    for c in ET.parse(path).getroot().iter('class'):
-        path_ = c.get('filename').replace('\\', '/')
+    root = ET.parse(path).getroot()
+    # o nome do arquivo pode ser relativo a um <source> (o coverlet usa a pasta comum, às vezes a própria src/)
+    sources = [s.text or '' for s in root.iter('source')] or ['']
+    for c in root.iter('class'):
+        filename = c.get('filename')
+        if len(sources) == 1 and not (filename.startswith('/') or filename[1:3] == ':\\'):
+            filename = sources[0].rstrip('/\\') + '/' + filename
+        path_ = filename.replace('\\', '/')
         if '/src/' not in '/' + path_ and not path_.startswith('src/'):
             continue  # só o código do app (fora: testes, bibliotecas, arquivos gerados)
         name = path_.split('/src/')[-1].removeprefix('src/')
