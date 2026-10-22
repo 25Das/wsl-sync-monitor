@@ -1,0 +1,8 @@
+{
+  "errors": 0, "pullErrors": 0, "error": "", "invalid": "",
+  "globalBytes": 700000000, "globalFiles": 1200, "globalDirectories": 80, "globalDeleted": 3, "globalSymlinks": 0,
+  "inSyncBytes": 700000000, "inSyncFiles": 1200,
+  "localBytes": 700000000, "localFiles": 1200,
+  "needBytes": 0, "needDeletes": 0, "needDirectories": 0, "needFiles": 0, "needSymlinks": 0, "needTotalItems": 0,
+  "receiveOnlyChangedBytes": 0, "sequence": 5123, "state": "idle", "stateChanged": "2026-10-22T09:00:00-03:00", "version": 5123
+}

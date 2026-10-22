@@ -1,0 +1,33 @@
+{
+  "connections": {
+    "VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV": {
+      "address": "203.0.113.10:22000",
+      "at": "2026-10-22T09:02:05-03:00",
+      "clientVersion": "v2.0.10",
+      "connected": true,
+      "inBytesTotal": 1000000,
+      "isLocal": false,
+      "outBytesTotal": 500000,
+      "paused": false,
+      "startedAt": "2026-10-22T08:00:10-03:00",
+      "type": "tcp-client"
+    },
+    "CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS": {
+      "address": "",
+      "at": "0001-01-01T00:00:00Z",
+      "clientVersion": "",
+      "connected": false,
+      "inBytesTotal": 0,
+      "isLocal": false,
+      "outBytesTotal": 0,
+      "paused": false,
+      "startedAt": "0001-01-01T00:00:00Z",
+      "type": ""
+    }
+  },
+  "total": {
+    "at": "2026-10-22T09:02:05-03:00",
+    "inBytesTotal": 2000000,
+    "outBytesTotal": 800000
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "alloc": 25165824,
+  "connectionServiceStatus": {},
+  "cpuPercent": 0,
+  "discoveryEnabled": true,
+  "goroutines": 101,
+  "guiAddressOverridden": false,
+  "guiAddressUsed": "127.0.0.1:8384",
+  "lastDialStatus": {},
+  "myID": "AAAAAAA-BBBBBBB-CCCCCCC-DDDDDDD-EEEEEEE-FFFFFFF-GGGGGGG-HHHHHHH",
+  "pathSeparator": "/",
+  "startTime": "2026-10-22T08:00:00.123456789-03:00",
+  "sys": 52428800,
+  "tilde": "/home/daniel",
+  "uptime": 3725,
+  "urVersionMax": 3
+}

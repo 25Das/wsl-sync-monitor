@@ -1,0 +1,49 @@
+{
+  "version": 51,
+  "folders": [
+    {
+      "id": "izdab-dr9wa",
+      "label": "Claude",
+      "filesystemType": "basic",
+      "path": "~/.claude",
+      "type": "sendreceive",
+      "devices": [
+        { "deviceID": "AAAAAAA-BBBBBBB-CCCCCCC-DDDDDDD-EEEEEEE-FFFFFFF-GGGGGGG-HHHHHHH", "introducedBy": "", "encryptionPassword": "" },
+        { "deviceID": "VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV", "introducedBy": "", "encryptionPassword": "" },
+        { "deviceID": "CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS", "introducedBy": "", "encryptionPassword": "" }
+      ],
+      "rescanIntervalS": 3600,
+      "fsWatcherEnabled": true,
+      "paused": false
+    },
+    {
+      "id": "default",
+      "label": "Default Folder",
+      "filesystemType": "basic",
+      "path": "/home/daniel/Sync",
+      "type": "sendreceive",
+      "devices": [
+        { "deviceID": "AAAAAAA-BBBBBBB-CCCCCCC-DDDDDDD-EEEEEEE-FFFFFFF-GGGGGGG-HHHHHHH", "introducedBy": "", "encryptionPassword": "" }
+      ],
+      "paused": false
+    },
+    {
+      "id": "fotos",
+      "label": "",
+      "path": "/home/daniel/Fotos",
+      "type": "receiveonly",
+      "devices": [
+        { "deviceID": "AAAAAAA-BBBBBBB-CCCCCCC-DDDDDDD-EEEEEEE-FFFFFFF-GGGGGGG-HHHHHHH" },
+        { "deviceID": "VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV" }
+      ],
+      "paused": true
+    }
+  ],
+  "devices": [
+    { "deviceID": "AAAAAAA-BBBBBBB-CCCCCCC-DDDDDDD-EEEEEEE-FFFFFFF-GGGGGGG-HHHHHHH", "name": "trabalho", "addresses": ["dynamic"], "paused": false },
+    { "deviceID": "VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV-VMVMVMV", "name": "vm", "addresses": ["tcp://vm.example:22000"], "paused": false },
+    { "deviceID": "CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS-CASACAS", "name": "", "addresses": ["dynamic"], "paused": false }
+  ],
+  "gui": { "enabled": true, "address": "127.0.0.1:8384", "apiKey": "nao-usada-nos-testes" },
+  "options": { "listenAddresses": ["default"] }
+}

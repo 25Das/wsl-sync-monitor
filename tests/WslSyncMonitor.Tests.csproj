@@ -38,6 +38,7 @@
     <Compile Include="../src/InstallDecision.cs" Link="src/InstallDecision.cs" />
     <Compile Include="../src/PanelHeader.cs" Link="src/PanelHeader.cs" />
     <Compile Include="../src/LogRules.cs" Link="src/LogRules.cs" />
+    <Compile Include="../src/SyncthingApi.cs" Link="src/SyncthingApi.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />

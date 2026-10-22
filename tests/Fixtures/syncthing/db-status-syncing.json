@@ -1,0 +1,6 @@
+{
+  "errors": 0, "pullErrors": 1, "error": "", "invalid": "",
+  "globalBytes": 100000000, "inSyncBytes": 40000000,
+  "needBytes": 60000000, "needDeletes": 1, "needDirectories": 2, "needFiles": 10, "needSymlinks": 0, "needTotalItems": 13,
+  "state": "syncing", "stateChanged": "2026-10-22T09:01:00-03:00"
+}

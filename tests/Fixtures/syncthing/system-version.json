@@ -1,0 +1,10 @@
+{
+  "arch": "amd64",
+  "codename": "Gold Grasshopper",
+  "isBeta": false,
+  "isCandidate": false,
+  "isRelease": true,
+  "longVersion": "syncthing v2.0.10 \"Gold Grasshopper\" (go1.24.6 linux-amd64) builder@github.syncthing.net 2025-09-02 07:28:21 UTC",
+  "os": "linux",
+  "version": "v2.0.10"
+}

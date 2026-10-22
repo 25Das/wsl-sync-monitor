@@ -15,9 +15,7 @@ public sealed class StatusCollector : IDisposable
     string? _fallbackUrl; // IP do WSL quando localhost não encaminha
 
     // para cálculo de taxa de transferência
-    DateTime _lastTotalsAt;
-    long _lastIn, _lastOut;
-    readonly Dictionary<string, (long In, long Out)> _lastDev = new();
+    readonly TransferRates _rates = new();
 
     public StatusCollector()
     {
@@ -283,11 +281,9 @@ public sealed class StatusCollector : IDisposable
     public async Task<List<(DateTimeOffset When, string Message)>> GetErrorsAsync(Settings s) =>
         SyncthingParsers.Errors((await GetAsync(GuiUrl(s), ApiKey(s), "/rest/system/error")).GetRawText());
 
-    public sealed record SyncCheck(bool Synced, string Detail, TimeSpan Uptime, bool AllDevicesConnected);
-
     /// <summary>
-    /// Verifica se tudo está sincronizado: pastas compartilhadas paradas e sem pendências, e todos os
-    /// dispositivos conectados com 100%. Dispositivos desconectados não são esperados.
+    /// Verifica se tudo está sincronizado (regras em <see cref="SyncthingApi.EvaluateSync"/>): busca o estado geral,
+    /// o andamento de cada dispositivo conectado e o estado de cada pasta compartilhada.
     /// </summary>
     public async Task<SyncCheck> CheckSyncedAsync(Settings s)
     {
@@ -295,35 +291,16 @@ public sealed class StatusCollector : IDisposable
         var url = GuiUrl(s);
         var status = await GetAsync(url, key, "/rest/system/status");
         var myId = Str(status, "myID");
-        var uptime = TimeSpan.FromSeconds(Num(status, "uptime"));
         var config = await GetAsync(url, key, "/rest/config");
         var conns = (await GetAsync(url, key, "/rest/system/connections")).GetProperty("connections");
 
-        bool allConnected = true;
-        foreach (var d in config.GetProperty("devices").EnumerateArray())
-        {
-            var id = Str(d, "deviceID") ?? "";
-            if (id == myId || Bool(d, "paused")) continue;
-            bool connected = conns.TryGetProperty(id, out var c) && Bool(c, "connected");
-            if (!connected) { allConnected = false; continue; }
-            var comp = await GetAsync(url, key, "/rest/db/completion?device=" + Uri.EscapeDataString(id));
-            if (Num(comp, "completion", 100) < 100 || Num(comp, "needItems") > 0 || Num(comp, "needDeletes") > 0)
-                return new(false, $"enviando para {NonEmpty(Str(d, "name")) ?? id[..Math.Min(7, id.Length)]} ({Num(comp, "completion", 100):0}%)", uptime, allConnected);
-        }
-
-        foreach (var f in config.GetProperty("folders").EnumerateArray())
-        {
-            if (Bool(f, "paused")) continue;
-            bool shared = f.TryGetProperty("devices", out var fd) && fd.EnumerateArray().Any(x => Str(x, "deviceID") != myId);
-            if (!shared) continue;
-            var label = NonEmpty(Str(f, "label")) ?? Str(f, "id") ?? "";
-            var db = await GetAsync(url, key, "/rest/db/status?folder=" + Uri.EscapeDataString(Str(f, "id") ?? ""));
-            var state = Str(db, "state") ?? "";
-            if (state != "idle") return new(false, $"{label}: {state}", uptime, allConnected);
-            if (Num(db, "needTotalItems") > 0 || Num(db, "needBytes") > 0)
-                return new(false, $"{label}: recebendo", uptime, allConnected);
-        }
-        return new(true, "sincronizado", uptime, allConnected);
+        var completions = new Dictionary<string, JsonElement>();
+        foreach (var id in SyncthingApi.DevicesToCheck(config, conns, myId))
+            completions[id] = await GetAsync(url, key, "/rest/db/completion?device=" + Q(id));
+        var folders = new Dictionary<string, JsonElement>();
+        foreach (var id in SyncthingApi.FoldersToCheck(config, myId))
+            folders[id] = await GetAsync(url, key, "/rest/db/status?folder=" + Q(id));
+        return SyncthingApi.EvaluateSync(status, config, conns, completions, folders);
     }
 
     async Task<JsonElement> GetAsync(string baseUrl, string key, string path)
@@ -339,6 +316,7 @@ public sealed class StatusCollector : IDisposable
         return doc.RootElement.Clone();
     }
 
+    /// <summary>Busca o estado do Syncthing; a interpretação das respostas fica em <see cref="SyncthingApi"/>.</summary>
     async Task QuerySyncthingAsync(Snapshot snap, Settings s, string url)
     {
         var key = ApiKey(s);
@@ -350,113 +328,22 @@ public sealed class StatusCollector : IDisposable
         var tStats = GetAsync(url, key, "/rest/stats/device");
         await Task.WhenAll(tStatus, tVersion, tConfig, tConn, tStats);
 
-        var status = tStatus.Result;
-        snap.St = StState.Running;
-        snap.MyId = Str(status, "myID");
-        snap.StUptime = TimeSpan.FromSeconds(Num(status, "uptime"));
-        snap.StVersion = Str(tVersion.Result, "version");
-
-        var config = tConfig.Result;
+        SyncthingApi.ApplySystem(snap, tStatus.Result, tVersion.Result);
         var conns = tConn.Result.TryGetProperty("connections", out var c) ? c : default;
-        var stats = tStats.Result;
+        snap.Devices = SyncthingApi.Devices(tConfig.Result, conns, tStats.Result, snap.MyId);
+        _rates.Apply(snap, tConn.Result, DateTime.UtcNow);
+        snap.Folders = SyncthingApi.Folders(tConfig.Result, snap.MyId);
 
-        // --- Taxas totais ---
-        var now = DateTime.UtcNow;
-        double dt = (now - _lastTotalsAt).TotalSeconds;
-        if (tConn.Result.TryGetProperty("total", out var total))
-        {
-            long tin = (long)Num(total, "inBytesTotal"), tout = (long)Num(total, "outBytesTotal");
-            if (_lastTotalsAt != default && dt > 0.5)
-            {
-                snap.InRate = Math.Max(0, (tin - _lastIn) / dt);
-                snap.OutRate = Math.Max(0, (tout - _lastOut) / dt);
-            }
-            _lastIn = tin; _lastOut = tout;
-        }
-
-        // --- Dispositivos ---
-        if (config.TryGetProperty("devices", out var devs))
-        {
-            foreach (var d in devs.EnumerateArray())
-            {
-                var id = Str(d, "deviceID") ?? "";
-                if (id == snap.MyId) continue;
-                var dev = new DeviceInfo
-                {
-                    Id = id,
-                    Name = NonEmpty(Str(d, "name")) ?? id[..Math.Min(7, id.Length)],
-                    Paused = Bool(d, "paused"),
-                };
-                if (conns.ValueKind == JsonValueKind.Object && conns.TryGetProperty(id, out var cn))
-                {
-                    dev.Connected = Bool(cn, "connected");
-                    dev.Paused |= Bool(cn, "paused");
-                    dev.Address = Str(cn, "address") ?? "";
-                    dev.ClientVersion = Str(cn, "clientVersion") ?? "";
-                    dev.ConnType = Str(cn, "type") ?? "";
-                    long din = (long)Num(cn, "inBytesTotal"), dout = (long)Num(cn, "outBytesTotal");
-                    if (_lastDev.TryGetValue(id, out var prev) && _lastTotalsAt != default && dt > 0.5)
-                    {
-                        dev.InRate = Math.Max(0, (din - prev.In) / dt);
-                        dev.OutRate = Math.Max(0, (dout - prev.Out) / dt);
-                    }
-                    _lastDev[id] = (din, dout);
-                }
-                if (stats.ValueKind == JsonValueKind.Object && stats.TryGetProperty(id, out var st) &&
-                    DateTime.TryParse(Str(st, "lastSeen"), out var ls))
-                    dev.LastSeen = ls;
-                snap.Devices.Add(dev);
-            }
-        }
-        _lastTotalsAt = now;
-
-        // --- Pastas ---
-        if (config.TryGetProperty("folders", out var folders))
-        {
-            foreach (var f in folders.EnumerateArray())
-            {
-                var fi = new FolderInfo
-                {
-                    Id = Str(f, "id") ?? "",
-                    Label = NonEmpty(Str(f, "label")) ?? Str(f, "id") ?? "",
-                    Path = Str(f, "path") ?? "",
-                    Type = Str(f, "type") ?? "",
-                    Paused = Bool(f, "paused"),
-                };
-                if (f.TryGetProperty("devices", out var fd))
-                {
-                    fi.DeviceIds = fd.EnumerateArray().Select(x => Str(x, "deviceID") ?? "").Where(id => id != snap.MyId).ToList();
-                    fi.SharedWith = fi.DeviceIds.Count;
-                }
-                snap.Folders.Add(fi);
-            }
-        }
-
-        // detalhes em paralelo
+        // detalhes em paralelo; uma pasta ou dispositivo que falha não derruba o resto
         var folderTasks = snap.Folders.Where(f => !f.Paused).Select(async f =>
         {
-            try
-            {
-                var db = await GetAsync(url, key, "/rest/db/status?folder=" + Uri.EscapeDataString(f.Id));
-                f.State = Str(db, "state") ?? "unknown";
-                f.GlobalBytes = (long)Num(db, "globalBytes");
-                f.InSyncBytes = (long)Num(db, "inSyncBytes");
-                f.NeedBytes = (long)Num(db, "needBytes");
-                f.NeedItems = (long)(Num(db, "needFiles") + Num(db, "needDirectories") + Num(db, "needSymlinks") + Num(db, "needDeletes"));
-                f.Errors = (int)(Num(db, "errors") + Num(db, "pullErrors"));
-                f.Error = NonEmpty(Str(db, "error")) ?? NonEmpty(Str(db, "invalid"));
-            }
+            try { SyncthingApi.ApplyFolderStatus(f, await GetAsync(url, key, "/rest/db/status?folder=" + Q(f.Id))); }
             catch (Exception ex) { f.State = "error"; f.Error = ex.Message; }
         });
         var devTasks = snap.Devices.Where(d => d.Connected).Select(async d =>
         {
-            try
-            {
-                var comp = await GetAsync(url, key, "/rest/db/completion?device=" + Uri.EscapeDataString(d.Id));
-                d.Completion = Num(comp, "completion", 100);
-                d.NeedBytes = (long)Num(comp, "needBytes");
-            }
-            catch { }
+            try { SyncthingApi.ApplyCompletion(d, await GetAsync(url, key, "/rest/db/completion?device=" + Q(d.Id))); }
+            catch (Exception ex) { Log.Failure("syncthing", "completion " + d.Id, $"andamento de {d.Name}: {ex.Message}"); }
         });
         await Task.WhenAll(folderTasks.Concat(devTasks));
 
@@ -466,16 +353,9 @@ public sealed class StatusCollector : IDisposable
         snap.Devices = snap.AllDevices.Where(d => !s.IsDeviceHidden(d)).ToList();
     }
 
-    static string? Str(JsonElement e, string p) =>
-        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-
-    static double Num(JsonElement e, string p, double def = 0) =>
-        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : def;
-
-    static bool Bool(JsonElement e, string p) =>
-        e.ValueKind == JsonValueKind.Object && e.TryGetProperty(p, out var v) && v.ValueKind == JsonValueKind.True;
-
-    static string? NonEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+    static string? Str(JsonElement e, string p) => SyncthingApi.Str(e, p);
+    static bool Bool(JsonElement e, string p) => SyncthingApi.Bool(e, p);
+    static string? NonEmpty(string? v) => SyncthingApi.NonEmpty(v);
 
     public void Dispose() => _http.Dispose();
 }
