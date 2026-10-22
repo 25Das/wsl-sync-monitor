@@ -18,6 +18,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- o UseWPF tira estes dois "using" automáticos (por conflitos de nomes com o WPF, que o app não usa) -->
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- os testes de interface (tests.windows) acessam partes internas, como os construtores de menu -->
     <InternalsVisibleTo Include="WslSyncMonitor.WindowsTests" />
   </ItemGroup>
