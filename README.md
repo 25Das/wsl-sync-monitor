@@ -196,6 +196,13 @@ aparece na ficha técnica.
   consulta a REST API em `http://127.0.0.1:<porta>` (encaminhamento de localhost do WSL 2). Se localhost não
   responder, tenta o IP da VM. Depois que a distro é liberada para desligar, nada é executado dentro dela.
 
+## Roadmap
+
+Ideias para o futuro (ainda não implementadas):
+- **Independente de sistema operacional:** rodar também fora do Windows (hoje o app é WinForms e depende do WSL).
+- **Independente da estrutura das conexões remotas:** não supor uma topologia fixa de dispositivos (como o
+  triângulo trabalho · casa · VM); funcionar com qualquer arranjo de dispositivos e pastas.
+
 ## Compilar
 
 Requer o [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0). No Windows, `build.cmd` gera

@@ -5,7 +5,11 @@ namespace WslSyncMonitor;
 /// <summary>Verifica a última release no GitHub e instala a nova versão (troca o .exe e reinicia).</summary>
 public sealed class Updater : IDisposable
 {
-    const string LatestUrl = "https://api.github.com/repos/25Das/wsl-sync-monitor/releases/latest";
+    const string GitHubLatestUrl = "https://api.github.com/repos/25Das/wsl-sync-monitor/releases/latest";
+
+    /// <summary>Última release; WSLSYNCMONITOR_UPDATE_URL troca o endereço (servidor falso dos testes de ponta a ponta).</summary>
+    static string LatestUrl => Environment.GetEnvironmentVariable("WSLSYNCMONITOR_UPDATE_URL") is { Length: > 0 } url
+        ? url : GitHubLatestUrl;
     public const string AfterUpdateArg = "--after-update";
 
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(60) };

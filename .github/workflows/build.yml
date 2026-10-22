@@ -47,6 +47,7 @@ jobs:
           --collect "Code Coverage;Format=cobertura" --results-directory "${{ runner.temp }}/cobertura"
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/evidencias
+          WSM_E2E: '1' # testes de ponta a ponta (abrem o app de verdade e usam o mouse)
 
       # as regras puras também rodam no Windows: pegam diferenças de plataforma (caminhos, cultura, quebras de linha)
       # e completam a cobertura do código todo (no Windows, coletor da Microsoft para os testes de interface: o

@@ -81,7 +81,13 @@ public sealed class Settings
 
     // ----------------------------------------------------------------------
 
-    public static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WslSyncMonitor");
+    /// <summary>
+    /// Pasta de dados (configurações e logs). A variável de ambiente WSLSYNCMONITOR_HOME troca a pasta: os testes
+    /// de ponta a ponta usam uma pasta temporária para não tocar nas configurações reais.
+    /// </summary>
+    public static string Dir => Environment.GetEnvironmentVariable("WSLSYNCMONITOR_HOME") is { Length: > 0 } home
+        ? home
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WslSyncMonitor");
     public static string FilePath => Path.Combine(Dir, "settings.json");
 
     static readonly JsonSerializerOptions JsonOpts = new()
