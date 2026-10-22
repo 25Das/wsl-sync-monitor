@@ -89,7 +89,7 @@ public sealed class StatusCollector : IDisposable
         catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             snap.St = StState.AuthError;
-            snap.StError = "Acesso negado pela API (verifique a chave da API).";
+            snap.StError = "Acesso negado pela API. " + (_credentialsInfo ?? "Verifique a chave da API.");
             // a chave pode ter mudado: relê o config.xml já na próxima atualização (e depois no máximo 1x/min)
             _cachedKey = null;
             _configReadAt = default;
@@ -154,21 +154,64 @@ public sealed class StatusCollector : IDisposable
         if (_cachedUrl != null && DateTime.Now - _configReadAt < TimeSpan.FromMinutes(1)) return;
         _configReadAt = DateTime.Now;
 
-        var xml = await WslService.ReadSyncthingConfigAsync(distro, s.SyncthingConfigPath);
+        var files = await WslService.ReadSyncthingConfigsAsync(distro, s.SyncthingConfigPath);
         _cachedDistro = distro;
         _cachedUrl = "http://127.0.0.1:8384";
-        if (xml == null) return;
+        _credentialsInfo = files.Count == 0 ? "config.xml do Syncthing não encontrado na distro." : null;
 
-        var gui = XDocument.Parse(xml).Root?.Element("gui");
-        if (gui == null) return;
-        _cachedKey = gui.Element("apikey")?.Value;
-        bool tls = string.Equals((string?)gui.Attribute("tls"), "true", StringComparison.OrdinalIgnoreCase);
-        var addr = gui.Element("address")?.Value ?? "127.0.0.1:8384";
-        // endereço pode ser "0.0.0.0:8384", "[::]:8384", "127.0.0.1:8384" ou unix socket
-        var idx = addr.LastIndexOf(':');
-        var port = idx >= 0 && int.TryParse(addr[(idx + 1)..], out var p) ? p : 8384;
-        if (addr.StartsWith("unix", StringComparison.OrdinalIgnoreCase) || addr.StartsWith('/')) port = 8384;
-        _cachedUrl = $"{(tls ? "https" : "http")}://127.0.0.1:{port}";
+        var candidates = new List<(string Path, string? Key, string Url, HashSet<string> Devices)>();
+        foreach (var (path, xml) in files)
+        {
+            try
+            {
+                var root = XDocument.Parse(xml).Root;
+                var gui = root?.Element("gui");
+                if (gui == null) continue;
+                bool tls = string.Equals((string?)gui.Attribute("tls"), "true", StringComparison.OrdinalIgnoreCase);
+                var addr = gui.Element("address")?.Value ?? "127.0.0.1:8384";
+                // endereço pode ser "0.0.0.0:8384", "[::]:8384", "127.0.0.1:8384" ou unix socket
+                var idx = addr.LastIndexOf(':');
+                var port = idx >= 0 && int.TryParse(addr[(idx + 1)..], out var p) ? p : 8384;
+                if (addr.StartsWith("unix", StringComparison.OrdinalIgnoreCase) || addr.StartsWith('/')) port = 8384;
+                var devices = root!.Elements("device").Select(d => (string?)d.Attribute("id") ?? "").ToHashSet();
+                candidates.Add((path, gui.Element("apikey")?.Value, $"{(tls ? "https" : "http")}://127.0.0.1:{port}", devices));
+            }
+            catch { /* arquivo malformado: tenta o próximo */ }
+        }
+        if (candidates.Count == 0) return;
+
+        // usa o primeiro cuja chave a API aceita; o Syncthing devolve o próprio ID no cabeçalho X-Syncthing-Id
+        string? answeringId = null;
+        foreach (var c in candidates)
+        {
+            var (ok, id) = await PingAsync(c.Url, c.Key);
+            answeringId ??= id;
+            if (ok) { _cachedKey = c.Key; _cachedUrl = c.Url; return; }
+        }
+
+        var first = candidates[0];
+        _cachedKey = first.Key;
+        _cachedUrl = first.Url;
+        if (answeringId != null && !candidates.Any(c => c.Devices.Contains(answeringId)))
+            _credentialsInfo = $"Quem responde em {first.Url} é outro Syncthing (ID {answeringId[..Math.Min(7, answeringId.Length)]}), " +
+                               "não o desta distro. Há um Syncthing no Windows usando a mesma porta?";
+        else
+            _credentialsInfo = $"Chave lida de {string.Join(", ", candidates.Select(c => c.Path))}.";
+    }
+
+    string? _credentialsInfo; // diagnóstico mostrado quando a API recusa a chave
+
+    async Task<(bool Ok, string? Id)> PingAsync(string url, string? key)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, url + "/rest/system/ping");
+            if (!string.IsNullOrEmpty(key)) req.Headers.Add("X-API-Key", key);
+            using var resp = await _http.SendAsync(req);
+            var id = resp.Headers.TryGetValues("X-Syncthing-Id", out var v) ? v.FirstOrDefault() : null;
+            return (resp.IsSuccessStatusCode, id);
+        }
+        catch { return (false, null); }
     }
 
     /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>

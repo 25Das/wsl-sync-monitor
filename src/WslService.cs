@@ -153,18 +153,48 @@ public static class WslService
         return r.Output.Trim() == "yes";
     }
 
-    public static async Task<string?> ReadSyncthingConfigAsync(string distro, string customPath)
+    /// <summary>
+    /// Lê os config.xml candidatos do Syncthing, na ordem de preferência: o que o processo em execução usa
+    /// (--home/--config ou STHOMEDIR), o que `syncthing paths` informa e os locais padrão. Sem repetições.
+    /// </summary>
+    public static async Task<List<(string Path, string Xml)>> ReadSyncthingConfigsAsync(string distro, string customPath)
     {
+        const string emit = """
+            seen=""
+            emit() {
+              f=$(readlink -f "$1" 2>/dev/null) || return 0
+              [ -r "$f" ] || return 0
+              case " $seen " in *" $f "*) return 0;; esac
+              seen="$seen $f"
+              printf '@@FILE %s\n' "$f"; cat "$f"; printf '\n'
+            }
+            """;
         string script = string.IsNullOrWhiteSpace(customPath)
-            ? """
-              for f in "${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml" "${XDG_CONFIG_HOME:-$HOME/.config}/syncthing/config.xml" "$HOME/snap/syncthing/common/.config/syncthing/config.xml"; do
-                [ -r "$f" ] && cat "$f" && exit 0
-              done
-              exit 1
+            ? emit + """
+              pid=$(pgrep -xo syncthing)
+              if [ -n "$pid" ]; then
+                d=$(tr '\0' '\n' < /proc/$pid/cmdline | awk 'p{print;exit} /^--?(home|config)$/{p=1;next} /^--?(home|config)=/{sub(/^--?[a-z]+=/,"");print;exit}')
+                [ -z "$d" ] && d=$(tr '\0' '\n' < /proc/$pid/environ 2>/dev/null | sed -n 's/^STHOMEDIR=//p;s/^STCONFDIR=//p' | head -1)
+                [ -n "$d" ] && emit "$d/config.xml"
+              fi
+              p=$(syncthing paths 2>/dev/null | awk '/^Configuration file/{getline; gsub(/^[ \t]+/,""); print; exit}')
+              [ -n "$p" ] && emit "$p"
+              emit "${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml"
+              emit "${XDG_CONFIG_HOME:-$HOME/.config}/syncthing/config.xml"
+              emit "$HOME/snap/syncthing/common/.config/syncthing/config.xml"
+              exit 0
               """
-            : $"cat '{customPath.Replace("'", "'\\''")}'";
+            : emit + $"emit '{customPath.Replace("'", "'\\''")}'";
         var r = await ShAsync(distro, script);
-        return r.ExitCode == 0 && r.Output.Contains("<configuration") ? r.Output : null;
+        var list = new List<(string, string)>();
+        foreach (var part in r.Output.Split("@@FILE ", StringSplitOptions.RemoveEmptyEntries))
+        {
+            int nl = part.IndexOf('\n');
+            if (nl <= 0) continue;
+            var xml = part[(nl + 1)..];
+            if (xml.Contains("<configuration")) list.Add((part[..nl].Trim(), xml));
+        }
+        return list;
     }
 
     public static async Task<string?> GetIpAsync(string distro)
