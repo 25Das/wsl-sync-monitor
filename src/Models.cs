@@ -49,7 +49,8 @@ public sealed class DeviceInfo
         {
             if (Paused) return ("Pausado", Level.Off);
             if (!Connected)
-                return (LastSeen is { Year: > 1970 } ls ? $"Desconectado · visto {Fmt.Ago(ls)}" : "Desconectado", Level.Warn);
+                // desligado é normal (ex.: o outro PC); quem avisa é o estado geral quando nenhum está conectado
+                return (LastSeen is { Year: > 1970 } ls ? $"Desconectado · visto {Fmt.Ago(ls)}" : "Desconectado", Level.Off);
             if (Completion < 100 || NeedBytes > 0)
                 return ($"Sincronizando {Math.Floor(Completion):0}% ({Fmt.Bytes(NeedBytes)})", Level.Busy);
             return ("Atualizado", Level.Ok);
@@ -91,6 +92,21 @@ public sealed class Snapshot
         _ => Level.Error,
     };
 
+    /// <summary>
+    /// Estado dos dispositivos como um todo: sincronizando se algum está; atenção só se nenhum está conectado
+    /// (nada sincroniza); um desligado com outro conectado é normal. Sem dispositivos ativos: neutro.
+    /// </summary>
+    public Level DevicesLevel
+    {
+        get
+        {
+            var active = Devices.Where(d => !d.Paused).ToList();
+            if (active.Count == 0) return Level.Off;
+            if (active.Any(d => d.Status.Level == Level.Busy)) return Level.Busy;
+            return active.Any(d => d.Connected) ? Level.Ok : Level.Warn;
+        }
+    }
+
     public Level Overall
     {
         get
@@ -98,7 +114,7 @@ public sealed class Snapshot
             if (!WslInstalled) return Level.Error;
             if (!WslRunning) return Level.Off;
             if (St != StState.Running) return Level.Error;
-            var levels = Folders.Select(f => f.Status.Level).Concat(Devices.Select(d => d.Status.Level)).ToList();
+            var levels = Folders.Select(f => f.Status.Level).Append(DevicesLevel).ToList();
             if (levels.Contains(Level.Error)) return Level.Error;
             if (levels.Contains(Level.Busy)) return Level.Busy;
             if (levels.Contains(Level.Warn)) return Level.Warn;

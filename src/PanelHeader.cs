@@ -58,6 +58,7 @@ public sealed record PanelHeader(
         {
             Level.Error => ("Há erros em pastas ou dispositivos", Level.Error),
             Level.Busy => ("Sincronizando…", Level.Busy),
+            Level.Warn when s.DevicesLevel == Level.Warn && s.FoldersOk == s.Folders.Count => ("Nenhum dispositivo conectado", Level.Warn),
             Level.Warn => ($"{s.FoldersOk} de {s.Folders.Count} pastas atualizadas", Level.Warn),
             _ => ("Tudo sincronizado", Level.Ok),
         };

@@ -39,7 +39,7 @@ Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo co
 | ⏻ cinza | WSL desligado |
 | ⟳ azul | sincronizando ou verificando |
 | ✓ verde | tudo atualizado |
-| ! amarelo | atenção (dispositivo desconectado, pasta fora de sincronia) |
+| ! amarelo | atenção (pasta fora de sincronia, nenhum dispositivo conectado) |
 | ✕ vermelho | erro (Syncthing parado, chave recusada, WSL ausente) |
 
 Marcas nos cantos: **azul em cima** = nova versão disponível; **clara embaixo** = distro mantida ligada pelo app.

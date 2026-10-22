@@ -440,7 +440,7 @@ public sealed class DetailPopup : Form
                 int w = TextRenderer.MeasureText(Header.Version, Font).Width + P(16);
                 return new Rectangle(info.Left - P(6) - w, y1 + P(2), w, size - P(4));
             case HeaderButton.Status:
-                int left = P(32), end = CheckedRect(Header).Left - P(8);
+                int left = P(13), end = CheckedRect(Header).Left - P(8);
                 return new Rectangle(left, y2, Math.Max(0, end - left), size);
             default: return Rectangle.Empty;
         }

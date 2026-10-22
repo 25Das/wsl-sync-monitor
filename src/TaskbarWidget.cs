@@ -57,10 +57,13 @@ public sealed class TaskbarWidget : Form
     /// <summary>Operação em andamento (iniciar/encerrar WSL): o ponto do WSL fica azul.</summary>
     public bool Busy { get => _busy; set { if (_busy == value) return; _busy = value; _dirty = true; Follow(); } }
 
+    /// <summary>Enquanto devolver true (um menu aberto), o widget não se recoloca no topo e fica atrás dele.</summary>
+    public Func<bool>? YieldTo { get; set; }
+
     /// <summary>Recoloca o widget acima da barra (a barra sobe na ordem Z ao ganhar o foco).</summary>
     public void BringAboveTaskbar()
     {
-        if (IsHandleCreated && Visible)
+        if (IsHandleCreated && Visible && !(YieldTo?.Invoke() ?? false))
             Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
     }
 
@@ -197,7 +200,7 @@ public sealed class TaskbarWidget : Form
         var folders = s == null || s.St != StState.Running ? "–" : $"{s.FoldersOk}/{s.Folders.Count}";
         var devices = s == null || s.St != StState.Running ? "–" : $"{s.DevicesOnline}/{s.Devices.Count}";
         var fLevel = s == null || s.St != StState.Running ? Level.Off : Worst(s.Folders.Select(f => f.Status.Level));
-        var dLevel = s == null || s.St != StState.Running ? Level.Off : Worst(s.Devices.Select(d => d.Status.Level));
+        var dLevel = s == null || s.St != StState.Running ? Level.Off : s.DevicesLevel;
 
         int dot = P(7);
         float x0 = P(8);

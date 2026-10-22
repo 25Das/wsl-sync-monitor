@@ -74,6 +74,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _widget = new TaskbarWidget(_settings);
         _widget.Clicked += () => { CloseMenu(); TogglePinned(_widget.PopupAnchor); };
         _widget.RightClicked += () => ShowMenu(Cursor.Position);
+        _widget.YieldTo = () => _menu.Visible || _itemMenu is { Visible: true };
         _widget.HoverStarted += () =>
         {
             if (!_settings.HoverPopup || _popup.Visible || _menu.Visible) return;
