@@ -45,6 +45,7 @@ jobs:
         run: >
           dotnet test tests.windows -c Release --logger GitHubActions --blame-crash
           --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings --results-directory "${{ runner.temp }}/cobertura"
+          --diag "${{ runner.temp }}/diag/log.txt"
         env:
           EVIDENCE_DIR: ${{ runner.temp }}/evidencias
 
@@ -60,6 +61,8 @@ jobs:
           python tools/coverage-summary.py $reports > "$RUNNER_TEMP/evidencias/cobertura.md"
           { echo; echo "Relatórios:"; for r in $reports; do echo "- \`$(basename "$(dirname "$r")")\` $(grep -o 'package name="[^"]*"' "$r" | tr '\n' ' ')"; done; } \
             >> "$RUNNER_TEMP/evidencias/cobertura.md"
+          { echo; echo '```'; grep -rhi "coverlet" "$RUNNER_TEMP/diag" | grep -iE "instrument|skip|exclud|unable|WslSyncMonitor\.dll" | cut -c1-300 | head -40; echo '```'; } \
+            >> "$RUNNER_TEMP/evidencias/cobertura.md" || true
           cat "$RUNNER_TEMP/evidencias/cobertura.md" >> "$GITHUB_STEP_SUMMARY"
 
       # capturas de tela geradas pelos testes, publicadas no branch ci-evidencias (pasta = nome do branch) para
