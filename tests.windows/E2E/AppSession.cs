@@ -83,16 +83,21 @@ public sealed class AppSession : IDisposable
                     .FirstOrDefault(w => w.Name == title)?.AsWindow(),
                 timeout, $"janela \"{title}\"");
 
-    /// <summary>Menu aberto pelo app (o ToolStripDropDown é uma janela de nível superior).</summary>
-    public AutomationElement? OpenMenu() =>
-        Automation.GetDesktop().FindAllChildren(cf => cf.ByProcessId(Process.Id).And(cf.ByControlType(ControlType.Menu)))
-            .LastOrDefault();
+    /// <summary>Itens de menu visíveis do app (cada menu aberto é uma janela de nível superior do processo).</summary>
+    IEnumerable<AutomationElement> MenuItems() =>
+        Automation.GetDesktop().FindAllChildren(cf => cf.ByProcessId(Process.Id))
+            .SelectMany(w => w.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem)))
+            .Where(i => !i.IsOffscreen);
 
-    /// <summary>Item de menu visível com o nome que começa com <paramref name="prefix"/>, em qualquer menu aberto do app.</summary>
+    /// <summary>Algum menu do app está aberto? (null = nenhum)</summary>
+    public AutomationElement? OpenMenu() => MenuItems().FirstOrDefault();
+
+    /// <summary>Item de menu visível cujo nome começa com <paramref name="prefix"/>, em qualquer menu aberto do app.</summary>
     public AutomationElement? MenuItem(string prefix) =>
-        Automation.GetDesktop().FindAllChildren(cf => cf.ByProcessId(Process.Id).And(cf.ByControlType(ControlType.Menu)))
-            .SelectMany(m => m.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem)))
-            .FirstOrDefault(i => (i.Name ?? "").StartsWith(prefix, StringComparison.Ordinal));
+        MenuItems().FirstOrDefault(i => (i.Name ?? "").StartsWith(prefix, StringComparison.Ordinal));
+
+    /// <summary>Nomes dos itens visíveis (para a mensagem de erro quando algo não aparece).</summary>
+    public string VisibleMenuItems() => string.Join(" | ", MenuItems().Select(i => i.Name));
 
     public static T WaitFor<T>(Func<T?> find, TimeSpan? timeout, string what) where T : class
     {

@@ -63,10 +63,12 @@ public sealed class AppE2ETests
             Assert.Contains("[app] iniciado", log);
             Assert.Contains("[app] saindo", log);
         }
-        catch
+        catch (Exception ex)
         {
             app.Screenshot("falha");
-            throw;
+            string items;
+            try { items = app.VisibleMenuItems(); } catch (Exception e) { items = e.Message; }
+            throw new Exception($"{ex.Message}\nitens de menu visíveis: {items}", ex);
         }
     }
 }
