@@ -5,7 +5,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: ['**'] # todo branch roda os testes; release só pela main (condição no passo Release)
   pull_request:
 
 permissions:
@@ -31,8 +31,21 @@ jobs:
           sed -i 's/$/\r/' src/*.cs
           dotnet test tests -c Release
 
+  # testes do código de interface (WinForms), que só roda no Windows
+  windows-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Testes de interface
+        run: dotnet test tests.windows -c Release
+
   build:
-    needs: tests # sem testes passando não há build nem release
+    needs: [tests, windows-tests] # sem testes passando não há build nem release
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +81,7 @@ jobs:
           path: out/WslSyncMonitor.exe
 
       - name: Release
-        if: github.event_name == 'push' && steps.ver.outputs.release == 'true'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.ver.outputs.release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}

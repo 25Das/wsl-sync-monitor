@@ -10,14 +10,14 @@ public sealed partial class TrayApp
 {
     // ------------------------------------------------------------------ peças
 
-    static ToolStripMenuItem Item(string text, Action onClick, bool enabled = true, bool check = false, bool bold = false, Image? image = null)
+    internal static ToolStripMenuItem Item(string text, Action onClick, bool enabled = true, bool check = false, bool bold = false, Image? image = null)
     {
         var item = new ToolStripMenuItem(text, image, (_, _) => onClick()) { Enabled = enabled, Checked = check };
         if (bold) item.Font = new Font(item.Font, FontStyle.Bold);
         return item;
     }
 
-    static ToolStripMenuItem Item(string text, Func<Task> onClick, bool enabled = true, bool check = false) =>
+    internal static ToolStripMenuItem Item(string text, Func<Task> onClick, bool enabled = true, bool check = false) =>
         Item(text, () => _ = onClick(), enabled, check);
 
     /// <summary>Linha só de leitura (informação).</summary>
