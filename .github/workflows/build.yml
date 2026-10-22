@@ -55,10 +55,12 @@ jobs:
         shell: bash
         run: |
           dotnet test tests -c Release --collect:"XPlat Code Coverage" --settings tests/coverage.runsettings \
-            --results-directory "$RUNNER_TEMP/cobertura" > /dev/null || true
+            --results-directory "$RUNNER_TEMP/cobertura" > "$RUNNER_TEMP/cobertura-regras.log" 2>&1 || true
           mkdir -p "$RUNNER_TEMP/evidencias"
-          python tools/coverage-summary.py $(find "$RUNNER_TEMP/cobertura" -name '*.cobertura.xml') \
-            > "$RUNNER_TEMP/evidencias/cobertura.md"
+          mapfile -t reports < <(find "$RUNNER_TEMP/cobertura" -name '*.cobertura.xml')
+          python tools/coverage-summary.py "${reports[@]}" > "$RUNNER_TEMP/evidencias/cobertura.md"
+          { echo; echo "Relatórios lidos: ${#reports[@]}"; for r in "${reports[@]}"; do echo "- ${r#$RUNNER_TEMP/}"; done
+            echo; echo '```'; tail -5 "$RUNNER_TEMP/cobertura-regras.log"; echo '```'; } >> "$RUNNER_TEMP/evidencias/cobertura.md"
           cat "$RUNNER_TEMP/evidencias/cobertura.md" >> "$GITHUB_STEP_SUMMARY"
 
       # capturas de tela geradas pelos testes, publicadas no branch ci-evidencias (pasta = nome do branch) para
