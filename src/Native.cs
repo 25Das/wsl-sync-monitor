@@ -57,17 +57,35 @@ static class Native
     [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
     const uint CREATE_NO_WINDOW = 0x08000000;
 
-    /// <summary>Inicia um processo oculto que não herda nenhum handle deste processo.</summary>
-    public static System.Diagnostics.Process? StartDetached(string commandLine)
+    [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr h, uint ms);
+    [DllImport("kernel32.dll")] static extern bool TerminateProcess(IntPtr h, uint exitCode);
+
+    /// <summary>
+    /// Processo iniciado sem herdar handles. Guarda o handle do processo (e não só o PID), para que
+    /// "terminou?" e "encerrar" valham sempre para este processo, mesmo que o PID seja reutilizado.
+    /// </summary>
+    public sealed class DetachedProcess : IDisposable
     {
-        var si = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
-        if (!CreateProcess(null, new System.Text.StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero, false,
-                CREATE_NO_WINDOW, IntPtr.Zero, null, ref si, out var pi))
-            throw new System.ComponentModel.Win32Exception();
-        CloseHandle(pi.hThread);
-        try { return System.Diagnostics.Process.GetProcessById(pi.dwProcessId); }
-        catch { return null; }
-        finally { CloseHandle(pi.hProcess); }
+        readonly Microsoft.Win32.SafeHandles.SafeProcessHandle _handle;
+        public int Id { get; }
+
+        DetachedProcess(IntPtr handle, int id) { _handle = new(handle, ownsHandle: true); Id = id; }
+
+        public bool HasExited => _handle.IsClosed || WaitForSingleObject(_handle.DangerousGetHandle(), 0) == 0;
+
+        public void Kill() { if (!HasExited) TerminateProcess(_handle.DangerousGetHandle(), 1); }
+
+        public void Dispose() => _handle.Dispose();
+
+        public static DetachedProcess Start(string commandLine)
+        {
+            var si = new STARTUPINFO { cb = Marshal.SizeOf<STARTUPINFO>() };
+            if (!CreateProcess(null, new System.Text.StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero, false,
+                    CREATE_NO_WINDOW, IntPtr.Zero, null, ref si, out var pi))
+                throw new System.ComponentModel.Win32Exception();
+            CloseHandle(pi.hThread);
+            return new DetachedProcess(pi.hProcess, pi.dwProcessId);
+        }
     }
 
     // ---- linha de comando de outro processo ----
@@ -240,6 +258,10 @@ public sealed class TaskbarInfo
 /// <summary>Cores e tema claro/escuro do Windows.</summary>
 public static class Theme
 {
+    // lidos do registro só quando o tema muda (o widget consulta várias vezes por segundo)
+    static bool? _appsLight, _taskbarLight;
+    static Theme() => SystemEvents.UserPreferenceChanged += (_, _) => { _appsLight = null; _taskbarLight = null; };
+
     static bool ReadLight(string name)
     {
         try
@@ -250,8 +272,8 @@ public static class Theme
         catch { return false; }
     }
 
-    public static bool AppsLight => ReadLight("AppsUseLightTheme");
-    public static bool TaskbarLight => ReadLight("SystemUsesLightTheme");
+    public static bool AppsLight => _appsLight ??= ReadLight("AppsUseLightTheme");
+    public static bool TaskbarLight => _taskbarLight ??= ReadLight("SystemUsesLightTheme");
 
     public static Color For(Level l) => l switch
     {

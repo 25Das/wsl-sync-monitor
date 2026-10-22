@@ -68,36 +68,57 @@ public sealed class Settings
 
     public int HoverDelayMs { get; set; } = 450;
 
-    /// <summary>Se false, o app nunca inicia o WSL sozinho (só consulta a distro se já estiver rodando).</summary>
-    public bool AllowStartingWsl { get; set; } = false;
-
     // ----------------------------------------------------------------------
 
     public static string Dir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WslSyncMonitor");
     public static string FilePath => Path.Combine(Dir, "settings.json");
 
-    static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
-
-    public static Settings Load()
+    static readonly JsonSerializerOptions JsonOpts = new()
     {
+        WriteIndented = true,
+        // o arquivo é editado à mão: tolera comentários e vírgula sobrando
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
+
+    /// <summary>
+    /// Lê o arquivo (cria com os padrões se não existir). Se ele for inválido ou estiver sendo gravado,
+    /// retorna null com o motivo em <paramref name="error"/> e <b>não</b> sobrescreve nada.
+    /// </summary>
+    public static Settings? TryLoad(out string? error)
+    {
+        error = null;
+        if (!File.Exists(FilePath))
+        {
+            var s = new Settings { SettingsVersion = CurrentVersion };
+            s.Save();
+            return s;
+        }
         try
         {
-            if (File.Exists(FilePath))
+            var loaded = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath), JsonOpts) ?? new Settings();
+            if (loaded.SettingsVersion < 2) // v2: hover desligado por padrão
             {
-                var loaded = JsonSerializer.Deserialize<Settings>(File.ReadAllText(FilePath)) ?? new Settings();
-                if (loaded.SettingsVersion < 2) // v2: hover desligado por padrão
-                {
-                    loaded.HoverPopup = false;
-                    loaded.SettingsVersion = CurrentVersion;
-                    loaded.Save();
-                }
-                return loaded;
+                loaded.HoverPopup = false;
+                loaded.SettingsVersion = CurrentVersion;
+                loaded.Save();
             }
+            return loaded;
         }
-        catch { /* arquivo inválido: usa padrões */ }
-        var s = new Settings { SettingsVersion = CurrentVersion };
-        s.Save();
-        return s;
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return null;
+        }
+    }
+
+    /// <summary>Para a inicialização: se o arquivo for inválido, guarda uma cópia dele e usa os padrões.</summary>
+    public static Settings LoadOrDefault(out string? error)
+    {
+        var s = TryLoad(out error);
+        if (s != null) return s;
+        try { File.Copy(FilePath, FilePath + ".invalido", overwrite: true); } catch { }
+        return new Settings { SettingsVersion = CurrentVersion };
     }
 
     public void Save()

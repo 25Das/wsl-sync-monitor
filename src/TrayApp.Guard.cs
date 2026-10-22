@@ -24,11 +24,23 @@ public sealed partial class TrayApp
         // pede para ser avisado do desligamento do Windows antes dos outros apps
         Native.SetProcessShutdownParameters(0x3FF, 0);
         _shutdownWatcher = new ShutdownWatcher(NeedsShutdownProtection, ShutdownSequenceAsync,
-            () => _settings.ShutdownMaxWaitSeconds + 120);
+            // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga
+            () => _settings.ShutdownMaxWaitSeconds + 300);
         _shutdownWatcher.SessionEnded += () => { WslService.Release(); ExitThread(); };
     }
 
     void SetGuardText(string? text) => _popup.SetGuard(text);
+
+    /// <summary>A distro monitorada vai mudar: solta a atual e recomeça a proteção do zero na nova.</summary>
+    void ResetGuardForDistroChange()
+    {
+        CancelVerify();
+        if (_snap?.Target?.Name is { } old) WslService.Release(old);
+        _guard = GuardState.Off;
+        _idleTicks = 0;
+        SetGuardText(null);
+        _collector.InvalidateCredentials();
+    }
 
     /// <summary>Executado após cada atualização (dados recentes do WSL).</summary>
     void GuardTick()

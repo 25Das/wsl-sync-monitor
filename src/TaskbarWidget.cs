@@ -92,6 +92,8 @@ public sealed class TaskbarWidget : Form
         if (IsDisposed) return;
         var tb = TaskbarInfo.Get();
         _tb = tb;
+        // com a barra auto-ocultável o widget precisa acompanhar a animação; fixa, basta conferir de vez em quando
+        _follow.Interval = tb.AutoHide ? 150 : 500;
         bool show = _settings.ShowTaskbarWidget && tb.FullyShown && !tb.FullscreenApp && tb.Thickness > 0;
         if (!show)
         {

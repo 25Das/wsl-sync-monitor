@@ -44,7 +44,7 @@ public static class WslService
             using (p)
             {
                 bool own;
-                lock (OwnPids) own = OwnPids.Contains(p.Id) || _keepAlive.Values.Any(k => k != null && k.Id == p.Id);
+                lock (OwnPids) own = OwnPids.Contains(p.Id) || _keepAlive.Values.Any(k => k.Id == p.Id && !k.HasExited);
                 if (own) continue;
                 var target = SessionTarget(Native.GetCommandLine(p.Id), defaultDistro);
                 if (target == null || target.Equals(distro, StringComparison.OrdinalIgnoreCase)) n++;
@@ -66,7 +66,7 @@ public static class WslService
             if (AdminFlags.Contains(t)) return "";
             if ((t is "-d" or "--distribution") && i + 1 < tokens.Count) target = tokens[++i];
         }
-        return target ?? defaultDistro ?? "";
+        return target ?? defaultDistro; // null = distro desconhecida: conta como sessão
     }
 
     public static bool IsInstalled => File.Exists(WslExe) || WslExe == "wsl.exe";
@@ -174,16 +174,20 @@ public static class WslService
     }
 
     // processos "sleep infinity" que mantêm cada distro iniciada pelo app ligada
-    static readonly Dictionary<string, Process?> _keepAlive = new(StringComparer.OrdinalIgnoreCase);
+    static readonly Dictionary<string, Native.DetachedProcess> _keepAlive = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Inicia a distro e mantém um processo oculto vivo para que ela não desligue por inatividade.</summary>
     public static void StartDistro(string distro)
     {
-        if (_keepAlive.TryGetValue(distro, out var p) && p is { HasExited: false }) return;
+        if (_keepAlive.TryGetValue(distro, out var p))
+        {
+            if (!p.HasExited) return;
+            p.Dispose();
+        }
         // Process.Start herda os handles deste processo (inclusive o do próprio .exe); como este wsl.exe
         // vive enquanto o WSL estiver ligado, o executável ficaria travado mesmo após fechar o app.
         // Por isso é criado via CreateProcess sem herança de handles.
-        _keepAlive[distro] = Native.StartDetached($"\"{WslExe}\" -d {distro} --exec sleep infinity");
+        _keepAlive[distro] = Native.DetachedProcess.Start($"\"{WslExe}\" -d {distro} --exec sleep infinity");
     }
 
     public static bool IsHolding(string distro) =>
@@ -197,7 +201,8 @@ public static class WslService
         foreach (var name in _keepAlive.Keys.ToList())
         {
             if (distro != null && !name.Equals(distro, StringComparison.OrdinalIgnoreCase)) continue;
-            try { _keepAlive[name]?.Kill(); } catch { }
+            try { _keepAlive[name].Kill(); } catch { }
+            _keepAlive[name].Dispose();
             _keepAlive.Remove(name);
         }
     }

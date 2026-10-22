@@ -44,9 +44,15 @@ public sealed class StatusCollector : IDisposable
         !string.IsNullOrWhiteSpace(s.SyncthingUrl) ? s.SyncthingUrl.TrimEnd('/') :
         _fallbackUrl ?? _cachedUrl ?? "http://127.0.0.1:8384";
 
-    public void InvalidateCredentials() { _cachedKey = null; _cachedUrl = null; _fallbackUrl = null; _cachedDistro = null; }
+    public void InvalidateCredentials() { _cachedKey = null; _cachedUrl = null; _fallbackUrl = null; _cachedDistro = null; _configReadAt = default; }
 
-    public async Task<Snapshot> RefreshAsync(Settings s)
+    DateTime _configReadAt; // última leitura do config.xml (evita reler a cada atualização quando falha)
+
+    /// <param name="allowDistroCommands">
+    /// false quando o WSL deve poder desligar por ociosidade: nada é executado dentro da distro
+    /// (cada comando reinicia a contagem de ociosidade, ou religaria uma distro que acabou de parar).
+    /// </param>
+    public async Task<Snapshot> RefreshAsync(Settings s, bool allowDistroCommands = true)
     {
         var snap = new Snapshot();
 
@@ -74,7 +80,7 @@ public sealed class StatusCollector : IDisposable
         var distro = snap.Target.Name;
         try
         {
-            await EnsureCredentialsAsync(s, distro);
+            await EnsureCredentialsAsync(s, distro, allowDistroCommands);
             snap.Url = GuiUrl(s);
             await QuerySyncthingAsync(snap, s, snap.Url);
         }
@@ -83,6 +89,11 @@ public sealed class StatusCollector : IDisposable
             snap.St = StState.AuthError;
             snap.StError = "Acesso negado pela API (verifique a chave da API).";
             _cachedKey = null; // relê o config.xml na próxima vez
+        }
+        catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException or TimeoutException) && !allowDistroCommands)
+        {
+            snap.St = StState.Unreachable;
+            snap.StError = $"{GuiUrl(s)} não responde ({ex.Message}).";
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException)
         {
@@ -129,12 +140,16 @@ public sealed class StatusCollector : IDisposable
         catch { return false; }
     }
 
-    async Task EnsureCredentialsAsync(Settings s, string distro)
+    async Task EnsureCredentialsAsync(Settings s, string distro, bool allowDistroCommands)
     {
         if (_cachedDistro != distro) InvalidateCredentials();
         if (!string.IsNullOrWhiteSpace(s.ApiKey) && (!string.IsNullOrWhiteSpace(s.SyncthingUrl) || _cachedUrl != null))
             return;
         if (_cachedKey != null && _cachedUrl != null) return;
+        // sem chave: relê no máximo uma vez por minuto (o resultado não muda a cada atualização)
+        if (_cachedUrl != null && DateTime.Now - _configReadAt < TimeSpan.FromMinutes(1)) return;
+        if (!allowDistroCommands) { _cachedUrl ??= "http://127.0.0.1:8384"; return; }
+        _configReadAt = DateTime.Now;
 
         var xml = await WslService.ReadSyncthingConfigAsync(distro, s.SyncthingConfigPath);
         _cachedDistro = distro;
@@ -203,7 +218,7 @@ public sealed class StatusCollector : IDisposable
             if (!connected) { allConnected = false; continue; }
             var comp = await GetAsync(url, key, "/rest/db/completion?device=" + Uri.EscapeDataString(id));
             if (Num(comp, "completion", 100) < 100 || Num(comp, "needItems") > 0 || Num(comp, "needDeletes") > 0)
-                return new(false, $"enviando para {NonEmpty(Str(d, "name")) ?? id[..7]} ({Num(comp, "completion", 100):0}%)", uptime, allConnected);
+                return new(false, $"enviando para {NonEmpty(Str(d, "name")) ?? id[..Math.Min(7, id.Length)]} ({Num(comp, "completion", 100):0}%)", uptime, allConnected);
         }
 
         foreach (var f in config.GetProperty("folders").EnumerateArray())

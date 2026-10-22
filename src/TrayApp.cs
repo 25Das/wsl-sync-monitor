@@ -27,7 +27,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     public TrayApp()
     {
-        _settings = Settings.Load();
+        _settings = Settings.LoadOrDefault(out var settingsError);
         _settingsMtime = SettingsMtime();
 
         _popup = new DetailPopup(this); // cria o SynchronizationContext do WinForms
@@ -62,6 +62,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             if (e.Button == MouseButtons.Right) ShowMenu(Cursor.Position);
             else if (e.Button == MouseButtons.Left) { CloseMenu(); TogglePinned(Cursor.Position); }
         };
+        if (settingsError != null) WarnInvalidSettings(settingsError, startup: true);
         _tray.MouseDoubleClick += (_, e) => { if (e.Button == MouseButtons.Left && _snap?.St == StState.Running) OpenSyncthing(); };
 
         _widget = new TaskbarWidget(_settings);
@@ -92,7 +93,8 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         try
         {
             ReloadSettingsIfChanged();
-            var snap = await _collector.RefreshAsync(_settings);
+            // depois de soltar a distro, não executa nada dentro dela (deixa o WSL desligar por ociosidade)
+            var snap = await _collector.RefreshAsync(_settings, allowDistroCommands: _guard != GuardState.Released);
             _snap = snap;
             _tray.Icon = _icons.Render(snap);
             _tray.Text = Trim(_busyText != null ? "WSL Sync Monitor · " + _busyText : snap.ShortSummary(), 127);
@@ -115,13 +117,29 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     {
         var m = SettingsMtime();
         if (m == _settingsMtime) return;
+        var fresh = Settings.TryLoad(out var error);
+        if (fresh == null)
+        {
+            // inválido ou ainda sendo gravado: mantém as configurações atuais e tenta de novo na próxima atualização
+            if (!_settingsErrorShown) WarnInvalidSettings(error, startup: false);
+            _settingsErrorShown = true;
+            return;
+        }
         _settingsMtime = m;
-        var fresh = Settings.Load();
+        _settingsErrorShown = false;
+        if (!string.Equals(fresh.Distro, _settings.Distro, StringComparison.OrdinalIgnoreCase)) ResetGuardForDistroChange();
         // copia para a instância compartilhada com o widget
         foreach (var p in typeof(Settings).GetProperties().Where(p => p.CanWrite)) p.SetValue(_settings, p.GetValue(fresh));
         _collector.InvalidateCredentials();
         ApplySettings();
     }
+
+    bool _settingsErrorShown;
+
+    void WarnInvalidSettings(string? error, bool startup) =>
+        _tray.ShowBalloonTip(8000, "WSL Sync Monitor",
+            (startup ? "settings.json inválido; usando os padrões (cópia em settings.json.invalido). "
+                     : "settings.json inválido; as configurações atuais foram mantidas. ") + error, ToolTipIcon.Warning);
 
     void SaveSettings()
     {
@@ -477,6 +495,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     void SelectDistro(string name)
     {
+        ResetGuardForDistroChange();
         _settings.Distro = name;
         SaveSettings();
         _collector.InvalidateCredentials();
