@@ -108,6 +108,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             ReloadSettingsIfChanged();
             // depois de soltar a distro, não executa nada dentro dela (deixa o WSL desligar por ociosidade)
             var snap = await _collector.RefreshAsync(_settings, allowDistroCommands: _guard != GuardState.Released);
+            if (_snap == null)
+                Log.Info("atualização", $"primeira leitura do estado em {(DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).TotalSeconds:0.0} s " +
+                    $"(WSL: {(snap.WslError ?? (snap.WslRunning ? "ligado" : "desligado"))}, Syncthing: {snap.StStatusText})");
             _snap = snap;
             _popup.SetSnapshot(snap);
             _widget.SetSnapshot(snap);

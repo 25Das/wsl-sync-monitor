@@ -52,12 +52,12 @@ public static class WslService
     // ---- Windows encerrando a sessão ----
 
     static volatile bool _sessionEnding;
-    static readonly AsyncLocal<bool> _inShutdownSequence = new();
 
     /// <summary>
-    /// O Windows está encerrando a sessão (desligar, reiniciar, sair). A partir daí, um wsl.exe novo falha ao iniciar
-    /// ("0xc0000142") e o Windows ainda mostra uma janela de erro. Por isso só a sequência de desligamento
-    /// (<see cref="EnterShutdownSequence"/>) executa o wsl.exe; o resto (atualizações, proteção) para.
+    /// O Windows está encerrando a sessão (desligar, reiniciar, sair). A partir daí nenhum processo novo consegue
+    /// iniciar: o wsl.exe falha com "0xc0000142", e a janela de erro que o Windows mostra BLOQUEIA o desligamento
+    /// até alguém fechá-la. Por isso nada mais executa o wsl.exe; a sequência de desligamento usa só a API do
+    /// Syncthing e os pedidos ao processo de manutenção (<see cref="RequestInDistroAsync"/>), que já está rodando.
     /// </summary>
     public static bool SessionEnding
     {
@@ -65,10 +65,7 @@ public static class WslService
         set => _sessionEnding = value;
     }
 
-    /// <summary>Marca o fluxo atual (e o que ele aguarda) como a sequência de desligamento, que pode executar o wsl.exe.</summary>
-    public static void EnterShutdownSequence() => _inShutdownSequence.Value = true;
-
-    static bool Blocked => _sessionEnding && !_inShutdownSequence.Value;
+    static bool Blocked => _sessionEnding;
 
     public sealed class SessionEndingException() : InvalidOperationException("O Windows está encerrando a sessão.");
 
@@ -224,7 +221,9 @@ public static class WslService
         // Process.Start herda os handles deste processo (inclusive o do próprio .exe); como este wsl.exe
         // vive enquanto o WSL estiver ligado, o executável ficaria travado mesmo após fechar o app.
         // Por isso é criado via CreateProcess sem herança de handles.
-        _keepAlive[distro] = Native.DetachedProcess.Start($"\"{WslExe}\" -d {distro} --exec sleep infinity");
+        // mantém a distro ligada e atende pedidos (sync, parar o Syncthing) mesmo durante o desligamento do Windows
+        _keepAlive[distro] = Native.DetachedProcess.Start(
+            $"\"{WslExe}\" -d {distro} --exec sh -c \"{SyncthingScripts.ForSh(SyncthingScripts.KeepAlive)}\" {SyncthingScripts.KeepAliveMarker}");
         Log.Info("proteção", $"{distro} mantida ligada pelo app");
     }
 
@@ -244,6 +243,41 @@ public static class WslService
                 if (adopted != null) _keepAlive[distro] = adopted;
             }
         }
+    }
+
+    /// <summary>
+    /// Pede algo ao processo de manutenção da distro criando um arquivo-sinal pela rede do WSL (\\wsl.localhost),
+    /// sem iniciar processo nenhum (funciona durante o desligamento do Windows). Espera o arquivo de resposta.
+    /// false = sem processo de manutenção com pedidos (distro liberada, ou versão antiga) ou sem resposta no prazo.
+    /// </summary>
+    public static async Task<bool> RequestInDistroAsync(string distro, string request, string reply, TimeSpan timeout)
+    {
+        if (!IsHolding(distro)) return false;
+        var work = Task.Run(async () =>
+        {
+            foreach (var root in new[] { @"\\wsl.localhost\", @"\\wsl$\" })
+            {
+                var dir = root + distro + SyncthingScripts.KeepAliveDir.Replace('/', '\\');
+                try
+                {
+                    if (!Directory.Exists(dir)) continue;
+                    File.Delete(Path.Combine(dir, reply));
+                    await File.WriteAllTextAsync(Path.Combine(dir, request), "");
+                    var end = DateTime.Now + timeout;
+                    while (DateTime.Now < end)
+                    {
+                        if (File.Exists(Path.Combine(dir, reply))) return true;
+                        await Task.Delay(250);
+                    }
+                    return false;
+                }
+                catch (Exception ex) { Log.Warn("wsl", $"pedido \"{request}\" a {distro} por {root}", ex); }
+            }
+            return false;
+        });
+        // o acesso à rede do WSL pode travar: nunca espera além do prazo
+        try { return await work.WaitAsync(timeout + TimeSpan.FromSeconds(5)); }
+        catch (TimeoutException) { return false; }
     }
 
     public static bool IsHolding(string distro) =>

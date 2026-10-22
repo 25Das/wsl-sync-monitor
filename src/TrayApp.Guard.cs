@@ -255,40 +255,39 @@ public sealed partial class TrayApp
     /// </summary>
     async Task ShutdownSequenceAsync()
     {
-        WslService.EnterShutdownSequence();
         var d = _snap?.Target?.Name;
         if (d == null) return;
         var total = System.Diagnostics.Stopwatch.StartNew();
         _verifyCts?.Cancel();
 
-        Log.Info("desligamento", $"{d}: esperando a sincronização (até {_settings.ShutdownMaxWaitSeconds} s)");
-        bool synced = await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), TimeSpan.Zero, null, CancellationToken.None);
-        Log.Info("desligamento", synced ? $"{d}: sincronizado ({total.Elapsed.TotalSeconds:0} s)" : $"{d}: limite de espera atingido, seguindo");
+        if (_snap?.St == StState.Running)
+        {
+            Log.Info("desligamento", $"{d}: esperando a sincronização (até {_settings.ShutdownMaxWaitSeconds} s)");
+            // carência infinita: aqui não dá para perguntar à distro se o Syncthing existe (seria um wsl.exe novo)
+            bool synced = await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), TimeSpan.MaxValue,
+                null, CancellationToken.None);
+            Log.Info("desligamento", synced ? $"{d}: sincronizado ({total.Elapsed.TotalSeconds:0} s)" : $"{d}: limite de espera atingido, seguindo");
+        }
+        else Log.Info("desligamento", $"{d}: a API do Syncthing já não respondia ({_snap?.StStatusText}); sem espera");
 
+        bool stopped = false;
         try
         {
             await _collector.ShutdownSyncthingAsync(_settings);
-            bool down = await _collector.WaitApiDownAsync(_settings, TimeSpan.FromSeconds(30));
-            Log.Info("desligamento", down ? "Syncthing parado pela API" : "Syncthing não parou em 30 s após o pedido");
+            stopped = await _collector.WaitApiDownAsync(_settings, TimeSpan.FromSeconds(30));
+            Log.Info("desligamento", stopped ? "Syncthing parado pela API" : "Syncthing não parou em 30 s após o pedido");
         }
-        catch (Exception ex)
+        catch (Exception ex) { Log.Info("desligamento", $"a API não atendeu ao pedido de parar ({ex.Message})"); }
+        if (!stopped && await WslService.RequestInDistroAsync(d, "stop-syncthing", "stopped", TimeSpan.FromSeconds(40)))
         {
-            // sem a API (não está rodando, ou não responde): sinal de término, que também fecha o banco de dados
-            Log.Info("desligamento", $"API não atendeu ao pedido de parar ({ex.Message}); enviando SIGTERM");
-            try
-            {
-                await WslService.SignalSyncthingAsync(d);
-                await WslService.WaitProcessExitAsync(d, "syncthing", TimeSpan.FromSeconds(30));
-            }
-            catch (Exception ex2) { Log.Warn("desligamento", "parar o Syncthing por sinal", ex2); }
+            stopped = true;
+            Log.Info("desligamento", "Syncthing parado por sinal (pedido ao processo de manutenção)");
         }
 
-        try
-        {
-            await WslService.TerminateSafelyAsync(d);
-            Log.Info("desligamento", $"{d}: dados gravados e distro encerrada");
-        }
-        catch (Exception ex) { Log.Warn("desligamento", $"{d}: encerrar a distro", ex); }
+        // grava os dados em disco; a distro é encerrada pelo próprio Windows ao desligar
+        Log.Info("desligamento", await WslService.RequestInDistroAsync(d, "sync", "synced", TimeSpan.FromSeconds(30))
+            ? $"{d}: dados gravados em disco"
+            : $"{d}: sem processo de manutenção para gravar os dados (o Syncthing {(stopped ? "já fechou" : "não fechou")} o banco de dados)");
         WslService.Release();
         Log.Info("desligamento", $"sequência concluída em {total.Elapsed.TotalSeconds:0} s");
     }

@@ -191,6 +191,7 @@ public sealed class TaskbarInfo
     public Rectangle? NotifyRect;   // área de notificação (bandeja)
     public bool AutoHide;
     public bool FullscreenApp;
+    public int NotificationState; // SHQueryUserNotificationState (para o log)
     public int Dpi = 96;
 
     public bool Horizontal => Edge is TaskbarEdge.Top or TaskbarEdge.Bottom;
@@ -235,7 +236,11 @@ public sealed class TaskbarInfo
         t.ScreenBounds = (t.Hwnd != IntPtr.Zero ? Screen.FromHandle(t.Hwnd) : Screen.PrimaryScreen!).Bounds;
 
         // 2 = QUNS_BUSY (app em tela cheia), 3 = D3D tela cheia, 4 = modo apresentação
-        if (Native.SHQueryUserNotificationState(out var q) == 0) t.FullscreenApp = q is 2 or 3 or 4;
+        if (Native.SHQueryUserNotificationState(out var q) == 0)
+        {
+            t.NotificationState = (int)q;
+            t.FullscreenApp = q is 2 or 3 or 4;
+        }
         return t;
     }
 

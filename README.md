@@ -180,11 +180,12 @@ aparece na ficha técnica.
 - **Widget sobre os ícones da barra** (Windows 11 com ícones à esquerda, etc.): arraste o widget para outro ponto
   ou desative em *Widget na barra de tarefas* e use só o ícone da bandeja.
 - Apenas a barra de tarefas do monitor principal é acompanhada.
-- **"wsl.exe – Erro de aplicativo (0xc0000142)" ao desligar o Windows** (até a 1.10.5): com o Windows encerrando
-  a sessão, um `wsl.exe` novo não consegue iniciar. O app continuava atualizando o estado e tentando segurar a
-  distro depois de liberar o desligamento. Desde a 1.11.0, ao receber o aviso de desligamento ele para tudo e só
-  a sequência de desligamento executa o `wsl.exe` (o mínimo possível: o Syncthing é parado pela API). O log mostra
-  cada passo.
+- **"wsl.exe – Erro de aplicativo (0xc0000142)" ao desligar o Windows** (até a 1.11.2): depois do aviso de
+  desligamento o Windows não deixa iniciar nenhum processo, e a janela de erro **segurava o desligamento** até
+  ser fechada. Desde a 1.11.3 o app não inicia nenhum `wsl.exe` depois do aviso: espera a sincronização e para o
+  Syncthing pela API; para gravar os dados em disco (`sync`), cria um arquivo-sinal em
+  `\\wsl.localhost\<distro>\tmp\wsl-sync-monitor` que o processo de manutenção (o que já mantém a distro
+  ligada) atende. A distro é encerrada pelo próprio Windows. O log mostra cada passo.
 - **O painel mostra "em uso" sem nenhum programa aberto** (ou o contrário): a detecção usa os processos
   `wsl.exe` do Windows; algum programa pode estar mantendo uma sessão aberta na distro.
 

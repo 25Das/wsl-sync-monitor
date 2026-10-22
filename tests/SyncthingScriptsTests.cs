@@ -153,3 +153,61 @@ public sealed class LineEndingTests
         Assert.DoesNotContain('\r', SyncthingScripts.ListConfigs("/x/config.xml"));
     }
 }
+
+/// <summary>
+/// Processo que mantém a distro ligada e atende pedidos por arquivos-sinal (sync, parar o Syncthing): no
+/// desligamento do Windows não dá para criar processos, mas dá para criar arquivos em \\wsl.localhost.
+/// </summary>
+public sealed class KeepAliveScriptTests : IDisposable
+{
+    readonly string _dir = Path.Combine(Path.GetTempPath(), "wsm-ka-" + Guid.NewGuid().ToString("N")[..8]);
+    Process? _p;
+
+    public void Dispose()
+    {
+        try { _p?.Kill(true); } catch { }
+        try { Directory.Delete(_dir, true); } catch { }
+    }
+
+    void Start()
+    {
+        var psi = new ProcessStartInfo("sh");
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add(SyncthingScripts.ForSh(SyncthingScripts.KeepAlive));
+        psi.ArgumentList.Add(SyncthingScripts.KeepAliveMarker);
+        psi.ArgumentList.Add(_dir);
+        _p = Process.Start(psi)!;
+        for (int i = 0; i < 50 && !Directory.Exists(_dir); i++) Thread.Sleep(100);
+    }
+
+    static bool WaitFile(string path)
+    {
+        for (int i = 0; i < 60; i++) { if (File.Exists(path)) return true; Thread.Sleep(100); }
+        return false;
+    }
+
+    [ShFact]
+    public void Atende_o_pedido_de_sync_e_continua_rodando()
+    {
+        Start();
+        File.WriteAllText(Path.Combine(_dir, "sync"), "");
+        Assert.True(WaitFile(Path.Combine(_dir, "synced")));
+        Assert.False(File.Exists(Path.Combine(_dir, "sync"))); // pedido consumido
+        Assert.False(_p!.HasExited);
+    }
+
+    [ShFact]
+    public void Pedido_de_parar_o_syncthing_sem_ele_rodando_responde_logo()
+    {
+        Start();
+        File.WriteAllText(Path.Combine(_dir, "stop-syncthing"), "");
+        Assert.True(WaitFile(Path.Combine(_dir, "stopped")));
+    }
+
+    [Fact]
+    public void Script_cabe_numa_linha_de_comando_sem_aspas_duplas()
+    {
+        Assert.DoesNotContain('"', SyncthingScripts.KeepAlive);
+        Assert.DoesNotContain('\n', SyncthingScripts.ForSh(SyncthingScripts.KeepAlive).Trim());
+    }
+}

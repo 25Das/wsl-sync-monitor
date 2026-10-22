@@ -61,19 +61,20 @@ public sealed class ShutdownTests : IDisposable
     }
 
     [Fact]
-    public async Task Com_a_sessao_terminando_so_a_sequencia_de_desligamento_executa_o_wslexe()
+    public async Task Com_a_sessao_terminando_nada_executa_o_wslexe()
     {
+        // nem a sequência de desligamento: o processo falharia (0xc0000142) e a janela de erro travaria o desligamento
         WslService.SessionEnding = true;
-
         await Assert.ThrowsAsync<WslService.SessionEndingException>(() => WslService.RunAsync(["--version"]));
+        await Assert.ThrowsAsync<WslService.SessionEndingException>(() => Task.Run(() => WslService.RunAsync(["--version"])));
+    }
 
-        // dentro da sequência o wsl.exe é executado (no runner ele pode nem existir: só não pode ser bloqueado)
-        var inside = await Record.ExceptionAsync(() => Task.Run(async () =>
-        {
-            WslService.EnterShutdownSequence();
-            await WslService.RunAsync(["--version"], 5000);
-        }));
-        Assert.IsNotType<WslService.SessionEndingException>(inside);
+    [Fact]
+    public async Task Pedido_a_distro_sem_processo_de_manutencao_responde_logo_que_nao()
+    {
+        var start = DateTime.Now;
+        Assert.False(await WslService.RequestInDistroAsync("NaoExiste-Teste", "sync", "synced", TimeSpan.FromSeconds(10)));
+        Assert.True(DateTime.Now - start < TimeSpan.FromSeconds(2));
     }
 
     [Fact]

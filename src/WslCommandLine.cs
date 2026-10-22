@@ -46,13 +46,16 @@ public static class WslCommandLine
         return target ?? defaultDistro;
     }
 
-    /// <summary>É o processo que o app cria para segurar a distro ("wsl.exe -d X --exec sleep infinity")?</summary>
+    /// <summary>É o processo que o app cria para segurar a distro (atual, com pedidos, ou o antigo "sleep infinity")?</summary>
     public static bool IsKeepAlive(string? cmd, out string distro)
     {
         distro = "";
         if (cmd == null) return false;
         var t = Arguments(cmd);
-        if (t.Count != 5 || t[0] != "-d" || t[2] != "--exec" || t[3] != "sleep" || t[4] != "infinity") return false;
+        if (t.Count < 5 || t[0] != "-d" || t[2] != "--exec") return false;
+        bool sleeper = t.Count == 5 && t[3] == "sleep" && t[4] == "infinity";            // versões até a 1.11
+        bool withRequests = t.Count >= 6 && t[^1] == SyncthingScripts.KeepAliveMarker;    // atende pedidos (sync…)
+        if (!sleeper && !withRequests) return false;
         distro = t[1];
         return true;
     }

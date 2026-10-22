@@ -43,4 +43,12 @@ public class WslCommandLineTests
         Assert.Null(WslCommandLine.SessionTarget(null, "Padrao"));
         Assert.Null(WslCommandLine.SessionTarget(Wsl, null));
     }
+
+    [Fact]
+    public void Reconhece_o_processo_de_manutencao_com_canal_de_pedidos()
+    {
+        var cmd = $"\"C:\\Windows\\System32\\wsl.exe\" -d Ubuntu-26.04 --exec sh -c \"{SyncthingScripts.KeepAlive}\" {SyncthingScripts.KeepAliveMarker}";
+        Assert.True(WslCommandLine.IsKeepAlive(cmd, out var d));
+        Assert.Equal("Ubuntu-26.04", d);
+    }
 }

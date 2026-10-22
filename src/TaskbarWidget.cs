@@ -90,6 +90,16 @@ public sealed class TaskbarWidget : Form
     float S => (_tb?.Dpi ?? 96) / 96f;
     int P(float v) => (int)Math.Round(v * S);
 
+    static readonly DateTime AppStart = System.Diagnostics.Process.GetCurrentProcess().StartTime;
+    bool _everShown;
+
+    /// <summary>Por que o widget está oculto (vai para o log, para diagnosticar quando ele demora a aparecer).</summary>
+    static string WhyHidden(TaskbarInfo tb) =>
+        tb.Hwnd == IntPtr.Zero ? "a barra de tarefas ainda não existe (Windows iniciando?)"
+        : tb.Thickness <= 0 ? "a barra de tarefas não tem tamanho ainda"
+        : tb.FullscreenApp ? $"o Windows informa app em tela cheia ou ocupado (estado {tb.NotificationState})"
+        : "a barra de tarefas está oculta ou fora da tela";
+
     void Follow()
     {
         if (IsDisposed) return;
@@ -101,8 +111,15 @@ public sealed class TaskbarWidget : Form
         if (!show)
         {
             if (Visible) Hide();
+            if (_settings.ShowTaskbarWidget) Log.Failure("widget", "widget", "widget oculto: " + WhyHidden(tb));
             return;
         }
+        if (!_everShown)
+        {
+            _everShown = true;
+            Log.Info("widget", $"exibido {(DateTime.Now - AppStart).TotalSeconds:0.0} s após o início do app");
+        }
+        else Log.Recovered("widget", "widget", "widget exibido de novo");
 
         var size = MeasureSize(tb);
         Point loc;
