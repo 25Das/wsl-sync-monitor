@@ -100,8 +100,8 @@ public sealed class TaskbarWidget : Form
         if (_readingIcons || DateTime.Now - _iconsReadAt < TimeSpan.FromSeconds(5)) return;
         _readingIcons = true;
         _iconsReadAt = DateTime.Now;
-        var (hwnd, notify) = (tb.Hwnd, tb.NotifyRect);
-        Task.Run(() => TaskbarIcons.Read(hwnd, notify)).ContinueWith(t =>
+        var (hwnd, notify, left, cornerWidth) = (tb.Hwnd, tb.NotifyRect, tb.Rect.Left, P(200));
+        Task.Run(() => TaskbarIcons.Read(hwnd, notify, left, cornerWidth)).ContinueWith(t =>
         {
             _taskbarIcons = t.Result;
             _readingIcons = false;

@@ -66,6 +66,19 @@ public sealed partial class TrayApp
         RefreshNow();
     }
 
+    bool _launchChecked;
+
+    /// <summary>Na primeira leitura do estado: "Manter ligada (até você desligar)" liga a distro se estiver desligada.</summary>
+    void StartKeptAliveAtLaunch(Snapshot snap)
+    {
+        if (_launchChecked) return;
+        _launchChecked = true;
+        if (_keepAliveRequest is not { } k || !k.StartAtLaunch(snap.Distros.FirstOrDefault(d =>
+                d.Name.Equals(k.Distro, StringComparison.OrdinalIgnoreCase)))) return;
+        Log.Info("proteção", $"{k.Distro}: ligando ao iniciar (Manter ligada até você desligar)");
+        _ = StartDistroAsync(k.Distro);
+    }
+
     void LoadKeepAlive()
     {
         if (!string.IsNullOrWhiteSpace(_settings.KeepAliveDistro))
@@ -311,8 +324,16 @@ sealed class ShutdownWatcher : NativeWindow
     public ShutdownWatcher(Func<bool> needed, Func<Task> sequence, Func<int> timeoutSeconds)
     {
         _needed = needed; _sequence = sequence; _timeoutSeconds = timeoutSeconds;
-        // janela de nível superior invisível (janelas "message-only" não recebem WM_QUERYENDSESSION)
-        CreateHandle(new CreateParams { Caption = "WslSyncMonitor.Shutdown", Style = 0, ExStyle = Native.WS_EX_TOOLWINDOW });
+        // janela de nível superior invisível (janelas "message-only" não recebem WM_QUERYENDSESSION). Enquanto segura
+        // o desligamento, o Windows a lista na tela "Estes aplicativos estão impedindo o desligamento": com o nome
+        // e o ícone do app, para ficar claro quem está esperando e por quê
+        CreateHandle(new CreateParams { Caption = InstallPaths.AppName, Style = 0, ExStyle = Native.WS_EX_TOOLWINDOW });
+        var icon = AppIcon.Get();
+        if (icon != null)
+        {
+            Native.SendMessage(Handle, Native.WM_SETICON, (IntPtr)Native.ICON_BIG, icon.Handle);
+            Native.SendMessage(Handle, Native.WM_SETICON, (IntPtr)Native.ICON_SMALL, icon.Handle);
+        }
     }
 
     protected override void WndProc(ref Message m)

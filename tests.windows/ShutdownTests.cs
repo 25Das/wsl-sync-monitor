@@ -14,6 +14,23 @@ public sealed class ShutdownTests : IDisposable
 
     public void Dispose() => WslService.SessionEnding = false;
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder s, int max);
+
+    [Fact]
+    public void Janela_que_segura_o_desligamento_tem_o_nome_e_o_icone_do_app()
+    {
+        // é ela que o Windows lista em "Estes aplicativos estão impedindo o desligamento"
+        var w = new ShutdownWatcher(() => false, () => Task.CompletedTask, () => 10);
+        try
+        {
+            var title = new System.Text.StringBuilder(256);
+            GetWindowText(w.Handle, title, title.Capacity);
+            Assert.Equal("WSL Sync Monitor", title.ToString());
+            Assert.NotEqual(IntPtr.Zero, SendMessage(w.Handle, 0x7F /* WM_GETICON */, (IntPtr)1, IntPtr.Zero));
+        }
+        finally { w.DestroyHandle(); }
+    }
+
     static IntPtr Send(ShutdownWatcher w, int msg, long wParam, long lParam) =>
         SendMessage(w.Handle, msg, (IntPtr)wParam, (IntPtr)lParam);
 

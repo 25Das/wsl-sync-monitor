@@ -93,3 +93,25 @@ public class GuardRulesTests
         Assert.True(forever.Persist);
     }
 }
+
+public class KeepAliveAtLaunchTests
+{
+    [Fact]
+    public void Ate_voce_desligar_liga_a_distro_ao_iniciar_o_app() =>
+        Assert.True(KeepAliveRequest.UntilStopped("Ubuntu").StartAtLaunch(new DistroInfo("Ubuntu", false, 2, true)));
+
+    [Fact]
+    public void Ja_ligada_nao_precisa() =>
+        Assert.False(KeepAliveRequest.UntilStopped("Ubuntu").StartAtLaunch(new DistroInfo("Ubuntu", true, 2, true)));
+
+    [Fact]
+    public void Distro_que_nao_existe_mais_nao_liga_nada()
+    {
+        Assert.False(KeepAliveRequest.UntilStopped("Ubuntu").StartAtLaunch(null));
+        Assert.False(KeepAliveRequest.UntilStopped("Ubuntu").StartAtLaunch(new DistroInfo("Debian", false, 2, true)));
+    }
+
+    [Fact]
+    public void Pedido_por_tempo_nao_vale_depois_de_reiniciar_o_app() =>
+        Assert.False(KeepAliveRequest.For("Ubuntu", TimeSpan.FromHours(1), DateTime.Now).StartAtLaunch(new DistroInfo("Ubuntu", false, 2, true)));
+}

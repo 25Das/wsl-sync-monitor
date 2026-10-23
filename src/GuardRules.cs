@@ -58,4 +58,8 @@ public sealed record KeepAliveRequest(string Distro, DateTime? Until)
 
     /// <summary>Só "até você desligar" é salvo nas configurações (vale depois de reiniciar o app).</summary>
     public bool Persist => Until == null;
+
+    /// <summary>Ao abrir o app: "até você desligar" liga a distro se ela estiver desligada (é o que o pedido quer dizer).</summary>
+    public bool StartAtLaunch(DistroInfo? distro) =>
+        Persist && distro is { Running: false } d && d.Name.Equals(Distro, StringComparison.OrdinalIgnoreCase);
 }

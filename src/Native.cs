@@ -132,7 +132,8 @@ static class Native
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool ShutdownBlockReasonCreate(IntPtr hWnd, string reason);
     [DllImport("user32.dll")] public static extern bool ShutdownBlockReasonDestroy(IntPtr hWnd);
     [DllImport("kernel32.dll")] public static extern bool SetProcessShutdownParameters(uint level, uint flags);
-    public const int WM_QUERYENDSESSION = 0x11, WM_ENDSESSION = 0x16;
+    public const int WM_QUERYENDSESSION = 0x11, WM_ENDSESSION = 0x16, WM_SETICON = 0x80, ICON_SMALL = 0, ICON_BIG = 1;
+    [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     public static readonly IntPtr HWND_TOPMOST = new(-1);
     public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
@@ -316,8 +317,17 @@ public static class Theme
 /// </summary>
 static class TaskbarIcons
 {
-    /// <summary>Intervalos horizontais ocupados (fora da bandeja), ou null se não deu para ler.</summary>
-    public static List<(int Start, int End)>? Read(IntPtr taskbar, Rectangle? notify)
+    static int? ExplorerSetting(string name)
+    {
+        using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
+        return k?.GetValue(name) is int v ? v : null;
+    }
+
+    /// <summary>
+    /// Intervalos horizontais ocupados (fora da bandeja), ou null se não deu para ler. Inclui o canto do botão
+    /// Widgets do Windows 11 (<paramref name="cornerWidth"/> a partir de <paramref name="left"/>) quando ele existe.
+    /// </summary>
+    public static List<(int Start, int End)>? Read(IntPtr taskbar, Rectangle? notify, int left, int cornerWidth)
     {
         if (taskbar == IntPtr.Zero) return null;
         try
@@ -334,6 +344,9 @@ static class TaskbarIcons
                 if (notify is { } n && r.Left >= n.Left - 1) continue; // bandeja e relógio
                 list.Add(((int)r.Left, (int)Math.Ceiling(r.Right)));
             }
+            if (WidgetPlacement.WidgetsCornerReserved(Environment.OSVersion.Version.Build,
+                    ExplorerSetting("TaskbarAl"), ExplorerSetting("TaskbarDa")))
+                list.Add((left, left + cornerWidth));
             return list;
         }
         catch (Exception ex)

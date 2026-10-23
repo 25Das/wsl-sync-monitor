@@ -118,6 +118,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
                     $"(WSL: {(snap.WslError ?? (snap.WslRunning ? "ligado" : "desligado"))}, Syncthing: {snap.StStatusText})");
             _snap = snap;
             StartupHealthCheck(snap);
+            StartKeptAliveAtLaunch(snap);
             _popup.SetSnapshot(snap);
             _widget.SetSnapshot(snap);
             GuardTick();

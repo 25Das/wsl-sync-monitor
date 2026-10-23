@@ -38,3 +38,16 @@ public class WidgetPlacementTests
     public void Deslocamento_que_cairia_sobre_os_icones_nao_conta() =>
         Assert.Equal(1700 - 150 - 6, WidgetPlacement.ChooseX(0, 1700, [(700, 1500)], 150, 6, offset: 300));
 }
+
+public class TaskbarCornerTests
+{
+    // Windows 11: TaskbarAl 0 = ícones à esquerda, 1 (ou ausente) = centralizados; TaskbarDa 0 = sem Widgets
+    [Theory]
+    [InlineData(22631, null, null, true)]  // padrão do Windows 11: centralizado e com Widgets no canto
+    [InlineData(26100, 1, 1, true)]
+    [InlineData(26100, 1, 0, false)]       // Widgets desligado
+    [InlineData(26100, 0, 1, false)]       // ícones à esquerda: o botão Widgets fica junto deles
+    [InlineData(19045, null, null, false)] // Windows 10: não há esse canto
+    public void Canto_do_botao_Widgets(int build, int? alignment, int? widgets, bool reserved) =>
+        Assert.Equal(reserved, WidgetPlacement.WidgetsCornerReserved(build, alignment, widgets));
+}

@@ -52,7 +52,8 @@ Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 atualizadas*, *Disposi
 
 **Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas atualizadas / dispositivos
 conectados). Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
-junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado.
+junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado, sem ocupar o canto
+do botão Widgets (clima) do Windows 11. Com a barra que se oculta sozinha, o widget aparece e some junto com ela.
 
 **Verificação de pastas e dispositivos:** ao iniciar, assim que o Syncthing responde e teve tempo de conectar,
 o app procura pastas com erro, fora de sincronia ou pausadas e dispositivos pausados, que nunca conectaram ou
@@ -102,7 +103,8 @@ Operações que encerram, reiniciam ou alteram algo pedem confirmação.
 
 Com só o app aberto, a distro é solta depois de sincronizar e o WSL desliga por ociosidade. Para usar a
 distro sem nenhum programa aberto nela (por exemplo, serviços em segundo plano), use **WSL ▸ distro ▸ Manter
-ligada**: *até eu desligar* (vale também depois de reiniciar o app), *por 1 hora* ou *por 4 horas*. Ao acabar,
+ligada**: *até eu desligar* (vale também depois de reiniciar o app, que liga a distro ao abrir se ela estiver
+desligada), *por 1 hora* ou *por 4 horas*. Ao acabar,
 o app espera a sincronização e solta a distro normalmente. Encerrar a distro cancela o pedido.
 
 ## Proteção da sincronização

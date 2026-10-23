@@ -7,6 +7,14 @@ namespace WslSyncMonitor;
 /// </summary>
 public static class WidgetPlacement
 {
+    /// <summary>
+    /// Windows 11 com os ícones centralizados mostra o botão Widgets (clima) no canto esquerdo, e nem sempre a
+    /// automação de interface o enxerga: o canto fica reservado. Valores do registro Explorer\Advanced:
+    /// TaskbarAl (0 = ícones à esquerda) e TaskbarDa (0 = Widgets desligado); ausentes = padrão (centralizado, ligado).
+    /// </summary>
+    public static bool WidgetsCornerReserved(int windowsBuild, int? taskbarAlignment, int? widgetsButton) =>
+        windowsBuild >= 22000 && taskbarAlignment != 0 && widgetsButton != 0;
+
     /// <param name="left">início da barra</param>
     /// <param name="right">início da bandeja (o widget fica à esquerda dela)</param>
     /// <param name="icons">intervalos [início, fim) ocupados pelos ícones da barra (botão Iniciar, apps, clima…)</param>
