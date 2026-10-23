@@ -147,40 +147,40 @@ public class SyncthingActivityTests
     }
 
     [Fact]
-    public void Eventos_que_nao_interessam_nao_acordam_quem_espera()
+    public async Task Eventos_que_nao_interessam_nao_acordam_quem_espera()
     {
         var a = new SyncthingActivity(Linger);
         var wait = a.WaitForChangeAsync(a.Version, TimeSpan.FromSeconds(5), CancellationToken.None);
         Assert.False(a.Apply([Event("Ping", "{}")], T0));
         Assert.False(wait.IsCompleted);
         Assert.True(a.Apply(Range("vm", 33, 33), T0)); // StateChanged
-        Assert.True(wait.Wait(TimeSpan.FromSeconds(1)));
+        await wait.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
     [Fact]
-    public void Espera_por_mudanca_termina_no_prazo_sem_eventos()
+    public async Task Espera_por_mudanca_termina_no_prazo_sem_eventos()
     {
         var a = new SyncthingActivity(Linger);
-        Assert.True(a.WaitForChangeAsync(a.Version, TimeSpan.FromMilliseconds(50), CancellationToken.None).Wait(TimeSpan.FromSeconds(2)));
+        await a.WaitForChangeAsync(a.Version, TimeSpan.FromMilliseconds(50), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     [Fact]
-    public void Mudanca_entre_conferir_e_comecar_a_esperar_nao_se_perde()
+    public async Task Mudanca_entre_conferir_e_comecar_a_esperar_nao_se_perde()
     {
         var a = new SyncthingActivity(Linger);
         long seen = a.Version;              // antes de conferir
         a.Apply(Range("vm", 33, 33), T0);   // chega enquanto confere
-        Assert.True(a.WaitForChangeAsync(seen, TimeSpan.FromSeconds(30), CancellationToken.None).Wait(TimeSpan.FromSeconds(1)));
+        await a.WaitForChangeAsync(seen, TimeSpan.FromSeconds(30), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(1));
     }
 
     [Fact]
-    public void Espera_cancelada_avisa_o_cancelamento()
+    public async Task Espera_cancelada_avisa_o_cancelamento()
     {
         var a = new SyncthingActivity(Linger);
         using var cts = new CancellationTokenSource();
         var wait = a.WaitForChangeAsync(a.Version, TimeSpan.FromSeconds(30), cts.Token);
         cts.Cancel();
-        Assert.Throws<AggregateException>(() => wait.Wait(TimeSpan.FromSeconds(1)));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => wait.WaitAsync(TimeSpan.FromSeconds(1)));
         Assert.True(wait.IsCanceled);
     }
 
