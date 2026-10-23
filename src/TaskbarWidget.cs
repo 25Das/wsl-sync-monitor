@@ -108,6 +108,27 @@ public sealed class TaskbarWidget : Form
         }, TaskScheduler.Default);
     }
 
+    bool _hiddenLogged;
+
+    /// <summary>
+    /// Onde estava o mouse quando o widget sumiu: com a barra que se oculta sozinha, o Windows pode recolhê-la
+    /// quando o mouse está sobre o widget (uma janela por cima dela), e o widget some e volta em ciclo.
+    /// </summary>
+    string HideContext(TaskbarInfo tb)
+    {
+        if (!tb.AutoHide) return "";
+        try
+        {
+            var cur = Cursor.Position;
+            var under = Native.WindowFromPoint(cur);
+            var cls = new System.Text.StringBuilder(64);
+            _ = Native.GetClassName(under, cls, cls.Capacity);
+            return $" · auto-ocultar; mouse em {cur.X},{cur.Y} ({(Bounds.Contains(cur) ? "sobre o widget" : "fora do widget")}," +
+                   $" janela sob o mouse: {(under == Handle ? "o widget" : cls.ToString())}); barra {tb.Rect}";
+        }
+        catch { return ""; }
+    }
+
     static readonly DateTime AppStart = System.Diagnostics.Process.GetCurrentProcess().StartTime;
     bool _everShown;
 
@@ -128,16 +149,15 @@ public sealed class TaskbarWidget : Form
         bool show = _settings.ShowTaskbarWidget && tb.FullyShown && !tb.FullscreenApp && tb.Thickness > 0;
         if (!show)
         {
+            if (_settings.ShowTaskbarWidget && (Visible || !_hiddenLogged))
+                Log.Info("widget", "oculto: " + WhyHidden(tb) + HideContext(tb)); // só na mudança (aparecido → oculto)
+            _hiddenLogged = true;
             if (Visible) Hide();
-            if (_settings.ShowTaskbarWidget) Log.Failure("widget", "widget", "widget oculto: " + WhyHidden(tb));
             return;
         }
-        if (!_everShown)
-        {
-            _everShown = true;
-            Log.Info("widget", $"exibido {(DateTime.Now - AppStart).TotalSeconds:0.0} s após o início do app");
-        }
-        else Log.Recovered("widget", "widget", "widget exibido de novo");
+        if (!Visible)
+            Log.Info("widget", _everShown ? "exibido" : $"exibido {(DateTime.Now - AppStart).TotalSeconds:0.0} s após o início do app");
+        _everShown = true;
 
         var size = MeasureSize(tb);
         Point loc;
