@@ -42,6 +42,7 @@ public sealed partial class TrayApp
         _idleTicks = 0;
         SetGuardText(null);
         _collector.InvalidateCredentials();
+        RestartEvents();
     }
 
     // ---- Manter ligada ----
@@ -171,6 +172,7 @@ public sealed partial class TrayApp
         bool checkedProcess = false;
         while (DateTime.Now < end && !ct.IsCancellationRequested)
         {
+            long seen = _activity.Version; // antes de conferir: um evento durante a conferência acorda a espera abaixo
             try
             {
                 if (!scanned) { await _collector.ScanAllAsync(_settings); scanned = true; }
@@ -211,7 +213,7 @@ public sealed partial class TrayApp
                 // confere de novo quando um evento do Syncthing muda algo (ou a cada 2 s, sem eventos); num sync
                 // grande, com muitos eventos, no máximo ~3 conferências por segundo
                 await Task.Delay(300, ct);
-                await _activity.WaitForChangeAsync(TimeSpan.FromMilliseconds(1700), ct);
+                await _activity.WaitForChangeAsync(seen, TimeSpan.FromMilliseconds(1700), ct);
             }
             catch (OperationCanceledException) { break; }
         }

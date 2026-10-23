@@ -8,7 +8,7 @@ namespace WslSyncMonitor;
 /// <summary>Coleta o estado do WSL e do Syncthing (REST API) e monta um <see cref="Snapshot"/>.</summary>
 public sealed class StatusCollector : IDisposable
 {
-    readonly HttpClient _http;
+    readonly HttpClient _http = SyncthingHttp.Create(TimeSpan.FromSeconds(4));
 
     // credenciais descobertas no config.xml (por distro)
     string? _cachedDistro, _cachedKey, _cachedUrl;
@@ -16,26 +16,6 @@ public sealed class StatusCollector : IDisposable
 
     // para cálculo de taxa de transferência
     readonly TransferRates _rates = new();
-
-    public StatusCollector()
-    {
-        var handler = new HttpClientHandler
-        {
-            // GUI com HTTPS usa certificado autoassinado; só aceitamos para endereços locais/WSL.
-            ServerCertificateCustomValidationCallback = (req, _, _, errors) =>
-                errors == System.Net.Security.SslPolicyErrors.None || IsLocal(req.RequestUri),
-            UseProxy = false,
-        };
-        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(4) };
-    }
-
-    static bool IsLocal(Uri? u) => u != null && (u.IsLoopback || (IPAddress.TryParse(u.Host, out var ip) && IsPrivate(ip)));
-
-    static bool IsPrivate(IPAddress ip)
-    {
-        var b = ip.GetAddressBytes();
-        return b.Length == 4 && (b[0] == 10 || (b[0] == 172 && b[1] >= 16 && b[1] < 32) || (b[0] == 192 && b[1] == 168));
-    }
 
     /// <summary>URL atual da GUI (para o botão "Abrir Syncthing").</summary>
     public string GuiUrl(Settings s) =>
@@ -213,7 +193,6 @@ public sealed class StatusCollector : IDisposable
 
     const string SeeTechInfo = " Detalhes: menu → Informações técnicas.";
 
-    /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>
     /// <summary>Endereço e chave da API (para o fluxo de eventos, que tem conexão própria).</summary>
     public (string Url, string Key) ApiAccess(Settings s) => (GuiUrl(s), ApiKey(s));
 

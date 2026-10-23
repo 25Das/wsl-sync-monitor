@@ -150,10 +150,10 @@ public class SyncthingActivityTests
     public void Eventos_que_nao_interessam_nao_acordam_quem_espera()
     {
         var a = new SyncthingActivity(Linger);
-        var wait = a.WaitForChangeAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
-        a.Apply([Event("Ping", "{}")], T0);
+        var wait = a.WaitForChangeAsync(a.Version, TimeSpan.FromSeconds(5), CancellationToken.None);
+        Assert.False(a.Apply([Event("Ping", "{}")], T0));
         Assert.False(wait.IsCompleted);
-        a.Apply(Range("vm", 33, 33), T0); // StateChanged
+        Assert.True(a.Apply(Range("vm", 33, 33), T0)); // StateChanged
         Assert.True(wait.Wait(TimeSpan.FromSeconds(1)));
     }
 
@@ -161,7 +161,79 @@ public class SyncthingActivityTests
     public void Espera_por_mudanca_termina_no_prazo_sem_eventos()
     {
         var a = new SyncthingActivity(Linger);
-        Assert.True(a.WaitForChangeAsync(TimeSpan.FromMilliseconds(50), CancellationToken.None).Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(a.WaitForChangeAsync(a.Version, TimeSpan.FromMilliseconds(50), CancellationToken.None).Wait(TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
+    public void Mudanca_entre_conferir_e_comecar_a_esperar_nao_se_perde()
+    {
+        var a = new SyncthingActivity(Linger);
+        long seen = a.Version;              // antes de conferir
+        a.Apply(Range("vm", 33, 33), T0);   // chega enquanto confere
+        Assert.True(a.WaitForChangeAsync(seen, TimeSpan.FromSeconds(30), CancellationToken.None).Wait(TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void Espera_cancelada_avisa_o_cancelamento()
+    {
+        var a = new SyncthingActivity(Linger);
+        using var cts = new CancellationTokenSource();
+        var wait = a.WaitForChangeAsync(a.Version, TimeSpan.FromSeconds(30), cts.Token);
+        cts.Cancel();
+        Assert.Throws<AggregateException>(() => wait.Wait(TimeSpan.FromSeconds(1)));
+        Assert.True(wait.IsCanceled);
+    }
+
+    [Fact]
+    public void Dispositivo_nao_parece_em_dia_enquanto_outra_pasta_ainda_falta()
+    {
+        var a = new SyncthingActivity(Linger);
+        var basis = TwoFolders(T0.AddSeconds(-1), completion: 80, needBytes: 2_000_000_000); // a pasta "b" está atrasada
+        a.Apply([Completion("a", 100, 0)], T0);
+
+        var d = a.Overlay(basis, T0.AddSeconds(Linger.TotalSeconds + 1)).Devices[0];
+
+        Assert.Equal((80, 2_000_000_000L), (d.Completion, d.NeedBytes));
+    }
+
+    [Fact]
+    public void Dispositivo_atrasa_na_hora_quando_uma_pasta_fica_para_tras()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Completion("a", 50, 1000)], T0);
+        var d = a.Overlay(TwoFolders(T0.AddSeconds(-1), completion: 100, needBytes: 0), T0).Devices[0];
+        Assert.Equal((50, 1000L), (d.Completion, d.NeedBytes));
+    }
+
+    [Fact]
+    public void Dispositivo_em_dia_quando_todas_as_pastas_dele_chegaram_a_100()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Completion("b", 100, 0)], T0.AddSeconds(-5)); // antes da leitura completa, mas ainda é o último de "b"
+        a.Apply([Completion("a", 100, 0)], T0);
+        var d = a.Overlay(TwoFolders(T0.AddSeconds(-1), completion: 80, needBytes: 2048), T0).Devices[0];
+        Assert.Equal((100, 0L), (d.Completion, d.NeedBytes));
+    }
+
+    [Fact]
+    public void Arquivos_que_ja_sairam_da_tela_sao_esquecidos()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply(Range("vm", 43, 61), T0);
+        Assert.True(a.TrackedFiles > 0);
+        a.Apply([Event("Ping", "{}")], T0 + Linger + TimeSpan.FromSeconds(1));
+        Assert.Equal(0, a.TrackedFiles);
+    }
+
+    [Fact]
+    public void Arquivo_cujo_fim_nao_chegou_some_quando_a_pasta_para()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("ItemStarted", """{"folder":"claude","item":"perdido.txt","type":"file","action":"update"}"""),
+                 Event("StateChanged", """{"folder":"claude","from":"syncing","to":"idle"}"""),
+                 Event("StateChanged", """{"folder":"claude","from":"idle","to":"syncing"}""")], T0);
+        Assert.Null(a.Overlay(Base(Trabalho, T0.AddSeconds(-1)), T0).Folders[0].CurrentItem);
+        Assert.Equal(0, a.TrackedFiles);
     }
 
     [Fact]
@@ -179,6 +251,23 @@ public class SyncthingActivityTests
         a.Apply(events, at);
         return a;
     }
+
+    /// <summary>Duas pastas compartilhadas com a "trabalho", que na leitura completa estava com <paramref name="completion"/>.</summary>
+    static Snapshot TwoFolders(DateTime at, double completion, long needBytes)
+    {
+        var s = Base(Trabalho, at);
+        s.AllFolders.Clear();
+        s.Folders.Clear();
+        foreach (var id in new[] { "a", "b" })
+            s.Folders.Add(new FolderInfo { Id = id, Label = id, State = "idle", SharedWith = 1, DeviceIds = [Trabalho] });
+        s.AllFolders.AddRange(s.Folders);
+        s.Devices[0].Completion = completion;
+        s.Devices[0].NeedBytes = needBytes;
+        return s;
+    }
+
+    static JsonElement Completion(string folder, double completion, long needBytes) =>
+        Event("FolderCompletion", $$"""{"folder":"{{folder}}","device":"{{Trabalho}}","completion":{{completion}},"needBytes":{{needBytes}},"globalBytes":4096}""");
 
     static JsonElement Event(string type, string data) =>
         JsonDocument.Parse($$"""{"id":1,"type":"{{type}}","time":"2026-10-23T19:00:00Z","data":{{data}}}""").RootElement.Clone();

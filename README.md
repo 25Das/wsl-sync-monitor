@@ -57,6 +57,10 @@ do botão Widgets (clima) do Windows 11. O widget fica **dentro** da barra (é u
 visível com o menu Iniciar aberto e, com a barra que se oculta sozinha, desliza junto com ela. Se der problema no
 seu Windows, `WidgetInsideTaskbar: false` volta ao modo antigo (uma janela por cima da barra).
 
+**Atividade em tempo real:** um sync pequeno dura uma fração de segundo. Painel, widget e ícone acompanham o
+fluxo de eventos do Syncthing e mostram na hora *Sincronizando relatorio.md…* e, por alguns segundos depois,
+*Sincronizado agora · 5 arquivos* (na pasta) e *Sincronizado agora* (no dispositivo que enviou ou recebeu).
+
 **Verificação de pastas e dispositivos:** ao iniciar, assim que o Syncthing responde e teve tempo de conectar,
 o app procura pastas com erro, fora de sincronia ou pausadas e dispositivos pausados, que nunca conectaram ou
 que não conectam há mais de 7 dias (`DeviceStaleDays`), e avisa numa notificação só se encontrar algo (com o
@@ -209,6 +213,10 @@ aparece na ficha técnica.
   snap; outro local pela configuração `SyncthingConfigPath`) para descobrir a chave da API e a porta da GUI, e
   consulta a REST API em `http://127.0.0.1:<porta>` (encaminhamento de localhost do WSL 2). Se localhost não
   responder, tenta o IP da VM. Depois que a distro é liberada para desligar, nada é executado dentro dela.
+- O estado completo é lido periodicamente; entre uma leitura e outra, o fluxo de eventos do Syncthing
+  (`/rest/events`, um pedido que fica aberto até haver novidade) traz na hora mudanças de estado das pastas,
+  arquivos sincronizados e conexões de dispositivos. A espera pela sincronização (ao liberar a distro, ao sair e
+  ao desligar) também reage a esses eventos em vez de conferir a cada 2 s.
 
 ## Roadmap
 
@@ -252,3 +260,6 @@ a cada push; sem testes passando não há build nem release. Para publicar uma v
   com `WSM_E2E=1`, para não atrapalhar quem roda os testes no próprio PC.
 - **Testes de regras também no Windows:** os testes de `tests/` rodam nas duas plataformas (os que executam o
   `sh` do Linux, marcados com `[ShFact]`, só no Linux).
+- **Testes com o Syncthing de verdade** (`[SyncthingFact]`): com o `syncthing` no PATH (no CI do Linux ele é
+  instalado e esses testes nunca são pulados), cada teste sobe uma instância temporária em portas livres e confere
+  o fluxo de eventos de ponta a ponta.

@@ -138,9 +138,10 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
 
     /// <summary>Ícone e texto da bandeja a partir do estado (regras em <see cref="TrayIconModel"/>).</summary>
-    void UpdateTrayIcon()
+    void UpdateTrayIcon() => UpdateTrayIcon(Display);
+
+    void UpdateTrayIcon(Snapshot? shown)
     {
-        var shown = Display;
         var kept = shown?.Target is { } t && IsKeptAlive(t.Name);
         _tray.Icon = _icons.Render(TrayIconModel.From(shown, kept, _updater.Available != null));
         _tray.Text = _busyText != null
@@ -170,7 +171,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
                              fresh.SyncthingConfigPath != _settings.SyncthingConfigPath;
         // copia para a instância compartilhada com o widget
         foreach (var p in typeof(Settings).GetProperties().Where(p => p.CanWrite)) p.SetValue(_settings, p.GetValue(fresh));
-        if (accessChanged) _collector.InvalidateCredentials();
+        if (accessChanged) { _collector.InvalidateCredentials(); RestartEvents(); }
         ApplySettings();
     }
 

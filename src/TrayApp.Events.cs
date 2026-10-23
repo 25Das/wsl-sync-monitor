@@ -13,11 +13,14 @@ public sealed partial class TrayApp
     static readonly TimeSpan ActivityLinger = TimeSpan.FromSeconds(5);
 
     readonly SyncthingActivity _activity = new(ActivityLinger);
-    readonly HttpClient _eventsHttp = new() { Timeout = SyncthingEvents.LongPoll + TimeSpan.FromSeconds(30) };
+    readonly HttpClient _eventsHttp = SyncthingHttp.Create(SyncthingEvents.LongPoll + TimeSpan.FromSeconds(30));
     readonly CancellationTokenSource _eventsCts = new();
     readonly System.Windows.Forms.Timer _lingerTimer = new();
+    readonly object _eventsLock = new();
     SynchronizationContext _ui = null!;
-    TaskCompletionSource _syncthingUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>Endereço e chave da API, lidos na thread da interface quando a leitura completa vê o Syncthing respondendo.</summary>
+    TaskCompletionSource<(string Url, string Key)> _syncthingUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    CancellationTokenSource? _eventsConnection;
     FileChangeWatcher? _settingsWatcher;
 
     /// <summary>O que painel, widget e ícone mostram: a leitura completa mais a atividade em tempo real.</summary>
@@ -42,37 +45,74 @@ public sealed partial class TrayApp
     /// <summary>A leitura completa diz se o Syncthing está respondendo: é quando o fluxo de eventos pode começar.</summary>
     void SetSyncthingUp(bool up)
     {
-        if (up) _syncthingUp.TrySetResult();
-        else if (_syncthingUp.Task.IsCompleted) _syncthingUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (_eventsLock)
+        {
+            if (up) { if (!_syncthingUp.Task.IsCompleted) _syncthingUp.TrySetResult(_collector.ApiAccess(_settings)); }
+            else if (_syncthingUp.Task.IsCompleted) _syncthingUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
+    /// <summary>Distro, endereço ou chave mudaram: o fluxo recomeça com o novo acesso quando a leitura completa confirmar.</summary>
+    void RestartEvents()
+    {
+        lock (_eventsLock)
+        {
+            if (_syncthingUp.Task.IsCompleted) _syncthingUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _eventsConnection?.Cancel();
+        }
     }
 
     async Task EventsLoopAsync()
     {
         var stream = new SyncthingEvents(_eventsHttp);
-        var ct = _eventsCts.Token;
-        while (!ct.IsCancellationRequested)
+        var stop = _eventsCts.Token;
+        int failures = 0;
+        while (!stop.IsCancellationRequested)
         {
+            Task<(string Url, string Key)> up;
+            lock (_eventsLock) up = _syncthingUp.Task;
+            (string Url, string Key) access;
+            try { access = await up.WaitAsync(stop).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+
+            CancellationTokenSource connection;
+            lock (_eventsLock)
+            {
+                if (up != _syncthingUp.Task) continue; // o acesso mudou enquanto esperava
+                _eventsConnection = connection = CancellationTokenSource.CreateLinkedTokenSource(stop);
+            }
+            bool received = false;
             try
             {
-                await _syncthingUp.Task.WaitAsync(ct).ConfigureAwait(false);
-                var (url, key) = _collector.ApiAccess(_settings);
-                await stream.RunAsync(url, key, OnEvents, ct).ConfigureAwait(false);
+                await stream.RunAsync(access.Url, access.Key, events => { received = true; OnEvents(events); }, connection.Token)
+                    .ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+            catch (OperationCanceledException) when (connection.IsCancellationRequested)
+            {
+                _activity.Reset(); // saindo, ou o acesso mudou: o que veio do Syncthing anterior não vale mais
+                continue;
+            }
             catch (Exception ex) { Log.Failure("syncthing", "eventos", "fluxo de eventos interrompido: " + ex.Message); }
+            finally
+            {
+                lock (_eventsLock) _eventsConnection = null;
+                connection.Dispose();
+            }
 
-            // caiu: o Syncthing parou ou reiniciou? A leitura completa confere na hora (antes, até o próximo ciclo)
+            // caiu: o Syncthing parou ou reiniciou? A leitura completa confere na hora (antes, até o próximo ciclo).
+            // Falhando seguidas vezes (ex.: um proxy reverso que recusa o fluxo), espera cada vez mais.
+            failures = received ? 1 : failures + 1;
             _activity.Reset();
             _ui.Post(_ => { SetSyncthingUp(false); _ = RefreshAsync(); }, null);
-            try { await Task.Delay(2000, ct).ConfigureAwait(false); } catch (OperationCanceledException) { return; }
+            try { await Task.Delay(SyncthingEvents.RetryDelay(failures), stop).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
         }
     }
 
     void OnEvents(IReadOnlyList<JsonElement> events)
     {
-        _activity.Apply(events, DateTime.Now);
         Log.Recovered("syncthing", "eventos", "fluxo de eventos do Syncthing conectado");
-        _ui.Post(_ => ShowState(), null);
+        if (_activity.Apply(events, DateTime.Now)) _ui.Post(_ => ShowState(), null); // só redesenha se algo mudou
     }
 
     /// <summary>Mostra o estado atual (leitura completa + tempo real) e agenda o fim do aviso de atividade recente.</summary>
@@ -81,7 +121,7 @@ public sealed partial class TrayApp
         if (Display is not { } shown) return;
         _popup.SetSnapshot(shown);
         _widget.SetSnapshot(shown);
-        UpdateTrayIcon();
+        UpdateTrayIcon(shown);
         _lingerTimer.Stop();
         if (_activity.NextExpiry(DateTime.Now) is { } next)
         {

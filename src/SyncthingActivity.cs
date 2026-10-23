@@ -19,6 +19,7 @@ public sealed class SyncthingActivity
     readonly Dictionary<string, DeviceLive> _devices = new();
     TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     long _seq; // ordem de chegada (eventos do mesmo lote chegam no mesmo instante)
+    long _version; // muda a cada lote que altera algo (quem espera compara com o que já viu)
 
     sealed class FolderLive
     {
@@ -42,17 +43,33 @@ public sealed class SyncthingActivity
 
     public SyncthingActivity(TimeSpan linger) => _linger = linger;
 
-    /// <summary>Aplica um lote de eventos chegados em <paramref name="now"/>; acorda quem espera mudança.</summary>
-    public void Apply(IEnumerable<JsonElement> events, DateTime now)
+    /// <summary>
+    /// Aplica um lote de eventos chegados em <paramref name="now"/>; se algum muda pastas ou dispositivos, acorda quem
+    /// espera mudança e devolve true (vale redesenhar).
+    /// </summary>
+    public bool Apply(IEnumerable<JsonElement> events, DateTime now)
     {
         bool relevant = false;
         lock (_lock)
         {
             foreach (var e in events)
                 relevant |= ApplyOne(SyncthingApi.Str(e, "type") ?? "", e.TryGetProperty("data", out var d) ? d : default, now);
+            Prune(now);
         }
         if (relevant) Signal();
+        return relevant;
     }
+
+    /// <summary>Esquece arquivos que já saíram da tela (o app fica aberto por semanas: a lista não pode só crescer).</summary>
+    void Prune(DateTime now)
+    {
+        foreach (var f in _folders.Values)
+            foreach (var old in f.Recent.Where(p => now - p.Value >= _linger).Select(p => p.Key).ToList())
+                f.Recent.Remove(old);
+    }
+
+    /// <summary>Quantos arquivos estão sendo lembrados (em andamento ou recentes).</summary>
+    internal int TrackedFiles { get { lock (_lock) return _folders.Values.Sum(f => f.InProgress.Count + f.Recent.Count); } }
 
     bool ApplyOne(string type, JsonElement d, DateTime now)
     {
@@ -65,6 +82,7 @@ public sealed class SyncthingActivity
                 f.State = SyncthingApi.Str(d, "to");
                 f.StateAt = now;
                 f.StateSeq = seq;
+                if (f.State != "syncing") f.InProgress.Clear(); // parou: nada mais está baixando (mesmo se um ItemFinished se perdeu)
                 return true;
             case "ItemStarted":
                 Folder(folder).InProgress[SyncthingApi.Str(d, "item") ?? ""] = seq;
@@ -135,16 +153,32 @@ public sealed class SyncthingActivity
             {
                 if (!_devices.TryGetValue(di.Id, out var d)) continue;
                 if (d.Connected is { } connected && d.ConnectedAt >= basis.Time) di.Connected = connected;
-                var newer = d.Completion.Values.Where(c => c.At >= basis.Time).ToList();
-                if (newer.Count > 0)
-                {
-                    di.Completion = newer.Min(c => c.Completion);
-                    di.NeedBytes = (long)newer.Sum(c => c.NeedBytes);
-                }
+                ApplyCompletion(di, d, s, basis.Time);
                 di.RecentActivity = now - d.LastActivity < _linger;
             }
         }
         return s;
+    }
+
+    /// <summary>
+    /// Andamento do dispositivo: a leitura completa traz o total de todas as pastas; os eventos, o de cada pasta. Com o
+    /// último evento de todas as pastas dele, o total sai dos eventos; senão, os eventos só podem atrasá-lo (uma pasta
+    /// em dia não diz nada das outras, que podem estar faltando).
+    /// </summary>
+    static void ApplyCompletion(DeviceInfo di, DeviceLive d, Snapshot s, DateTime basisTime)
+    {
+        if (!d.Completion.Values.Any(c => c.At >= basisTime)) return;
+        var shared = s.AllFolders.Where(f => f.DeviceIds.Contains(di.Id)).Select(f => f.Id).ToList();
+        if (shared.Count > 0 && shared.All(d.Completion.ContainsKey))
+        {
+            var all = shared.Select(id => d.Completion[id]).ToList();
+            di.Completion = all.Min(c => c.Completion);
+            di.NeedBytes = (long)all.Sum(c => c.NeedBytes);
+            return;
+        }
+        var newer = d.Completion.Values.Where(c => c.At >= basisTime).ToList();
+        di.Completion = Math.Min(di.Completion, newer.Min(c => c.Completion));
+        di.NeedBytes = Math.Max(di.NeedBytes, (long)newer.Sum(c => c.NeedBytes));
     }
 
     /// <summary>Quando o aviso de atividade recente mais próximo vence (para redesenhar), ou null se nenhum.</summary>
@@ -158,16 +192,25 @@ public sealed class SyncthingActivity
         }
     }
 
+    /// <summary>Muda a cada lote de eventos que altera algo: guarde antes de conferir e passe a <see cref="WaitForChangeAsync"/>.</summary>
+    public long Version { get { lock (_lock) return _version; } }
+
     /// <summary>
-    /// Espera um evento que mude pastas ou dispositivos, ou o prazo (o que vier primeiro). Usado por quem antes
-    /// conferia de tempo em tempo, como a espera da sincronização.
+    /// Espera um evento que mude pastas ou dispositivos depois de <paramref name="seen"/> (volta na hora se já houve),
+    /// ou o prazo (o que vier primeiro). Usado por quem antes conferia de tempo em tempo, como a espera da sincronização.
     /// </summary>
-    public Task WaitForChangeAsync(TimeSpan max, CancellationToken ct)
+    public async Task WaitForChangeAsync(long seen, TimeSpan max, CancellationToken ct)
     {
         Task changed;
-        lock (_lock) changed = _changed.Task;
-        return Task.WhenAny(changed, Task.Delay(max, ct)).ContinueWith(_ => { }, CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        lock (_lock)
+        {
+            if (_version != seen) return;
+            changed = _changed.Task;
+        }
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        await Task.WhenAny(changed, Task.Delay(max, stop.Token)).ConfigureAwait(false);
+        stop.Cancel(); // não deixa o prazo pendente
+        ct.ThrowIfCancellationRequested();
     }
 
     void Signal()
@@ -175,6 +218,7 @@ public sealed class SyncthingActivity
         TaskCompletionSource done;
         lock (_lock)
         {
+            _version++;
             done = _changed;
             _changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }

@@ -44,6 +44,7 @@
     <Compile Include="../src/SyncthingActivity.cs" Link="src/SyncthingActivity.cs" />
     <Compile Include="../src/SyncthingEvents.cs" Link="src/SyncthingEvents.cs" />
     <Compile Include="../src/FileChangeWatcher.cs" Link="src/FileChangeWatcher.cs" />
+    <Compile Include="../src/SyncthingHttp.cs" Link="src/SyncthingHttp.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />

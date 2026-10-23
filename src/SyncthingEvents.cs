@@ -18,11 +18,13 @@ public sealed class SyncthingEvents(HttpClient http)
 
     /// <summary>
     /// Entrega lotes de eventos a <paramref name="onEvents"/> a partir de agora (sem repetir os antigos), até o
-    /// cancelamento ou até o Syncthing parar de responder (exceção: quem chama decide quando tentar de novo).
+    /// cancelamento ou até o Syncthing parar de responder ou reiniciar (exceção: quem chama decide quando tentar de novo).
     /// </summary>
     public async Task RunAsync(string baseUrl, string apiKey, Action<IReadOnlyList<JsonElement>> onEvents, CancellationToken ct)
     {
-        long since = await LatestIdAsync(baseUrl, apiKey, ct).ConfigureAwait(false);
+        string? started = await StartTimeAsync(baseUrl, apiKey, ct).ConfigureAwait(false);
+        long since = (await GetAsync(baseUrl, apiKey, "/rest/events?limit=1&timeout=0", ct).ConfigureAwait(false))
+            .Select(e => (long)SyncthingApi.Num(e, "id")).DefaultIfEmpty(0).Max();
         while (!ct.IsCancellationRequested)
         {
             var batch = await GetAsync(baseUrl, apiKey, $"/rest/events?since={since}&timeout={(int)LongPoll.TotalSeconds}", ct)
@@ -32,26 +34,36 @@ public sealed class SyncthingEvents(HttpClient http)
                 since = batch.Max(e => (long)SyncthingApi.Num(e, "id"));
                 onEvents(batch);
             }
-            else if (await LatestIdAsync(baseUrl, apiKey, ct).ConfigureAwait(false) < since)
+            else if (await StartTimeAsync(baseUrl, apiKey, ct).ConfigureAwait(false) != started)
             {
-                // o Syncthing reiniciou entre dois pedidos: os números dos eventos recomeçaram
+                // reiniciou entre dois pedidos: os números dos eventos recomeçaram (e podem já ter passado do último visto)
                 throw new InvalidOperationException("o Syncthing reiniciou");
             }
         }
     }
 
-    /// <summary>Número do evento mais recente (o próximo pedido começa dele).</summary>
-    async Task<long> LatestIdAsync(string baseUrl, string apiKey, CancellationToken ct) =>
-        (await GetAsync(baseUrl, apiKey, "/rest/events?limit=1&timeout=0", ct).ConfigureAwait(false))
-            .Select(e => (long)SyncthingApi.Num(e, "id")).DefaultIfEmpty(0).Max();
+    /// <summary>Espera antes de tentar de novo após <paramref name="failures"/> falhas seguidas: 2 s, 4 s, 8 s… até 1 min.</summary>
+    public static TimeSpan RetryDelay(int failures) => TimeSpan.FromSeconds(Math.Min(60, 2 << Math.Min(Math.Max(failures, 1) - 1, 5)));
+
+    /// <summary>Quando o Syncthing iniciou: muda se ele reiniciar.</summary>
+    async Task<string?> StartTimeAsync(string baseUrl, string apiKey, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(await GetStringAsync(baseUrl, apiKey, "/rest/system/status", ct).ConfigureAwait(false));
+        return SyncthingApi.Str(doc.RootElement, "startTime");
+    }
 
     async Task<List<JsonElement>> GetAsync(string baseUrl, string apiKey, string path, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(await GetStringAsync(baseUrl, apiKey, path, ct).ConfigureAwait(false));
+        return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.EnumerateArray().Select(e => e.Clone()).ToList() : [];
+    }
+
+    async Task<string> GetStringAsync(string baseUrl, string apiKey, string path, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl + path);
         if (!string.IsNullOrEmpty(apiKey)) req.Headers.Add("X-API-Key", apiKey);
         using var resp = await http.SendAsync(req, ct).ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
-        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false));
-        return doc.RootElement.ValueKind == JsonValueKind.Array ? doc.RootElement.EnumerateArray().Select(e => e.Clone()).ToList() : [];
+        return await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
     }
 }
