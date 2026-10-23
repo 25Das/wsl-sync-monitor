@@ -135,9 +135,8 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
                     Theme.ForceLight = light;
                     try
                     {
-                        using var widget = new TaskbarWidget(new Settings { ShowTaskbarWidget = false });
                         var tb = new TaskbarInfo { Edge = TaskbarEdge.Bottom, Rect = new Rectangle(0, 1032, 1920, thickness) };
-                        using var bmp = widget.RenderPreview(tb, snap);
+                        using var bmp = new WidgetPainter { Snapshot = snap }.Preview(tb);
                         var theme = light ? "claro" : "escuro";
                         _index.Save(Zoom(bmp, 2), $"widget-{barName}-{name}-{theme}", $"Widget · {caption} · {barName} ({thickness}px) · tema {theme} (ampliado 2×)");
                     }

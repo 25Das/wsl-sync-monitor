@@ -143,14 +143,6 @@ public sealed class Snapshot
         StState.AuthError => "Chave da API inválida",
         _ => "Desconhecido",
     };
-
-    public string ShortSummary()
-    {
-        if (!WslInstalled) return "WSL não encontrado";
-        if (!WslRunning) return $"WSL parado ({Target?.Name ?? "sem distro"})";
-        if (St != StState.Running) return $"WSL ok · Syncthing: {StStatusText.ToLowerInvariant()}";
-        return $"WSL ok · Syncthing ok · pastas {FoldersOk}/{Folders.Count} · dispositivos {DevicesOnline}/{Devices.Count}";
-    }
 }
 
 public static class Fmt

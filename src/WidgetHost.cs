@@ -28,13 +28,14 @@ public sealed class WidgetHost : IDisposable
         using var ready = new ManualResetEventSlim();
         var thread = new Thread(() =>
         {
+            // contexto de sincronização deste thread (o widget é uma janela nativa: nenhum controle o instala)
+            _widgetCtx = new WindowsFormsSynchronizationContext();
+            SynchronizationContext.SetSynchronizationContext(_widgetCtx);
             _w = new TaskbarWidget(settings) { YieldTo = () => _menuOpen };
             _w.Clicked += () => _app.Post(_ => Clicked?.Invoke(), null);
             _w.RightClicked += () => _app.Post(_ => RightClicked?.Invoke(), null);
             _w.HoverStarted += () => _app.Post(_ => HoverStarted?.Invoke(), null);
             _w.OffsetChanged += () => _app.Post(_ => OffsetChanged?.Invoke(), null);
-            // o primeiro controle criado instala o contexto de sincronização do WinForms neste thread
-            _widgetCtx = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
             ready.Set();
             Application.Run();
         })

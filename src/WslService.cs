@@ -206,7 +206,7 @@ public static class WslService
         return r.ExitCode == 0 ? r.Output.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() : null;
     }
 
-    // processos "sleep infinity" que mantêm cada distro iniciada pelo app ligada
+    // processos de manutenção (SyncthingScripts.KeepAlive) que mantêm ligada cada distro segurada pelo app
     static readonly Dictionary<string, Native.DetachedProcess> _keepAlive = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Inicia a distro e mantém um processo oculto vivo para que ela não desligue por inatividade.</summary>

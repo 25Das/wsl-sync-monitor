@@ -1,4 +1,4 @@
-using System.Drawing;
+using System.Drawing; // global no app, mas não nos testes do Linux, que compilam este arquivo
 
 namespace WslSyncMonitor;
 

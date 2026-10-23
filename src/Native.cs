@@ -32,15 +32,25 @@ static class Native
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr hIcon);
-    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point p);
-    [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
-    public const int SW_SHOWNA = 8;
-    [DllImport("user32.dll", SetLastError = true)] public static extern IntPtr SetParent(IntPtr child, IntPtr parent);
-#pragma warning disable CA1838 // diagnóstico raro (log): o StringBuilder é o mais simples
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int max);
-#pragma warning restore CA1838
+    public const int SW_HIDE = 0, SW_SHOWNA = 8;
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr SetCapture(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ReleaseCapture();
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct TRACKMOUSEEVENT { public int cbSize; public uint dwFlags; public IntPtr hwndTrack; public uint dwHoverTime; }
+    [DllImport("user32.dll")] static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT e);
+
+    /// <summary>Pede WM_MOUSELEAVE quando o mouse sair da janela.</summary>
+    public static void TrackMouseLeave(IntPtr hwnd)
+    {
+        var e = new TRACKMOUSEEVENT { cbSize = Marshal.SizeOf<TRACKMOUSEEVENT>(), dwFlags = 0x2 /* TME_LEAVE */, hwndTrack = hwnd };
+        TrackMouseEvent(ref e);
+    }
+
+    public const int WM_MOUSEMOVE = 0x200, WM_LBUTTONDOWN = 0x201, WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205,
+        WM_MOUSELEAVE = 0x2A3, WM_CAPTURECHANGED = 0x215, WM_MOUSEACTIVATE = 0x21, MA_NOACTIVATE = 3;
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     public delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);
@@ -144,7 +154,7 @@ static class Native
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     public static readonly IntPtr HWND_TOPMOST = new(-1);
-    public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
+    public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
 
     // ---- janela em camadas (alpha por pixel) ----
     [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }
@@ -164,7 +174,7 @@ static class Native
     public const byte AC_SRC_OVER = 0, AC_SRC_ALPHA = 1;
 
     public const int WS_EX_LAYERED = 0x80000, WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8, WS_EX_NOACTIVATE = 0x8000000;
-    public const int WS_CHILD = 0x40000000, WS_CLIPSIBLINGS = 0x04000000;
+    public const int WS_CHILD = 0x40000000, WS_CLIPSIBLINGS = 0x04000000, WS_POPUP = unchecked((int)0x80000000);
 
     /// <summary>
     /// Exibe um bitmap ARGB 32bpp numa janela WS_EX_LAYERED; <paramref name="position"/> null mantém a posição
