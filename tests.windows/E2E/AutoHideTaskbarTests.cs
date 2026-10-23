@@ -17,7 +17,7 @@ public sealed class AutoHideTaskbarTests : IDisposable
     [DllImport("shell32.dll")] static extern IntPtr SHAppBarMessage(uint msg, ref APPBARDATA data);
     [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
     [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string cls, string? title);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string? cls, string? title);
 
     const uint ABM_GETSTATE = 4, ABM_SETSTATE = 10;
     const int ABS_AUTOHIDE = 1;
@@ -44,8 +44,9 @@ public sealed class AutoHideTaskbarTests : IDisposable
         using var app = new AppSession("""{ "SettingsVersion": 2, "ShowTaskbarWidget": true, "InstallPromptDismissed": true }""");
         try
         {
-            var widget = app.WaitWindow("WSL Sync Monitor Widget", TimeSpan.FromSeconds(30));
-            var hwnd = widget.Properties.NativeWindowHandle.Value;
+            // oculto junto com a barra, o widget não aparece na automação de interface: procura pelo título
+            var hwnd = AppSession.WaitFor(() => FindWindow(null, "WSL Sync Monitor Widget") is var h && h != IntPtr.Zero ? (object)h : null,
+                TimeSpan.FromSeconds(30), "janela do widget") is IntPtr found ? found : IntPtr.Zero;
             var screen = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
 
             // leva o mouse à borda de baixo: a barra aparece, e o widget com ela
