@@ -106,7 +106,35 @@ static class Native
 
         public void Kill() { if (!HasExited) TerminateProcess(_handle.DangerousGetHandle(), 1); }
 
-        public void Dispose() => _handle.Dispose();
+        RegisteredWaitHandle? _exitWait;
+        ManualResetEvent? _exitHandle;
+
+        /// <summary>
+        /// Chama <paramref name="onExit"/> (num thread do pool) quando o processo terminar: o Windows sinaliza o handle
+        /// do processo, sem consultas. Uma vez só; <see cref="StopWatchingExit"/> desiste antes.
+        /// </summary>
+        public void WatchExit(Action onExit)
+        {
+            StopWatchingExit();
+            // o handle do processo é a espera; o ManualResetEvent só o empresta (não o fecha)
+            _exitHandle = new ManualResetEvent(false) { SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(_handle.DangerousGetHandle(), ownsHandle: false) };
+            _exitWait = ThreadPool.RegisterWaitForSingleObject(_exitHandle, (_, _) => onExit(), null, Timeout.Infinite, executeOnlyOnce: true);
+        }
+
+        /// <summary>Não avisa mais o fim do processo (o app vai encerrá-lo de propósito).</summary>
+        public void StopWatchingExit()
+        {
+            _exitWait?.Unregister(null);
+            _exitWait = null;
+            _exitHandle?.Dispose();
+            _exitHandle = null;
+        }
+
+        public void Dispose()
+        {
+            StopWatchingExit();
+            _handle.Dispose();
+        }
 
         /// <summary>Abre um processo já existente (para poder esperar e encerrar), ou null.</summary>
         public static DetachedProcess? Open(int pid)

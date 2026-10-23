@@ -27,6 +27,13 @@ public sealed partial class TrayApp
         try { WslService.AdoptKeepAlives(); } catch (Exception ex) { Log.Warn("proteção", "assumir as distros da versão anterior", ex); }
         LoadKeepAlive();
         _sessionWatch.Exited += () => _ui.Post(_ => RequestRefresh(), null);
+        // a distro segurada foi encerrada por fora (ou o processo que a segura foi fechado): a proteção confere na hora
+        WslService.KeepAliveExited += (distro, p) => _ui.Post(_ =>
+        {
+            if (!WslService.IsKeepAlive(distro, p)) return; // já solto ou trocado pelo app
+            Log.Info("proteção", $"{distro}: o processo que a mantinha ligada terminou (distro encerrada por fora?)");
+            RequestRefresh();
+        }, null);
         _shutdownWatcher = new ShutdownWatcher(NeedsShutdownProtection, ShutdownSequenceAsync,
             // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga
             () => _settings.ShutdownMaxWaitSeconds + 300);

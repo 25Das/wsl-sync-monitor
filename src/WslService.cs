@@ -225,9 +225,25 @@ public static class WslService
         // vive enquanto o WSL estiver ligado, o executável ficaria travado mesmo após fechar o app.
         // Por isso é criado via CreateProcess sem herança de handles.
         // mantém a distro ligada e atende pedidos (sync, parar o Syncthing) mesmo durante o desligamento do Windows
-        _keepAlive[distro] = Native.DetachedProcess.Start(
-            $"\"{WslExe}\" -d {distro} --exec sh -c \"{SyncthingScripts.ForSh(SyncthingScripts.KeepAlive)}\" {SyncthingScripts.KeepAliveMarker}");
+        Hold(distro, Native.DetachedProcess.Start(
+            $"\"{WslExe}\" -d {distro} --exec sh -c \"{SyncthingScripts.ForSh(SyncthingScripts.KeepAlive)}\" {SyncthingScripts.KeepAliveMarker}"));
         Log.Info("proteção", $"{distro} mantida ligada pelo app");
+    }
+
+    /// <summary>
+    /// O processo que mantinha a distro ligada terminou sem o app pedir (a distro foi encerrada por fora, ou o
+    /// processo foi fechado). Vem de um thread do pool; confira com <see cref="IsKeepAlive"/> na thread da interface.
+    /// </summary>
+    internal static event Action<string, Native.DetachedProcess>? KeepAliveExited;
+
+    /// <summary>É este o processo que mantém a distro ligada agora? (um aviso atrasado de um processo já trocado não vale)</summary>
+    internal static bool IsKeepAlive(string distro, Native.DetachedProcess p) =>
+        _keepAlive.TryGetValue(distro, out var current) && ReferenceEquals(current, p);
+
+    static void Hold(string distro, Native.DetachedProcess p)
+    {
+        _keepAlive[distro] = p;
+        p.WatchExit(() => KeepAliveExited?.Invoke(distro, p));
     }
 
     /// <summary>
@@ -243,7 +259,7 @@ public static class WslService
                 if (!WslCommandLine.IsKeepAlive(Native.GetCommandLine(p.Id), out var distro)) continue;
                 if (IsHolding(distro)) continue;
                 var adopted = Native.DetachedProcess.Open(p.Id);
-                if (adopted != null) _keepAlive[distro] = adopted;
+                if (adopted != null) Hold(distro, adopted);
             }
         }
     }
@@ -294,9 +310,11 @@ public static class WslService
         foreach (var name in _keepAlive.Keys.ToList())
         {
             if (distro != null && !name.Equals(distro, StringComparison.OrdinalIgnoreCase)) continue;
-            try { _keepAlive[name].Kill(); } catch { /* já tinha saído */ }
-            _keepAlive[name].Dispose();
+            var p = _keepAlive[name];
             _keepAlive.Remove(name);
+            p.StopWatchingExit(); // encerrado de propósito: não é um fim inesperado
+            try { p.Kill(); } catch { /* já tinha saído */ }
+            p.Dispose();
             Log.Info("proteção", $"{name} liberada (o WSL pode desligar por ociosidade)");
         }
     }
