@@ -103,6 +103,10 @@ public sealed class TaskbarWidget : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+        // o WinForms não usa o pai do CreateParams num Form (põe a janela filha numa janela interna oculta):
+        // prende-a à barra explicitamente
+        if (Inside && Native.SetParent(Handle, _parent) == IntPtr.Zero)
+            Log.Warn("widget", "não foi possível pôr o widget dentro da barra de tarefas");
         _fgProc = (_, _, _, _, _, _, _) => BringAboveTaskbar();
         _fgHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _fgProc, 0, 0, Native.WINEVENT_OUTOFCONTEXT);
     }
