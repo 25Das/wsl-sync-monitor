@@ -60,6 +60,8 @@ seu Windows, `WidgetInsideTaskbar: false` volta ao modo antigo (uma janela por c
 **Atividade em tempo real:** um sync pequeno dura uma fração de segundo. Painel, widget e ícone acompanham o
 fluxo de eventos do Syncthing e mostram na hora *Sincronizando relatorio.md…* e, por alguns segundos depois,
 *Sincronizado agora · 5 arquivos* (na pasta) e *Sincronizado agora* (no dispositivo que enviou ou recebeu).
+Pausar, retomar, erros de pasta e conexões aparecem na hora; *Ver atividade recente…* (menu Syncthing ou de cada
+pasta) lista os arquivos recebidos, apagados, alterados aqui e os que falharam.
 
 **Verificação de pastas e dispositivos:** ao iniciar, assim que o Syncthing responde e teve tempo de conectar,
 o app procura pastas com erro, fora de sincronia ou pausadas e dispositivos pausados, que nunca conectaram ou
@@ -89,10 +91,12 @@ WSL ▸           cada distro ▸  Abrir terminal · Abrir no Explorer · Reinic
                                Usar para o Syncthing · Definir como padrão do WSL · Exportar backup…
                 Encerrar todo o WSL… · Atualizar o WSL… · Editar .wslconfig…
 Syncthing ▸     Pausar tudo / Retomar tudo · Verificar todas as pastas agora · Reiniciar o Syncthing…
-                Verificar pastas e dispositivos… · Copiar o ID deste dispositivo · Ver erros recentes…
+                Verificar pastas e dispositivos… · Copiar o ID deste dispositivo · Ver atividade recente…
+                Ver erros recentes…
                 Esperar a sincronização antes de desligar · Ligar o WSL a cada 60 min para sincronizar
 Pastas ▸        cada pasta ▸  Abrir no Explorer · Abrir terminal aqui · Verificar agora · Pausar/Retomar
-                              Arquivos em conflito… · Versões antigas · Copiar caminho · Mostrar no painel
+                              Atividade recente… · Arquivos em conflito… · Versões antigas · Copiar caminho
+                              Mostrar no painel
                 Ocultar pastas não compartilhadas · Ocultar pastas pausadas
 Dispositivos ▸  cada dispositivo ▸  Pausar/Retomar · Copiar ID · Pastas compartilhadas… · Mostrar no painel
 Diagnóstico ▸   informações rápidas (versão, proteção, chave da API, memória, espaço livre real, último erro)
@@ -216,7 +220,14 @@ aparece na ficha técnica.
 - O estado completo é lido periodicamente; entre uma leitura e outra, o fluxo de eventos do Syncthing
   (`/rest/events`, um pedido que fica aberto até haver novidade) traz na hora mudanças de estado das pastas,
   arquivos sincronizados e conexões de dispositivos. A espera pela sincronização (ao liberar a distro, ao sair e
-  ao desligar) também reage a esses eventos em vez de conferir a cada 2 s.
+  ao desligar) também reage a esses eventos em vez de conferir a cada 2 s. Mudanças de configuração (pasta ou
+  dispositivo novo, removido, pedido de conexão) disparam uma leitura completa na hora.
+- Com o fluxo de eventos conectado e o painel fechado, a leitura completa fica 3 vezes mais espaçada (no mínimo
+  15 s), a não ser que a proteção dependa dela; uma sessão do WSL que fecha (VS Code, terminal) avisa na hora.
+- Logo depois de a distro ligar (ou de o Syncthing parar), o app confere `/rest/noauth/health` a cada segundo (sem
+  chave e sem executar nada na distro) e lê tudo assim que o Syncthing responde.
+- O widget acompanha a barra pelos avisos do Windows (a barra mudou de lugar, janelas abriram ou fecharam, tema,
+  monitores) e relê os ícones da barra só quando janelas com botão nela aparecem ou somem.
 
 ## Roadmap
 

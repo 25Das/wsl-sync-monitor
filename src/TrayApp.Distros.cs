@@ -60,8 +60,14 @@ public sealed partial class TrayApp
         if (IsMonitored(d))
         {
             SetBusy("Aguardando o Syncthing…");
-            end = DateTime.Now.AddSeconds(45);
-            while (_snap?.St != StState.Running && DateTime.Now < end) { await Task.Delay(1500); await RefreshAsync(); }
+            // confere a cada segundo sem executar nada na distro (antes, uma leitura completa a cada 1,5 s) e lê tudo
+            // assim que ele responder
+            if (_snap?.St != StState.Running)
+            {
+                try { await new SyncthingEvents(_eventsHttp).WaitUntilUpAsync(_collector.GuiUrl(_settings), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(45), _eventsCts.Token); }
+                catch (OperationCanceledException) { return; } // saindo
+                await RefreshAsync();
+            }
         }
     }
 
