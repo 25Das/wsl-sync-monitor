@@ -48,9 +48,12 @@ public sealed class AutoHideTaskbarTests : IDisposable
             Thread.Sleep(3000); // o app inicia com a barra recolhida
 
             // leva o mouse à borda de baixo: a barra aparece, e o widget com ela (a janela só existe depois disso)
-            Mouse.MoveTo(screen.Width / 2, screen.Bottom - 1);
-            var hwnd = AppSession.WaitFor(() => FindWindow(null, "WSL Sync Monitor Widget") is var h && h != IntPtr.Zero && IsWindowVisible(h)
-                ? (object)h : null, TimeSpan.FromSeconds(15), "widget com a barra à mostra") is IntPtr found ? found : IntPtr.Zero;
+            var hwnd = AppSession.WaitFor(() =>
+            {
+                // movimentos curtos na borda, como uma pessoa faria (parado, o Windows pode não revelar a barra)
+                for (int dx = 0; dx < 5; dx++) { Mouse.MoveTo(screen.Width / 2 + dx * 3, screen.Bottom - 1); Thread.Sleep(60); }
+                return FindWindow(null, "WSL Sync Monitor Widget") is var h && h != IntPtr.Zero && IsWindowVisible(h) ? (object)h : null;
+            }, TimeSpan.FromSeconds(15), "widget com a barra à mostra") is IntPtr found ? found : IntPtr.Zero;
             Thread.Sleep(800);
 
             // e para em cima do widget
@@ -75,7 +78,7 @@ public sealed class AutoHideTaskbarTests : IDisposable
         catch (Exception ex) when (ex is not Xunit.Sdk.XunitException)
         {
             app.Screenshot("falha-auto-ocultar");
-            throw;
+            throw new Exception($"{ex.Message}\n{app.LogText()}", ex);
         }
     }
 }
