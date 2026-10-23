@@ -11,7 +11,9 @@ public sealed class SyncthingFactAttribute : FactAttribute
 {
     public SyncthingFactAttribute()
     {
-        if (!OperatingSystem.IsLinux() || !SyncthingInstance.Installed) Skip = "precisa do Syncthing instalado (Linux)";
+        // no CI do Linux o Syncthing é instalado pelo workflow: lá o teste nunca é pulado (se faltar, falha)
+        bool ci = Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
+        if (!OperatingSystem.IsLinux() || (!SyncthingInstance.Installed && !ci)) Skip = "precisa do Syncthing instalado (Linux)";
     }
 }
 
