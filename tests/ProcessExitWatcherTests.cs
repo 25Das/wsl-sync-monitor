@@ -58,5 +58,6 @@ public sealed class ProcessExitWatcherTests : IDisposable
     {
         _w.Watch([int.MaxValue - 7]); // não existe
         Assert.Equal(0, _w.Count);
+        Assert.True(_w.AllWatched); // terminar não é falha: não há o que esperar
     }
 }

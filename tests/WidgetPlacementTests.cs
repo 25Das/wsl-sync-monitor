@@ -125,10 +125,31 @@ public class WidgetFollowScheduleTests
     [Fact]
     public void Icones_relidos_logo_depois_de_janelas_abrirem_ou_fecharem()
     {
-        Assert.False(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(300), lastRead: T0.AddSeconds(-1), changedAt: T0)); // ainda animando
-        Assert.True(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(500), lastRead: T0.AddSeconds(-1), changedAt: T0));
+        Assert.False(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(300), lastRead: T0.AddSeconds(-2), changedAt: T0)); // ainda animando
+        Assert.True(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(500), lastRead: T0.AddSeconds(-2), changedAt: T0));
         Assert.False(WidgetPlacement.IconsReadDue(T0.AddSeconds(2), lastRead: T0.AddSeconds(1), changedAt: T0)); // já relidos depois
     }
+
+    [Fact]
+    public void Timer_do_tamanho_da_espera_nao_perde_a_releitura_por_arredondamento_do_relogio() =>
+        Assert.True(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(490), lastRead: T0.AddSeconds(-2), changedAt: T0));
+
+    [Fact]
+    public void Muitas_janelas_abrindo_e_fechando_releem_no_maximo_uma_vez_por_segundo()
+    {
+        // a espera conta da primeira mudança ainda não lida: uma rajada contínua não adia a releitura para sempre
+        Assert.False(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(600), lastRead: T0.AddMilliseconds(-200), changedAt: T0));
+        Assert.True(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(800), lastRead: T0.AddMilliseconds(-200), changedAt: T0));
+    }
+
+    [Theory]
+    [InlineData(true, false, 0, true)]                 // janela comum de app: tem botão na barra
+    [InlineData(false, false, 0, false)]               // janela filha
+    [InlineData(true, true, 0, false)]                 // dona de outra (diálogo, menu)
+    [InlineData(true, false, 0x80, false)]             // WS_EX_TOOLWINDOW: dica, miniatura, paleta
+    [InlineData(true, true, 0x40000, true)]            // WS_EX_APPWINDOW força o botão
+    public void So_janelas_com_botao_na_barra_mudam_os_icones(bool topLevel, bool owned, int exStyle, bool expected) =>
+        Assert.Equal(expected, WidgetPlacement.HasTaskbarButton(topLevel, owned, exStyle));
 
     [Fact]
     public void Icones_relidos_de_tempos_em_tempos_mesmo_sem_aviso()

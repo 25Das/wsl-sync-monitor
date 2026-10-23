@@ -334,6 +334,33 @@ public class SyncthingActivityTests
     }
 
     [Fact]
+    public void Indice_local_antes_do_fim_do_recebimento_nao_vira_alterado_aqui()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("LocalIndexUpdated", """{"folder":"claude","filenames":["velho.txt"],"items":1,"sequence":9,"version":9}"""),
+                 Event("ItemFinished", """{"folder":"claude","item":"velho.txt","error":null,"type":"file","action":"delete"}""")], T0);
+        Assert.Equal([new ActivityEntry(T0, "claude", "velho.txt", ActivityKind.Deleted, null)], a.History());
+    }
+
+    [Fact]
+    public void Recebido_antes_de_o_fluxo_recomecar_nao_vira_alterado_aqui()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply(Range("vm", 32, 37), T0); // ItemFinished de nota.txt
+        a.Reset();                        // o fluxo caiu e voltou
+        a.Apply(Range("vm", 38, 38), T0); // o índice local de nota.txt
+        Assert.Equal(ActivityKind.Received, Assert.Single(a.History()).Kind);
+    }
+
+    [Fact]
+    public void Historico_de_outro_dia_mostra_a_data()
+    {
+        var entries = new[] { new ActivityEntry(T0.AddDays(-2), "claude", "a.txt", ActivityKind.Received, null) };
+        Assert.Equal("21/10 16:00:00  ↓ Claude/a.txt (recebido)",
+            ActivityEntry.Format(entries, new Dictionary<string, string> { ["claude"] = "Claude" }, now: T0));
+    }
+
+    [Fact]
     public void Texto_do_historico()
     {
         var entries = new[]
@@ -350,7 +377,7 @@ public class SyncthingActivityTests
             "16:00:01  − Claude/velho.txt (apagado)\n" +
             "16:00:00  ↓ Claude/nota.txt (recebido)\n" +
             "16:00:00  ↑ sumiu/n.txt (alterado aqui)",
-            ActivityEntry.Format(entries, labels));
+            ActivityEntry.Format(entries, labels, now: T0));
     }
 
     /// <summary>Duas pastas compartilhadas com a "trabalho", que na leitura completa estava com <paramref name="completion"/>.</summary>

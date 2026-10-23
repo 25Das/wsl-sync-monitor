@@ -107,7 +107,7 @@ public sealed partial class TrayApp
             // Falhando seguidas vezes (ex.: um proxy reverso que recusa o fluxo), espera cada vez mais.
             failures = received ? 1 : failures + 1;
             _activity.Reset();
-            _ui.Post(_ => { SetSyncthingUp(false); _ = RefreshAsync(); }, null);
+            _ui.Post(_ => { SetSyncthingUp(false); RequestRefresh(); }, null);
             try { await Task.Delay(SyncthingEvents.RetryDelay(failures), stop).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
         }

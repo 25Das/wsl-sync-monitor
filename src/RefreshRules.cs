@@ -6,13 +6,21 @@ public static class RefreshRules
     /// <summary>
     /// O intervalo configurado, ou o triplo (no mínimo 15 s) quando nada depende dele: o fluxo de eventos traz as
     /// mudanças do Syncthing (e, se ele parar, o fluxo cai e a leitura é feita na hora), o painel está fechado (não
-    /// mostra velocidades) e a proteção não está contando leituras seguidas sem sessões.
+    /// mostra velocidades) e a proteção não espera algo que só a leitura vê (<see cref="GuardWatching"/>).
     /// </summary>
-    public static TimeSpan Interval(int baseSeconds, bool eventsLive, bool panelOpen, bool guardCounting)
+    public static TimeSpan Interval(int baseSeconds, bool eventsLive, bool panelOpen, bool guardWatching)
     {
         var interval = TimeSpan.FromSeconds(Math.Max(2, baseSeconds));
-        return eventsLive && !panelOpen && !guardCounting ? TimeSpan.FromSeconds(Math.Max(15, 3 * interval.TotalSeconds)) : interval;
+        return eventsLive && !panelOpen && !guardWatching ? TimeSpan.FromSeconds(Math.Max(15, 3 * interval.TotalSeconds)) : interval;
     }
+
+    /// <summary>
+    /// A proteção espera algo que só a leitura periódica vê: está contando leituras seguidas sem sessões, há uma
+    /// sessão aberta cujo fechamento não pode ser observado (ex.: terminal como administrador) ou "Manter ligada"
+    /// por tempo vai expirar.
+    /// </summary>
+    public static bool GuardWatching(GuardState state, int idleTicks, bool sessionsWatched, bool timedKeepAlive) =>
+        idleTicks > 0 || (state == GuardState.InUse && !sessionsWatched) || (state == GuardState.KeptAlive && timedKeepAlive);
 
     /// <summary>
     /// Vale sondar o Syncthing a cada segundo (ele está para responder): a distro acabou de ligar, ou ele acabou de

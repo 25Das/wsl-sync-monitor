@@ -48,6 +48,7 @@
     <Compile Include="../src/RefreshRules.cs" Link="src/RefreshRules.cs" />
     <Compile Include="../src/ProcessExitWatcher.cs" Link="src/ProcessExitWatcher.cs" />
     <Compile Include="../src/HoverTracker.cs" Link="src/HoverTracker.cs" />
+    <Compile Include="../src/CoalescingRunner.cs" Link="src/CoalescingRunner.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />

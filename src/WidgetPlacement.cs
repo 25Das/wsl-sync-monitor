@@ -67,13 +67,31 @@ public static class WidgetPlacement
     /// <summary>Espera da animação da barra depois de uma janela abrir ou fechar, antes de reler os ícones.</summary>
     public static readonly TimeSpan IconsSettle = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>Intervalo mínimo entre duas leituras dos ícones (muitas janelas abrindo e fechando).</summary>
+    public static readonly TimeSpan IconsMinSpacing = TimeSpan.FromSeconds(1);
+
+    /// <summary>Folga para o relógio, que avança em passos de ~16 ms: o timer da espera não pode chegar "cedo demais".</summary>
+    static readonly TimeSpan ClockSlack = TimeSpan.FromMilliseconds(20);
+
     /// <summary>Releitura periódica dos ícones mesmo sem aviso (algo que os avisos não cobrem).</summary>
     public static readonly TimeSpan IconsMaxAge = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Hora de reler os ícones da barra: janelas abriram ou fecharam (<paramref name="changedAt"/>) depois da última
-    /// leitura e a animação já acabou, ou a leitura está velha.
+    /// Hora de reler os ícones da barra: janelas abriram ou fecharam depois da última leitura (<paramref name="changedAt"/>
+    /// é a primeira mudança ainda não lida, então uma rajada contínua não adia a releitura para sempre), a animação já
+    /// acabou e a última leitura não foi há pouco; ou a leitura está velha.
     /// </summary>
     public static bool IconsReadDue(DateTime now, DateTime lastRead, DateTime? changedAt) =>
-        (changedAt is { } c && c > lastRead && now - c >= IconsSettle) || now - lastRead >= IconsMaxAge;
+        (changedAt is { } c && c > lastRead && now - c >= IconsSettle - ClockSlack && now - lastRead >= IconsMinSpacing - ClockSlack)
+        || now - lastRead >= IconsMaxAge;
+
+    /// <summary>A janela tem botão na barra de tarefas (só essas mudam os ícones): de nível superior, sem dona e não
+    /// "de ferramenta" (dicas, miniaturas, menus), a não ser que peça o botão (WS_EX_APPWINDOW).</summary>
+    public static bool HasTaskbarButton(bool topLevel, bool owned, int exStyle)
+    {
+        const int toolWindow = 0x80, appWindow = 0x40000;
+        if (!topLevel) return false;
+        if ((exStyle & appWindow) != 0) return true;
+        return !owned && (exStyle & toolWindow) == 0;
+    }
 }

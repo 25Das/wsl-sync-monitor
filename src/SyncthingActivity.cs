@@ -24,6 +24,8 @@ public sealed class SyncthingActivity
     long _seq; // ordem de chegada (eventos do mesmo lote chegam no mesmo instante)
     long _version; // muda a cada lote que altera algo (quem espera compara com o que já viu)
     readonly LinkedList<ActivityEntry> _history = new(); // mais novo primeiro
+    // recebidos cujo índice local ainda não foi atualizado (pasta, arquivo): fora das pastas porque sobrevive ao Reset
+    readonly Dictionary<(string Folder, string Item), DateTime> _pulled = new();
 
     sealed class FolderLive
     {
@@ -35,7 +37,6 @@ public sealed class SyncthingActivity
         public long SummarySeq;
         public readonly Dictionary<string, long> InProgress = new();     // arquivo → ordem em que começou
         public readonly Dictionary<string, DateTime> Recent = new();     // arquivo → quando terminou (cada um uma vez)
-        public readonly Dictionary<string, DateTime> Pulled = new();     // recebidos cujo índice local ainda não foi atualizado
         public bool? Paused;
         public DateTime PausedAt;
         public int? Errors;
@@ -76,10 +77,8 @@ public sealed class SyncthingActivity
     void Prune(DateTime now)
     {
         foreach (var f in _folders.Values)
-        {
             foreach (var old in f.Recent.Where(p => now - p.Value >= _linger).Select(p => p.Key).ToList()) f.Recent.Remove(old);
-            foreach (var old in f.Pulled.Where(p => now - p.Value >= PulledMemory).Select(p => p.Key).ToList()) f.Pulled.Remove(old);
-        }
+        foreach (var old in _pulled.Where(p => now - p.Value >= PulledMemory).Select(p => p.Key).ToList()) _pulled.Remove(old);
     }
 
     /// <summary>Quanto esperar o índice local citar um arquivo recebido (chega logo depois; mais que isso, se perdeu).</summary>
@@ -89,6 +88,17 @@ public sealed class SyncthingActivity
     {
         _history.AddFirst(e);
         while (_history.Count > HistorySize) _history.RemoveLast();
+    }
+
+    /// <summary>Tira do histórico um "alterado aqui" recente do arquivo que, na verdade, acabou de ser recebido.</summary>
+    void ForgetChangedHere(string folder, string item, DateTime now)
+    {
+        for (var n = _history.First; n != null && now - n.Value.At < PulledMemory; n = n.Next)
+            if (n.Value is { Kind: ActivityKind.ChangedHere } e && e.Folder == folder && e.Item == item)
+            {
+                _history.Remove(n);
+                return;
+            }
     }
 
     /// <summary>Arquivos recebidos, alterados aqui ou que falharam, do mais novo ao mais antigo (de uma pasta ou de todas).</summary>
@@ -122,7 +132,9 @@ public sealed class SyncthingActivity
                 var error = SyncthingApi.NonEmpty(SyncthingApi.Str(d, "error"));
                 Folder(folder).InProgress.Remove(item);
                 Folder(folder).Recent[item] = now;
-                Folder(folder).Pulled[item] = now;
+                _pulled[(folder, item)] = now;
+                // o índice local pode ter chegado antes (comum ao apagar): então não foi "alterado aqui"
+                ForgetChangedHere(folder, item, now);
                 Remember(new ActivityEntry(now, folder, item,
                     error != null ? ActivityKind.Failed : SyncthingApi.Str(d, "action") == "delete" ? ActivityKind.Deleted : ActivityKind.Received, error));
                 return redraw;
@@ -135,7 +147,7 @@ public sealed class SyncthingActivity
                 // os que não acabaram de ser recebidos foram alterados aqui (e vão ser enviados)
                 if (fn.ValueKind == JsonValueKind.Array)
                     foreach (var name in names)
-                        if (!Folder(folder).Pulled.Remove(name)) Remember(new ActivityEntry(now, folder, name, ActivityKind.ChangedHere, null));
+                        if (!_pulled.Remove((folder, name))) Remember(new ActivityEntry(now, folder, name, ActivityKind.ChangedHere, null));
                 return redraw;
             case "RemoteIndexUpdated":
                 Device(SyncthingApi.Str(d, "device") ?? "").LastActivity = now; // ele mudou algo ou confirmou o que recebeu
@@ -311,8 +323,8 @@ public enum ActivityKind { Received, Deleted, ChangedHere, Failed }
 /// <summary>Um arquivo no histórico de atividade.</summary>
 public sealed record ActivityEntry(DateTime At, string Folder, string Item, ActivityKind Kind, string? Error)
 {
-    /// <summary>Uma linha por arquivo, com o nome da pasta (ou o id, se ela não existe mais).</summary>
-    public static string Format(IEnumerable<ActivityEntry> entries, IReadOnlyDictionary<string, string> folderLabels) =>
+    /// <summary>Uma linha por arquivo, com o nome da pasta (ou o id, se ela não existe mais) e a data se não for de hoje.</summary>
+    public static string Format(IEnumerable<ActivityEntry> entries, IReadOnlyDictionary<string, string> folderLabels, DateTime now) =>
         string.Join("\n", entries.Select(e =>
         {
             var (mark, what) = e.Kind switch
@@ -323,6 +335,8 @@ public sealed record ActivityEntry(DateTime At, string Folder, string Item, Acti
                 _ => ("✕", "falhou: " + e.Error),
             };
             var folder = folderLabels.TryGetValue(e.Folder, out var label) ? label : e.Folder;
-            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{e.At:HH:mm:ss}  {mark} {folder}/{e.Item} ({what})");
+            var when = e.At.ToString(e.At.Date == now.Date ? "HH:mm:ss" : "dd/MM HH:mm:ss", // o app fica aberto por dias
+                System.Globalization.CultureInfo.InvariantCulture);
+            return $"{when}  {mark} {folder}/{e.Item} ({what})";
         }));
 }

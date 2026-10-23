@@ -23,7 +23,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     Version? _notifiedVersion;
 
     Snapshot? _snap;
-    bool _refreshing;
+    readonly CoalescingRunner _refresher;
 
     // hover (apenas no widget; o ícone da bandeja só responde a cliques)
     readonly HoverTracker _hover = new();
@@ -32,6 +32,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     public TrayApp()
     {
+        _refresher = new CoalescingRunner(RefreshCoreAsync);
         _settings = Settings.LoadOrDefault(out var settingsError);
         _settingsMtime = SettingsMtime();
 
@@ -60,8 +61,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             UpdateHoverTimer(); // aberto: confere o mouse para fechar; fechado: para
             if (!_popup.Visible) _widget?.BringAboveTaskbar();
-            else if (_snap == null || DateTime.Now - _snap.Time > TimeSpan.FromSeconds(Math.Max(2, _settings.RefreshSeconds))) RequestRefresh();
-            UpdateRefreshInterval();
+            UpdateRefreshInterval(); // aberto: no ritmo normal (ShowPopup já pede uma leitura nova se a atual for velha)
         };
 
         _tray = new NotifyIcon
@@ -92,7 +92,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
         _hoverTimer.Tick += (_, _) => HoverTick();
 
-        _refreshTimer.Tick += async (_, _) => await RefreshAsync();
+        _refreshTimer.Tick += (_, _) => _ = _refresher.RunIfIdleAsync(); // já lendo: essa leitura serve
         InitGuard();
         ApplySettings();
         _updateTimer.Tick += async (_, _) => await CheckUpdateAsync();
@@ -104,17 +104,25 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             else if (_balloon == BalloonKind.Health) ShowPopup(_widget.Visible ? _widget.PopupAnchor : Cursor.Position, pin: true);
         };
         StartRealTime();
-        _ = RefreshAsync();
+        RequestRefresh();
         _ = CheckUpdateAsync(retryOnFail: true); // procura atualização logo ao iniciar (e depois a cada 24 h)
         ListenForExitRequests();
     }
 
     // ------------------------------------------------------------------ estado (atualização periódica)
 
-    async Task RefreshAsync()
+    /// <summary>
+    /// Lê o estado completo agora; se uma leitura já está em andamento, espera a próxima, feita logo depois dela
+    /// (a em andamento pode ter começado antes da mudança que motivou o pedido). Ver <see cref="CoalescingRunner"/>.
+    /// </summary>
+    Task RefreshAsync() => _refresher.RunAsync();
+
+    /// <summary>Lê o estado completo sem esperar o resultado (algo mudou).</summary>
+    void RequestRefresh() => _ = RefreshAsync();
+
+    async Task RefreshCoreAsync()
     {
-        if (_refreshing || WslService.SessionEnding) return; // sessão terminando: nada de wsl.exe novos
-        _refreshing = true;
+        if (WslService.SessionEnding) return; // sessão terminando: nada de wsl.exe novos
         try
         {
             ReloadSettingsIfChanged();
@@ -139,11 +147,6 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         {
             Log.Failure("atualização", "refresh", "falha ao atualizar o estado: " + ex.Message);
             _tray.Text = Trim("Erro: " + ex.Message, 127);
-        }
-        finally
-        {
-            _refreshing = false;
-            if (_refreshAgain) { _refreshAgain = false; _ = RefreshAsync(); }
         }
     }
 
@@ -249,17 +252,10 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     /// <summary>Lê menos vezes quando nada depende da leitura periódica (regras em <see cref="RefreshRules"/>).</summary>
     void UpdateRefreshInterval()
     {
-        int ms = (int)RefreshRules.Interval(_settings.RefreshSeconds, _eventsLive, _popup.Visible, guardCounting: _idleTicks > 0).TotalMilliseconds;
+        bool guardWatching = RefreshRules.GuardWatching(_guard, _idleTicks, _sessionWatch.AllWatched,
+            timedKeepAlive: _keepAliveRequest is { Persist: false });
+        int ms = (int)RefreshRules.Interval(_settings.RefreshSeconds, _eventsLive, _popup.Visible, guardWatching).TotalMilliseconds;
         if (_refreshTimer.Interval != ms) _refreshTimer.Interval = ms; // trocar reinicia a contagem: só quando muda
-    }
-
-    bool _refreshAgain;
-
-    /// <summary>Lê o estado completo agora (algo mudou); se uma leitura já está em andamento, faz outra logo depois dela.</summary>
-    void RequestRefresh()
-    {
-        if (_refreshing) _refreshAgain = true;
-        else _ = RefreshAsync();
     }
 
     // ------------------------------------------------------------------ hover / clique
@@ -316,12 +312,12 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     {
         if (Display is { } shown) _popup.SetSnapshot(shown);
         _popup.ShowAt(anchor, pin);
-        if (_snap == null || (DateTime.Now - _snap.Time).TotalSeconds > 2) _ = RefreshAsync();
+        if (_snap == null || (DateTime.Now - _snap.Time).TotalSeconds > 2) RequestRefresh();
     }
 
     // ------------------------------------------------------------------ ações
 
-    public void RefreshNow() => _ = RefreshAsync();
+    public void RefreshNow() => RequestRefresh();
 
     /// <summary>Botões do rodapé do painel (definidos em <see cref="PanelFooter"/>).</summary>
     public void RunFooterAction(FooterAction action)

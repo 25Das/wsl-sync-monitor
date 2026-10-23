@@ -9,12 +9,15 @@ public sealed partial class TrayApp
     FolderInfo? Folder(string id) => _snap?.AllFolders.FirstOrDefault(f => f.Id == id);
     DeviceInfo? Device(string id) => _snap?.AllDevices.FirstOrDefault(d => d.Id == id);
 
-    /// <summary>Executa um comando na API do Syncthing e atualiza o painel; erros viram aviso.</summary>
+    /// <summary>
+    /// Executa um comando na API do Syncthing; erros viram aviso. Os eventos mostram o efeito na hora; a leitura
+    /// completa vem em instantes, junto com a que a mudança de configuração (ConfigSaved) pede, numa só.
+    /// </summary>
     async Task SyncthingCommandAsync(Func<Task> command)
     {
         try { await command(); }
         catch (Exception ex) { ShowError("O Syncthing recusou o comando: " + ex.Message, ex); }
-        await RefreshAsync();
+        RequestRefreshSoon();
     }
 
     void ShowText(string title, Func<Task<string>> build)
@@ -56,7 +59,7 @@ public sealed partial class TrayApp
         var labels = (_snap?.AllFolders ?? []).ToDictionary(x => x.Id, x => x.Label);
         return Task.FromResult(history.Count == 0
             ? "Nenhum arquivo sincronizado desde que o app abriu (ou desde que o Syncthing ligou)."
-            : ActivityEntry.Format(history, labels));
+            : ActivityEntry.Format(history, labels, DateTime.Now));
     });
 
     void CopyMyId() { if (_snap?.MyId is { } id) CopyToClipboard(id); }

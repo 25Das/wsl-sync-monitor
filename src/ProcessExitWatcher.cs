@@ -17,7 +17,7 @@ public sealed class ProcessExitWatcher : IDisposable
     public void Watch(IEnumerable<int> pids)
     {
         var wanted = pids.ToHashSet();
-        bool alreadyExited = false;
+        bool alreadyExited = false, allWatched = true;
         lock (_lock)
         {
             foreach (var gone in _watched.Keys.Where(id => !wanted.Contains(id)).ToList()) Forget(gone);
@@ -31,11 +31,19 @@ public sealed class ProcessExitWatcher : IDisposable
                     _watched[id] = p;
                     if (p.HasExited) { Forget(id); alreadyExited = true; } // terminou antes de começar a observar
                 }
-                catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
+                catch (ArgumentException) { } // já terminou: nada a esperar
+                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    allWatched = false; // sem acesso (ex.: processo de administrador): o fim dele só a leitura periódica vê
+                }
             }
+            AllWatched = allWatched;
         }
         if (alreadyExited) Exited?.Invoke();
     }
+
+    /// <summary>Todos os processos da última <see cref="Watch"/> estão sendo observados (nenhum recusou o acesso).</summary>
+    public bool AllWatched { get; private set; } = true;
 
     /// <summary>Quantos processos estão sendo observados.</summary>
     public int Count { get { lock (_lock) return _watched.Count; } }
