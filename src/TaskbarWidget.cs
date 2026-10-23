@@ -20,7 +20,9 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
 
     readonly Settings _settings;
     readonly WidgetPainter _painter = new();
-    readonly System.Windows.Forms.Timer _follow = new() { Interval = 500 };
+    readonly System.Windows.Forms.Timer _follow = new() { Interval = 2000 };  // rede de segurança (ver Hooks)
+    readonly System.Windows.Forms.Timer _followSoon = new() { Interval = 16 }; // junta uma rajada de avisos numa conferência
+    readonly System.Windows.Forms.Timer _iconsSoon = new() { Interval = (int)WidgetPlacement.IconsSettle.TotalMilliseconds };
     TaskbarInfo _tb = new();
     IntPtr _parent;         // a barra, no modo dentro dela; zero no modo por cima
     volatile IntPtr _hwnd;  // lido de outros threads (WidgetHost)
@@ -36,19 +38,90 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     public event Action? Clicked;
     public event Action? RightClicked;
     public event Action? HoverStarted;
+    public event Action? HoverEnded;
     public event Action? OffsetChanged;
 
     public TaskbarWidget(Settings settings)
     {
         _settings = settings;
         _follow.Tick += (_, _) => Follow();
+        _followSoon.Tick += (_, _) => { _followSoon.Stop(); Follow(); };
+        _iconsSoon.Tick += (_, _) => { _iconsSoon.Stop(); Follow(); };
     }
 
     /// <summary>Cria a janela e passa a acompanhar a barra (chamar depois de ligar os eventos e o YieldTo).</summary>
     public void Start()
     {
         _follow.Start();
+        StartHooks();
         Follow();
+    }
+
+    // ------------------------------------------------------------------ avisos do Windows
+
+    // Em vez de conferir a barra a cada meio segundo, o widget reage aos avisos do Windows: a barra (ou algo dentro
+    // dela, como a área de notificação) mudou de lugar ou tamanho; uma janela abriu, fechou ou foi para o primeiro
+    // plano (os botões da barra mudam e um app pode ter entrado em tela cheia); o tema ou os monitores mudaram.
+    // O timer _follow continua como rede de segurança, bem mais espaçado (WidgetPlacement.FollowIntervalMs).
+    Native.WinEventProc? _hookProc;
+    IntPtr _windowsHook, _foregroundHook, _taskbarHook;
+    uint _taskbarPid;
+
+    void StartHooks()
+    {
+        _hookProc = OnWinEvent;
+        const uint flags = Native.WINEVENT_OUTOFCONTEXT | Native.WINEVENT_SKIPOWNPROCESS;
+        _windowsHook = Native.SetWinEventHook(Native.EVENT_OBJECT_DESTROY, Native.EVENT_OBJECT_HIDE, IntPtr.Zero, _hookProc, 0, 0, flags);
+        _foregroundHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _hookProc, 0, 0, flags);
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemChange; // tema claro/escuro, barra
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnSystemChange; // monitores, resolução, escala
+    }
+
+    /// <summary>Avisos de mudança de lugar só do processo da barra (o Explorer); refeito quando ele reinicia.</summary>
+    void HookTaskbar(IntPtr taskbar)
+    {
+        uint pid = Native.GetWindowThreadProcessId(taskbar, out var p) != 0 ? p : 0;
+        if (pid == _taskbarPid) return;
+        if (_taskbarHook != IntPtr.Zero) Native.UnhookWinEvent(_taskbarHook);
+        _taskbarPid = pid;
+        _taskbarHook = pid == 0 ? IntPtr.Zero : Native.SetWinEventHook(Native.EVENT_OBJECT_LOCATIONCHANGE,
+            Native.EVENT_OBJECT_LOCATIONCHANGE, IntPtr.Zero, _hookProc!, pid, 0, Native.WINEVENT_OUTOFCONTEXT);
+    }
+
+    void StopHooks()
+    {
+        foreach (var h in new[] { _windowsHook, _foregroundHook, _taskbarHook })
+            if (h != IntPtr.Zero) Native.UnhookWinEvent(h);
+        _windowsHook = _foregroundHook = _taskbarHook = IntPtr.Zero;
+        _taskbarPid = 0;
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnSystemChange;
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnSystemChange;
+    }
+
+    void OnSystemChange(object? sender, EventArgs e) => FollowSoon();
+
+    /// <summary>Chega no thread do widget (avisos "fora de contexto" vêm pela fila de mensagens de quem pediu).</summary>
+    void OnWinEvent(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
+    {
+        if (_disposed || idObject != Native.OBJID_WINDOW || idChild != Native.CHILDID_SELF || hwnd == IntPtr.Zero) return;
+        if (evt == Native.EVENT_OBJECT_LOCATIONCHANGE)
+        {
+            // a barra ou algo dentro dela (área de notificação, botões) mudou de lugar ou tamanho
+            if (hwnd != _hwnd && (hwnd == _tb.Hwnd || Native.GetAncestor(hwnd, Native.GA_ROOT) == _tb.Hwnd)) FollowSoon();
+            return;
+        }
+        if (evt == Native.EVENT_SYSTEM_FOREGROUND) { FollowSoon(); return; } // tela cheia começa ou termina
+        // janela de nível superior abriu ou fechou: os botões da barra mudam (relê depois da animação)
+        if (evt != Native.EVENT_OBJECT_DESTROY && Native.GetAncestor(hwnd, Native.GA_ROOT) != hwnd) return;
+        _windowsChangedAt = DateTime.Now;
+        _iconsSoon.Stop();
+        _iconsSoon.Start();
+    }
+
+    /// <summary>Confere a barra em instantes (uma vez por rajada de avisos).</summary>
+    void FollowSoon()
+    {
+        if (!_followSoon.Enabled && !_disposed) _followSoon.Start();
     }
 
     public void SetSnapshot(Snapshot s) { _painter.Snapshot = s; _dirty = true; Follow(); }
@@ -115,10 +188,14 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         Log.Info("widget", Inside ? "criado dentro da barra de tarefas" : "criado por cima da barra de tarefas");
     }
 
+    bool _destroying;
+
     void Destroy()
     {
         WatchForeground(false);
-        if (Handle != IntPtr.Zero) DestroyHandle();
+        _destroying = true;
+        try { if (Handle != IntPtr.Zero) DestroyHandle(); }
+        finally { _destroying = false; }
     }
 
     /// <summary>A janela nativa mudou (criada, destruída por nós ou junto com a barra): atualiza a cópia lida por outros threads.</summary>
@@ -151,7 +228,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     static readonly DateTime AppStart = System.Diagnostics.Process.GetCurrentProcess().StartTime;
     bool _everShown;
 
-    /// <summary>Confere a barra e ajusta o widget (a cada meio segundo e quando algo muda).</summary>
+    /// <summary>Confere a barra e ajusta o widget (quando o Windows avisa que algo mudou e, por segurança, de tempos em tempos).</summary>
     internal void Follow()
     {
         if (_disposed) return;
@@ -159,9 +236,10 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         _tb = tb;
         bool taskbar = tb.Hwnd != IntPtr.Zero; // sem barra: Windows iniciando ou Explorer reiniciando
         if (taskbar && NeedsRecreate(tb)) { Destroy(); Create(tb); }
+        if (taskbar) HookTaskbar(tb.Hwnd);
 
-        // por cima da barra auto-ocultável, o widget acompanha a animação dela; dentro, desliza junto sozinho
-        _follow.Interval = tb.AutoHide && !Inside ? 150 : 500;
+        int interval = WidgetPlacement.FollowIntervalMs(tb.AutoHide, Inside, taskbar);
+        if (_follow.Interval != interval) _follow.Interval = interval; // trocar reinicia a contagem: só quando muda
         var (show, reason) = WidgetPlacement.Visibility(_settings.ShowTaskbarWidget, _settings.WidgetInsideTaskbar,
             taskbar, tb.Thickness, tb.FullyShown, tb.FullscreenApp, tb.NotificationState);
         if (!show)
@@ -230,24 +308,29 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         _dirty = false;
     }
 
-    // ícones da barra (Iniciar, apps, clima…), lidos pela UIA num thread de fundo a cada poucos segundos
+    // ícones da barra (Iniciar, apps, clima…), lidos pela UIA num thread de fundo quando janelas abrem ou fecham
+    // (os botões da barra mudam) e, sem aviso, de tempos em tempos (WidgetPlacement.IconsReadDue)
     volatile List<(int Start, int End)>? _taskbarIcons;
     string? _iconsDesc;
     DateTime _iconsReadAt;
+    DateTime? _windowsChangedAt;
     bool _readingIcons;
 
     void RefreshTaskbarIcons(TaskbarInfo tb)
     {
-        if (_readingIcons || DateTime.Now - _iconsReadAt < TimeSpan.FromSeconds(5)) return;
+        if (_readingIcons || !WidgetPlacement.IconsReadDue(DateTime.Now, _iconsReadAt, _windowsChangedAt)) return;
         _readingIcons = true;
         _iconsReadAt = DateTime.Now;
+        var ui = SynchronizationContext.Current;
         var (hwnd, notify, left, cornerWidth) = (tb.Hwnd, tb.NotifyRect, tb.Rect.Left, P(200));
         Task.Run(() => TaskbarIcons.Read(hwnd, notify, left, cornerWidth)).ContinueWith(t =>
         {
             var desc = t.Result == null ? "não lidos" : string.Join(" ", t.Result.Select(i => $"{i.Start}–{i.End}"));
-            if (desc != _iconsDesc) { _iconsDesc = desc; Log.Info("widget", "ícones da barra: " + desc); }
+            bool changed = desc != _iconsDesc;
+            if (changed) { _iconsDesc = desc; Log.Info("widget", "ícones da barra: " + desc); }
             _taskbarIcons = t.Result;
             _readingIcons = false;
+            if (changed) ui?.Post(_ => FollowSoon(), null); // recoloca já com os ícones novos
         }, TaskScheduler.Default);
     }
 
@@ -274,6 +357,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
             case Native.WM_MOUSELEAVE:
                 _hover = false;
                 Render();
+                HoverEnded?.Invoke();
                 break;
             case Native.WM_LBUTTONDOWN:
                 _down = true;
@@ -299,6 +383,9 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
                 return; // sem o tratamento padrão, que geraria o pedido de menu de contexto
             case Native.WM_CONTEXTMENU:
                 return; // o tratamento padrão repassaria à barra (a janela pai), que abriria o menu dela
+            case Native.WM_NCDESTROY:
+                if (!_destroying) FollowSoon(); // destruída junto com a barra (o Explorer reiniciou): recria assim que ela voltar
+                break;
         }
         base.WndProc(ref m);
     }
@@ -326,7 +413,10 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        StopHooks();
         _follow.Dispose();
+        _followSoon.Dispose();
+        _iconsSoon.Dispose();
         Destroy();
     }
 }

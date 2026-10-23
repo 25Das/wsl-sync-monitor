@@ -97,3 +97,43 @@ public class LevelPrecedenceTests
     [InlineData(new Level[0], Level.Off)]
     public void Erro_ocupado_atencao_ok(Level[] levels, Level worst) => Assert.Equal(worst, Levels.Worst(levels));
 }
+
+/// <summary>
+/// O widget acompanha a barra pelos avisos do Windows (barra movida ou redimensionada, janelas abrindo e fechando,
+/// tema, monitores); a conferência periódica fica só como rede de segurança.
+/// </summary>
+public class WidgetFollowScheduleTests
+{
+    static readonly DateTime T0 = new(2026, 10, 23, 12, 0, 0);
+
+    [Fact]
+    public void Rede_de_seguranca_espaçada_com_os_avisos_do_Windows() =>
+        Assert.Equal(2000, WidgetPlacement.FollowIntervalMs(autoHide: false, inside: true, taskbarFound: true));
+
+    [Fact]
+    public void Por_cima_da_barra_que_se_oculta_acompanha_a_animacao() =>
+        Assert.Equal(150, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: false, taskbarFound: true));
+
+    [Fact]
+    public void Dentro_da_barra_que_se_oculta_desliza_junto_sozinho() =>
+        Assert.Equal(2000, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: true, taskbarFound: true));
+
+    [Fact]
+    public void Sem_barra_o_Explorer_esta_reiniciando_e_confere_logo() =>
+        Assert.Equal(500, WidgetPlacement.FollowIntervalMs(autoHide: false, inside: true, taskbarFound: false));
+
+    [Fact]
+    public void Icones_relidos_logo_depois_de_janelas_abrirem_ou_fecharem()
+    {
+        Assert.False(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(300), lastRead: T0.AddSeconds(-1), changedAt: T0)); // ainda animando
+        Assert.True(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(500), lastRead: T0.AddSeconds(-1), changedAt: T0));
+        Assert.False(WidgetPlacement.IconsReadDue(T0.AddSeconds(2), lastRead: T0.AddSeconds(1), changedAt: T0)); // já relidos depois
+    }
+
+    [Fact]
+    public void Icones_relidos_de_tempos_em_tempos_mesmo_sem_aviso()
+    {
+        Assert.False(WidgetPlacement.IconsReadDue(T0.AddSeconds(29), lastRead: T0, changedAt: null));
+        Assert.True(WidgetPlacement.IconsReadDue(T0.AddSeconds(30), lastRead: T0, changedAt: null));
+    }
+}

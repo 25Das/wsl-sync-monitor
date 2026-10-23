@@ -23,7 +23,7 @@ public sealed class TaskbarWidgetTests
     [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
     [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
 
-    const int WM_MOUSEMOVE = 0x200, WM_LBUTTONDOWN = 0x201, WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205;
+    const int WM_MOUSEMOVE = 0x200, WM_LBUTTONDOWN = 0x201, WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205, WM_MOUSELEAVE = 0x2A3;
     const int GWL_EXSTYLE = -20, WS_EX_TOPMOST = 0x8;
 
     static IntPtr Taskbar => FindWindow("Shell_TrayWnd", null);
@@ -124,6 +124,18 @@ public sealed class TaskbarWidgetTests
         SendMessage(WidgetWindow(w), WM_MOUSEMOVE, IntPtr.Zero, IntPtr.Zero);
         SendMessage(WidgetWindow(w), WM_MOUSEMOVE, IntPtr.Zero, IntPtr.Zero); // continua dentro: não repete
         Assert.Equal(1, hovers);
+    }
+
+    [Fact]
+    public void Tirar_o_mouse_avisa_na_hora()
+    {
+        // o painel aberto pela passagem do mouse para de esperar o atraso assim que o mouse sai (sem conferir a cada 100 ms)
+        using var w = Started(new Settings());
+        int left = 0;
+        w.HoverEnded += () => left++;
+        SendMessage(WidgetWindow(w), WM_MOUSEMOVE, IntPtr.Zero, IntPtr.Zero);
+        SendMessage(WidgetWindow(w), WM_MOUSELEAVE, IntPtr.Zero, IntPtr.Zero);
+        Assert.Equal(1, left);
     }
 
     [Fact]

@@ -26,8 +26,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     bool _refreshing;
 
     // hover (apenas no widget; o ícone da bandeja só responde a cliques)
-    bool _widgetHover;
-    DateTime _hoverStart, _outsideSince = DateTime.MaxValue;
+    readonly HoverTracker _hover = new();
     bool _busy;
     string? _busyText;
 
@@ -59,6 +58,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _menu.Closing += KeepMenuOpenIfAsked;
         _popup.VisibleChanged += (_, _) =>
         {
+            UpdateHoverTimer(); // aberto: confere o mouse para fechar; fechado: para
             if (!_popup.Visible) _widget?.BringAboveTaskbar();
             else if (_snap == null || DateTime.Now - _snap.Time > TimeSpan.FromSeconds(Math.Max(2, _settings.RefreshSeconds))) RequestRefresh();
             UpdateRefreshInterval();
@@ -84,13 +84,13 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _widget.RightClicked += () => ShowMenu(Cursor.Position);
         _widget.HoverStarted += () =>
         {
-            if (!_settings.HoverPopup || _popup.Visible || _menu.Visible) return;
-            _widgetHover = true; _hoverStart = DateTime.Now;
+            _hover.WidgetEntered(DateTime.Now, enabled: _settings.HoverPopup && !_popup.Visible && !_menu.Visible);
+            UpdateHoverTimer();
         };
+        _widget.HoverEnded += () => _hover.WidgetLeft(); // painel aberto pela passagem: quem decide fechar é o HoverTick
         _widget.OffsetChanged += SaveSettings;
 
         _hoverTimer.Tick += (_, _) => HoverTick();
-        _hoverTimer.Start();
 
         _refreshTimer.Tick += async (_, _) => await RefreshAsync();
         InitGuard();
@@ -264,50 +264,34 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     // ------------------------------------------------------------------ hover / clique
 
+    /// <summary>Confere o mouse (só enquanto o painel está aberto ou esperando para abrir; ver <see cref="HoverTracker"/>).</summary>
     void HoverTick()
     {
         var cur = Cursor.Position;
-
-        // aberto por clique (ou fixado): clique fora fecha, conforme PanelBehavior
-        // (reforço caso a janela não tenha recebido o foco)
-        var state = _popup.State;
-        if (state.Visible && (state.Clicked || state.Locked))
+        var panelArea = _popup.Bounds; panelArea.Inflate(8, 8);
+        var input = new HoverInput(
+            Panel: _popup.State,
+            OverWidget: _widget.Visible && _widget.ScreenBounds.Contains(cur),
+            OverPanel: _popup.Visible && panelArea.Contains(cur),
+            MenuOpen: _menu.Visible,
+            ButtonDown: Control.MouseButtons != MouseButtons.None,
+            OverMenu: (_itemMenu is { Visible: true } im && im.Bounds.Contains(cur)) || (_menu.Visible && _menu.Bounds.Contains(cur)));
+        switch (_hover.Tick(DateTime.Now, input, _settings.HoverDelayMs))
         {
-            _widgetHover = false;
-            bool inMenu = (_itemMenu is { Visible: true } im && im.Bounds.Contains(cur)) || (_menu.Visible && _menu.Bounds.Contains(cur));
-            if (Control.MouseButtons != MouseButtons.None && !_popup.Bounds.Contains(cur) && !inMenu) _popup.Apply(PanelEvent.ClickOutside);
-            return;
+            case HoverAction.ShowPopup: ShowPopup(_widget.PopupAnchor, pin: false); break;
+            case HoverAction.MouseLeft: _popup.Apply(PanelEvent.MouseLeft); break;
+            case HoverAction.ClickOutside: _popup.Apply(PanelEvent.ClickOutside); break;
         }
-
-        bool overWidget = _widget.Visible && _widget.ScreenBounds.Contains(cur);
-
-        if (!_popup.Visible)
-        {
-            if (!_widgetHover) return;
-            if (!overWidget || _menu.Visible) { _widgetHover = false; return; }
-            if ((DateTime.Now - _hoverStart).TotalMilliseconds >= _settings.HoverDelayMs)
-            {
-                ShowPopup(_widget.PopupAnchor, pin: false);
-                _outsideSince = DateTime.MaxValue;
-            }
-            return;
-        }
-
-        var popupArea = _popup.Bounds; popupArea.Inflate(8, 8);
-        if (overWidget || popupArea.Contains(cur)) { _outsideSince = DateTime.MaxValue; return; }
-        if (_outsideSince == DateTime.MaxValue) _outsideSince = DateTime.Now;
-        else if ((DateTime.Now - _outsideSince).TotalMilliseconds > 400)
-        {
-            _popup.Apply(PanelEvent.MouseLeft);
-            _widgetHover = false;
-            _outsideSince = DateTime.MaxValue;
-        }
+        UpdateHoverTimer();
     }
+
+    /// <summary>O timer do mouse só roda quando há o que conferir (antes, a cada 100 ms o tempo todo).</summary>
+    void UpdateHoverTimer() => _hoverTimer.Enabled = _hover.NeedsTicks(_popup.State);
 
     void ShowMenu(Point pt)
     {
         _popup.HidePopup();
-        _widgetHover = false;
+        _hover.WidgetLeft();
         var dir = TaskbarInfo.Get().Edge switch
         {
             TaskbarEdge.Top => ToolStripDropDownDirection.BelowLeft,

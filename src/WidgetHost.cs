@@ -20,6 +20,7 @@ public sealed class WidgetHost : IDisposable
     public event Action? Clicked;
     public event Action? RightClicked;
     public event Action? HoverStarted;
+    public event Action? HoverEnded;
     public event Action? OffsetChanged;
 
     public WidgetHost(Settings settings)
@@ -35,6 +36,7 @@ public sealed class WidgetHost : IDisposable
             _w.Clicked += () => _app.Post(_ => Clicked?.Invoke(), null);
             _w.RightClicked += () => _app.Post(_ => RightClicked?.Invoke(), null);
             _w.HoverStarted += () => _app.Post(_ => HoverStarted?.Invoke(), null);
+            _w.HoverEnded += () => _app.Post(_ => HoverEnded?.Invoke(), null);
             _w.OffsetChanged += () => _app.Post(_ => OffsetChanged?.Invoke(), null);
             _w.Start(); // só depois de os eventos estarem ligados
             ready.Set();
