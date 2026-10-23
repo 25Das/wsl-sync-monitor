@@ -35,7 +35,7 @@ public sealed class SyncthingScriptsTests : IDisposable
         var error = p.StandardError.ReadToEnd();
         p.WaitForExit();
         Assert.True(p.ExitCode == 0 && error.Length == 0, $"sh falhou ({p.ExitCode}): {error}");
-        return output.Split('\n').Where(l => l.StartsWith("@@FILE ")).Select(l => l["@@FILE ".Length..]).ToList();
+        return output.Split('\n').Where(l => l.StartsWith("@@FILE ", StringComparison.Ordinal)).Select(l => l["@@FILE ".Length..]).ToList();
     }
 
     [ShFact]

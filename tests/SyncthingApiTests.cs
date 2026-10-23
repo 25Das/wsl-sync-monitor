@@ -40,7 +40,7 @@ public class SyncthingApiTests
         var casa = devices[1];
         Assert.Equal("CASACAS", casa.Name); // sem nome: começo do ID
         Assert.False(casa.Connected);
-        Assert.Equal(DateTimeOffset.Parse("2026-10-21T22:15:40-03:00").LocalDateTime, casa.LastSeen);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-21T22:15:40-03:00", System.Globalization.CultureInfo.InvariantCulture).LocalDateTime, casa.LastSeen);
     }
 
     [Fact]

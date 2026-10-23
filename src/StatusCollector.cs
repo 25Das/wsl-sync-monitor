@@ -271,17 +271,20 @@ public sealed class StatusCollector : IDisposable
     {
         var key = ApiKey(s);
         var url = GuiUrl(s);
-        var status = await GetAsync(url, key, "/rest/system/status");
+        var tStatus = GetAsync(url, key, "/rest/system/status");
+        var tConfig = GetAsync(url, key, "/rest/config");
+        var tConns = GetAsync(url, key, "/rest/system/connections");
+        await Task.WhenAll(tStatus, tConfig, tConns);
+        var (status, config, conns) = (tStatus.Result, tConfig.Result, tConns.Result.GetProperty("connections"));
         var myId = Str(status, "myID");
-        var config = await GetAsync(url, key, "/rest/config");
-        var conns = (await GetAsync(url, key, "/rest/system/connections")).GetProperty("connections");
 
-        var completions = new Dictionary<string, JsonElement>();
-        foreach (var id in SyncthingApi.DevicesToCheck(config, conns, myId))
-            completions[id] = await GetAsync(url, key, "/rest/db/completion?device=" + Q(id));
-        var folders = new Dictionary<string, JsonElement>();
-        foreach (var id in SyncthingApi.FoldersToCheck(config, myId))
-            folders[id] = await GetAsync(url, key, "/rest/db/status?folder=" + Q(id));
+        // em paralelo, como na leitura completa: no desligamento cada segundo conta
+        var tCompletions = SyncthingApi.DevicesToCheck(config, conns, myId).Distinct()
+            .Select(async id => (id, json: await GetAsync(url, key, "/rest/db/completion?device=" + Q(id)))).ToList();
+        var tFolders = SyncthingApi.FoldersToCheck(config, myId).Distinct()
+            .Select(async id => (id, json: await GetAsync(url, key, "/rest/db/status?folder=" + Q(id)))).ToList();
+        var completions = (await Task.WhenAll(tCompletions)).ToDictionary(r => r.id, r => r.json);
+        var folders = (await Task.WhenAll(tFolders)).ToDictionary(r => r.id, r => r.json);
         return SyncthingApi.EvaluateSync(status, config, conns, completions, folders);
     }
 
