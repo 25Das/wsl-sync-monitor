@@ -28,17 +28,21 @@ public sealed class ShellHookTests
     }
 
     [Fact]
-    public void Janela_sem_botao_na_barra_nao_avisa()
+    public void Dica_ou_menu_nao_avisa()
     {
+        // janela "de ferramenta" sem dona, como dicas, menus e miniaturas: não tem botão na barra
         var seen = new List<IntPtr>();
         using var hook = new ShellHookWindow(seen.Add);
-        IntPtr h;
-        using (var tip = new Form { ShowInTaskbar = false, FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Location = new(-2000, -2000) })
+        var tip = new NativeWindow();
+        tip.CreateHandle(new CreateParams
         {
-            tip.Show();
-            h = tip.Handle;
-            tip.Close();
-        }
+            Style = unchecked((int)0x80000000) | 0x10000000, // WS_POPUP | WS_VISIBLE
+            ExStyle = Native.WS_EX_TOOLWINDOW,
+            X = -2000, Y = -2000, Width = 50, Height = 20,
+        });
+        var h = tip.Handle;
+        Pump(() => false, TimeSpan.FromMilliseconds(300));
+        tip.DestroyHandle();
         Pump(() => false, TimeSpan.FromMilliseconds(700));
         Assert.DoesNotContain(h, seen);
     }
