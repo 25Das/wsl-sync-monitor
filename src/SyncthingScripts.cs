@@ -28,13 +28,15 @@ public static class SyncthingScripts
     /// Função de shell we NOME SEGUNDOS: espera todos os processos com esse nome terminarem (0) ou o prazo vencer (1).
     /// Usa o waitpid do util-linux (2.40+), que o kernel avisa quando o processo termina (pidfd), sem consultas; sem
     /// ele (distros mais antigas, busybox) ou se ele falhar por outro motivo (ex.: WSL 1, sem pidfd), confere de dentro
-    /// da distro a cada 0,2 s. O código 3 do waitpid é o prazo vencido. Uma linha, sem aspas duplas.
+    /// da distro a cada 0,2 s (ou 1 s, se o sleep não aceitar frações), com o prazo medido no relógio (em segundos
+    /// inteiros: nunca menos que o pedido, até 1 s a mais; dizer "continua" cedo seria pior). O código 3 do
+    /// waitpid é o prazo vencido. Uma linha, sem aspas duplas.
     /// </summary>
     const string WaitExitFunction =
-        "we() { ps=$(pgrep -x $1) || return 0; " +
+        "we() { ps=$(pgrep -x $1) || return 0; end=$(($(date +%s)+$2+1)); " +
         "if command -v waitpid >/dev/null 2>&1; then waitpid -e -t $2 $ps >/dev/null 2>&1; r=$?; " +
         "[ $r -eq 0 ] && return 0; [ $r -eq 3 ] && return 1; fi; " +
-        "n=0; while pgrep -x $1 >/dev/null; do [ $n -ge $(($2*5)) ] && return 1; sleep 0.2; n=$((n+1)); done; return 0; };";
+        "while pgrep -x $1 >/dev/null; do [ $(date +%s) -ge $end ] && return 1; sleep 0.2 2>/dev/null || sleep 1; done; return 0; };";
 
     /// <summary>
     /// Espera o processo <paramref name="name"/> terminar, num único comando (antes, um wsl.exe com pgrep a cada

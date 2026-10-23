@@ -108,15 +108,31 @@ public class WidgetFollowScheduleTests
 
     [Fact]
     public void Rede_de_seguranca_espaçada_com_os_avisos_do_Windows() =>
-        Assert.Equal(5000, WidgetPlacement.FollowIntervalMs(autoHide: false, inside: true));
+        Assert.Equal(5000, WidgetPlacement.FollowIntervalMs(autoHide: false, inside: true, taskbarFound: true));
 
     [Fact]
     public void Por_cima_da_barra_que_se_oculta_acompanha_a_animacao() =>
-        Assert.Equal(150, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: false));
+        Assert.Equal(150, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: false, taskbarFound: true));
 
     [Fact]
     public void Dentro_da_barra_que_se_oculta_desliza_junto_sozinho() =>
-        Assert.Equal(5000, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: true));
+        Assert.Equal(5000, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: true, taskbarFound: true));
+
+    [Fact]
+    public void Sem_barra_o_Explorer_ainda_esta_subindo_e_confere_logo()
+    {
+        // o aviso de barra recriada pode chegar antes de ela estar pronta; só enquanto ela falta
+        Assert.Equal(500, WidgetPlacement.FollowIntervalMs(autoHide: false, inside: true, taskbarFound: false));
+    }
+
+    [Theory]
+    [InlineData(true, false, 0, true)]                 // janela comum de app: tem botão na barra
+    [InlineData(false, false, 0, false)]               // janela filha
+    [InlineData(true, true, 0, false)]                 // dona de outra (diálogo)
+    [InlineData(true, false, 0x80, false)]             // WS_EX_TOOLWINDOW: Iniciar, Pesquisa, dicas
+    [InlineData(true, true, 0x40000, true)]            // WS_EX_APPWINDOW força o botão
+    public void So_janelas_com_botao_na_barra_mudam_os_icones(bool topLevel, bool owned, int exStyle, bool expected) =>
+        Assert.Equal(expected, WidgetPlacement.HasTaskbarButton(topLevel, owned, exStyle));
 
     [Fact]
     public void Icones_relidos_logo_depois_de_janelas_abrirem_ou_fecharem()

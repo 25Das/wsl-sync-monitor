@@ -38,6 +38,17 @@ public class RefreshRulesTests
         Assert.Equal(expected, RefreshRules.GuardWatching(state, idleTicks, sessionsWatched, timedKeepAlive));
 
     [Fact]
+    public void Processo_que_segura_a_distro_terminou_depois_de_um_tempo_le_na_hora() =>
+        Assert.True(RefreshRules.RefreshOnKeepAliveExit(lived: TimeSpan.FromMinutes(3)));
+
+    [Fact]
+    public void Processo_que_segura_a_distro_terminou_logo_ao_iniciar_espera_a_leitura_periodica()
+    {
+        // a distro não sobe (quebrada, sendo removida): ler na hora religaria e cairia de novo, sem parar
+        Assert.False(RefreshRules.RefreshOnKeepAliveExit(lived: TimeSpan.FromSeconds(2)));
+    }
+
+    [Fact]
     public void Intervalo_minimo_de_2_s() =>
         Assert.Equal(TimeSpan.FromSeconds(2), RefreshRules.Interval(0, eventsLive: false, panelOpen: false, guardWatching: false));
 }

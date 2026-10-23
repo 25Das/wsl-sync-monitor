@@ -331,6 +331,20 @@ public sealed class WaitExitScriptTests : IDisposable
     }
 
     [ShFact]
+    public void Sem_sleep_fracionario_o_prazo_continua_sendo_em_segundos()
+    {
+        // busybox antigo: "sleep 0.2" falha na hora; contar voltas terminaria a espera de 2 s em milissegundos
+        StartTarget("30");
+        Directory.CreateDirectory(_stubDir);
+        var stub = Path.Combine(_stubDir, "sleep");
+        File.WriteAllText(stub, "#!/bin/sh\ncase \"$1\" in *.*) exit 1;; esac\nexec /bin/sleep \"$1\"\n");
+        File.SetUnixFileMode(stub, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.UserWrite);
+        var (output, took) = Run(2, _stubDir);
+        Assert.Equal("running", output);
+        Assert.True(took >= TimeSpan.FromSeconds(1.9), $"terminou cedo: {took}");
+    }
+
+    [ShFact]
     public void Waitpid_que_falha_por_outro_motivo_cai_na_conferencia_de_dentro_da_distro()
     {
         // ex.: kernel sem pidfd (WSL 1) ou versão sem uma opção

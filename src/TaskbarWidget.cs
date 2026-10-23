@@ -71,7 +71,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     // tela cheia, posição, modo de ocultar, Explorer reiniciado); o tema ou os monitores mudaram.
     // O timer _follow continua como rede de segurança, bem mais espaçado (WidgetPlacement.FollowIntervalMs).
     Native.WinEventProc? _hookProc;
-    IntPtr _taskbarHook;
+    IntPtr _taskbarHook, _foregroundHook;
     uint _taskbarPid;
     TaskbarNotifications? _notifications;
 
@@ -82,6 +82,10 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         _notifications.ButtonsChanged += _ => OnTaskbarButtonsChanged();
         _notifications.TaskbarChanged += FollowSoon;  // tela cheia, posição, modo de ocultar
         _notifications.TaskbarCreated += FollowSoon;  // Explorer reiniciou: cria o widget na barra nova
+        // sem os avisos de tela cheia (registro como appbar recusado): confere a cada troca de janela em primeiro plano
+        if (!_notifications.AppBarRegistered)
+            _foregroundHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero,
+                _hookProc, 0, 0, Native.WINEVENT_OUTOFCONTEXT);
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemChange; // tema claro/escuro, barra
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnSystemChange; // monitores, resolução, escala
     }
@@ -99,8 +103,9 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
 
     void StopHooks()
     {
-        if (_taskbarHook != IntPtr.Zero) Native.UnhookWinEvent(_taskbarHook);
-        _taskbarHook = IntPtr.Zero;
+        foreach (var h in new[] { _taskbarHook, _foregroundHook })
+            if (h != IntPtr.Zero) Native.UnhookWinEvent(h);
+        _taskbarHook = _foregroundHook = IntPtr.Zero;
         _notifications?.Dispose();
         _notifications = null;
         _taskbarPid = 0;
@@ -114,6 +119,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     void OnWinEvent(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
     {
         if (_disposed || idObject != Native.OBJID_WINDOW || idChild != Native.CHILDID_SELF || hwnd == IntPtr.Zero) return;
+        if (evt == Native.EVENT_SYSTEM_FOREGROUND) { FollowSoon(); return; } // tela cheia (só sem os avisos de appbar)
         // a barra ou algo dentro dela (área de notificação, botões) mudou de lugar ou tamanho
         if (hwnd != _hwnd && (hwnd == _tb.Hwnd || Native.GetAncestor(hwnd, Native.GA_ROOT) == _tb.Hwnd)) FollowSoon();
     }
@@ -245,7 +251,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         if (taskbar && NeedsRecreate(tb)) { Destroy(); Create(tb); }
         if (taskbar) HookTaskbar(tb.Hwnd);
 
-        int interval = WidgetPlacement.FollowIntervalMs(tb.AutoHide, Inside);
+        int interval = WidgetPlacement.FollowIntervalMs(tb.AutoHide, Inside, taskbar);
         if (_follow.Interval != interval) _follow.Interval = interval; // trocar reinicia a contagem: só quando muda
         var (show, reason) = WidgetPlacement.Visibility(_settings.ShowTaskbarWidget, _settings.WidgetInsideTaskbar,
             taskbar, tb.Thickness, tb.FullyShown, tb.FullscreenApp, tb.NotificationState);

@@ -57,4 +57,14 @@ public sealed class RegistryChangeWatcherTests : IDisposable
     [Fact]
     public void Chave_que_nao_existe_nao_e_observada() =>
         Assert.Null(RegistryChangeWatcher.Open(RegistryHive.CurrentUser, _path + @"\nao-existe", () => { }));
+
+    [Fact]
+    public void Sem_subchaves_avisa_so_quando_uma_chave_e_criada_ou_removida_aqui()
+    {
+        // WSL instalado depois do app: observa a chave de cima até a do WSL aparecer
+        using var changed = new SemaphoreSlim(0);
+        using var w = RegistryChangeWatcher.Open(RegistryHive.CurrentUser, _path, () => changed.Release(), subtree: false)!;
+        using (var lxss = _key.CreateSubKey("Lxss")) { }
+        Assert.True(changed.Wait(TimeSpan.FromSeconds(5)), "criar a chave não avisou");
+    }
 }

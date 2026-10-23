@@ -52,10 +52,14 @@ public sealed class TaskbarNotifications : NativeWindow, IDisposable
 
     Native.APPBARDATA AppBar => new() { cbSize = Marshal.SizeOf<Native.APPBARDATA>(), hWnd = Handle, uCallbackMessage = (uint)AppBarMessage };
 
+    /// <summary>Registrado como appbar: chegam os avisos de tela cheia, posição e modo de ocultar da barra.</summary>
+    public bool AppBarRegistered { get; private set; }
+
     void RegisterAppBar()
     {
         var data = AppBar;
-        if (Native.SHAppBarMessage(ABM_NEW, ref data) == IntPtr.Zero) Log.Info("widget", "avisos de tela cheia indisponíveis; conferidos a cada 5 s");
+        AppBarRegistered = Native.SHAppBarMessage(ABM_NEW, ref data) != IntPtr.Zero;
+        if (!AppBarRegistered) Log.Info("widget", "avisos de tela cheia indisponíveis; conferidos a cada troca de janela em primeiro plano");
     }
 
     void UnregisterAppBar()
@@ -66,9 +70,10 @@ public sealed class TaskbarNotifications : NativeWindow, IDisposable
 
     void OnCloak(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
     {
-        // só janelas de nível superior: são as que têm botão na barra
+        // só janelas com botão na barra (não Iniciar, Pesquisa, dicas): a janela ocultada continua existindo, dá para ver o estilo
         if (idObject == Native.OBJID_WINDOW && idChild == Native.CHILDID_SELF && hwnd != IntPtr.Zero &&
-            Native.GetAncestor(hwnd, Native.GA_ROOT) == hwnd)
+            WidgetPlacement.HasTaskbarButton(topLevel: Native.GetAncestor(hwnd, Native.GA_ROOT) == hwnd,
+                owned: Native.GetWindow(hwnd, Native.GW_OWNER) != IntPtr.Zero, exStyle: Native.GetWindowLong(hwnd, Native.GWL_EXSTYLE)))
             ButtonsChanged?.Invoke(hwnd);
     }
 

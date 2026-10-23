@@ -62,7 +62,9 @@ static class Native
         EVENT_OBJECT_LOCATIONCHANGE = 0x800B;
     public const int OBJID_WINDOW = 0, CHILDID_SELF = 0;
     [DllImport("user32.dll")] public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
-    public const uint GA_ROOT = 2;
+    public const uint GA_ROOT = 2, GW_OWNER = 4;
+    public const int GWL_EXSTYLE = -20;
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")] public static extern int GetWindowLong(IntPtr hWnd, int index);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int RegisterWindowMessage(string name);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool RegisterShellHookWindow(IntPtr hWnd);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool DeregisterShellHookWindow(IntPtr hWnd);
@@ -100,7 +102,10 @@ static class Native
         readonly Microsoft.Win32.SafeHandles.SafeProcessHandle _handle;
         public int Id { get; }
 
-        DetachedProcess(IntPtr handle, int id) { _handle = new(handle, ownsHandle: true); Id = id; }
+        DetachedProcess(IntPtr handle, int id) { _handle = new(handle, ownsHandle: true); Id = id; StartedAt = DateTime.Now; }
+
+        /// <summary>Desde quando o app acompanha o processo (criado ou assumido).</summary>
+        public DateTime StartedAt { get; }
 
         public bool HasExited => _handle.IsClosed || WaitForSingleObject(_handle.DangerousGetHandle(), 0) == 0;
 
@@ -121,10 +126,16 @@ static class Native
             _exitWait = ThreadPool.RegisterWaitForSingleObject(_exitHandle, (_, _) => onExit(), null, Timeout.Infinite, executeOnlyOnce: true);
         }
 
-        /// <summary>Não avisa mais o fim do processo (o app vai encerrá-lo de propósito).</summary>
+        /// <summary>
+        /// Não avisa mais o fim do processo (o app vai encerrá-lo de propósito). Espera o Windows desfazer a espera
+        /// antes de devolver: só então o handle do processo pode ser fechado (senão o número dele poderia ir para outro
+        /// objeto no meio da espera). Não chamar de dentro do próprio aviso.
+        /// </summary>
         public void StopWatchingExit()
         {
-            _exitWait?.Unregister(null);
+            if (_exitWait != null)
+                using (var undone = new ManualResetEvent(false))
+                    if (_exitWait.Unregister(undone)) undone.WaitOne();
             _exitWait = null;
             _exitHandle?.Dispose();
             _exitHandle = null;

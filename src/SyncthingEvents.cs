@@ -72,8 +72,9 @@ public sealed class SyncthingEvents(HttpClient http)
     /// <summary>
     /// Espera o Syncthing parar (depois de pedir que ele feche): mantém um pedido do fluxo de eventos aberto, e o
     /// próprio Syncthing o fecha ao parar, então a resposta vem na hora, sem conferir de tempos em tempos.
-    /// true = parou (conexão recusada ou fechada); false = continua respondendo no fim do prazo. Uma recusa com
-    /// código HTTP (ex.: chave errada) é o Syncthing respondendo: vira exceção, nunca "parou".
+    /// true = parou (conexão recusada ou fechada); false = continua respondendo no fim do prazo. Chave recusada
+    /// (401/403) ou falha que não diz se ele parou (certificado, proxy, nome) viram exceção, nunca "parou"; erro do
+    /// servidor (5xx, comum no meio do fechamento) é ele ainda respondendo: continua esperando.
     /// </summary>
     public async Task<bool> WaitUntilDownAsync(string baseUrl, string apiKey, TimeSpan max, CancellationToken ct)
     {
@@ -84,13 +85,23 @@ public sealed class SyncthingEvents(HttpClient http)
             long since = await LatestIdAsync(baseUrl, apiKey, limit.Token).ConfigureAwait(false);
             while (true)
             {
-                var batch = await GetAsync(baseUrl, apiKey, $"/rest/events?since={since}&timeout={(int)LongPoll.TotalSeconds}", limit.Token)
-                    .ConfigureAwait(false);
-                if (batch.Count > 0) since = batch.Max(e => (long)SyncthingApi.Num(e, "id"));
+                try
+                {
+                    var batch = await GetAsync(baseUrl, apiKey, $"/rest/events?since={since}&timeout={(int)LongPoll.TotalSeconds}", limit.Token)
+                        .ConfigureAwait(false);
+                    if (batch.Count > 0) since = batch.Max(e => (long)SyncthingApi.Num(e, "id"));
+                }
+                catch (HttpRequestException ex) when ((int?)ex.StatusCode >= 500)
+                {
+                    await Task.Delay(200, limit.Token).ConfigureAwait(false); // ainda respondendo enquanto fecha
+                }
             }
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == null) { return true; } // recusou ou fechou a conexão
-        catch (IOException) { return true; }                                          // fechou no meio da resposta
+        catch (HttpRequestException ex) when (ex.HttpRequestError is HttpRequestError.ConnectionError or HttpRequestError.ResponseEnded)
+        {
+            return true; // recusou ou fechou a conexão
+        }
+        catch (IOException) { return true; } // fechou no meio da resposta
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return false; } // prazo
     }
 

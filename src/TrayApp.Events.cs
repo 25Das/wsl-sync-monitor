@@ -44,19 +44,30 @@ public sealed partial class TrayApp
         }
         catch (Exception ex) { Log.Warn("configurações", "observar o settings.json", ex); }
 
-        // distro instalada, removida ou trocada a padrão: o Windows avisa (antes, só na próxima leitura)
+        WatchWslRegistry();
+    }
+
+    /// <summary>Onde o WSL guarda a lista de distros do usuário (e a chave acima, para quando ele ainda não existe).</summary>
+    const string WslRegistryParent = @"Software\Microsoft\Windows\CurrentVersion", WslRegistryKey = WslRegistryParent + @"\Lxss";
+
+    RegistryChangeWatcher? _wslRegistry, _wslRegistryParent;
+
+    /// <summary>
+    /// Distro instalada, removida ou trocada a padrão: o Windows avisa (antes, só na próxima leitura). Sem o WSL ainda,
+    /// observa a chave de cima até a do WSL aparecer.
+    /// </summary>
+    void WatchWslRegistry()
+    {
         try
         {
-            _wslRegistry = RegistryChangeWatcher.Open(Microsoft.Win32.RegistryHive.CurrentUser, WslRegistryKey,
+            _wslRegistry ??= RegistryChangeWatcher.Open(Microsoft.Win32.RegistryHive.CurrentUser, WslRegistryKey,
                 () => _ui.Post(_ => RequestRefreshSoon(), null));
+            if (_wslRegistry != null) { _wslRegistryParent?.Dispose(); _wslRegistryParent = null; return; }
+            _wslRegistryParent ??= RegistryChangeWatcher.Open(Microsoft.Win32.RegistryHive.CurrentUser, WslRegistryParent,
+                () => _ui.Post(_ => { WatchWslRegistry(); RequestRefreshSoon(); }, null), subtree: false);
         }
         catch (Exception ex) { Log.Warn("wsl", "observar a lista de distros no registro", ex); }
     }
-
-    /// <summary>Onde o WSL guarda a lista de distros do usuário.</summary>
-    const string WslRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Lxss";
-
-    RegistryChangeWatcher? _wslRegistry;
 
     /// <summary>A leitura completa diz se o Syncthing está respondendo: é quando o fluxo de eventos pode começar.</summary>
     void SetSyncthingUp(bool up)
@@ -196,5 +207,6 @@ public sealed partial class TrayApp
         _refreshSoon.Stop();
         _settingsWatcher?.Dispose();
         _wslRegistry?.Dispose();
+        _wslRegistryParent?.Dispose();
     }
 }

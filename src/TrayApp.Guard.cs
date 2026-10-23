@@ -31,8 +31,9 @@ public sealed partial class TrayApp
         WslService.KeepAliveExited += (distro, p) => _ui.Post(_ =>
         {
             if (!WslService.IsKeepAlive(distro, p)) return; // já solto ou trocado pelo app
-            Log.Info("proteção", $"{distro}: o processo que a mantinha ligada terminou (distro encerrada por fora?)");
-            RequestRefresh();
+            var lived = DateTime.Now - p.StartedAt;
+            Log.Info("proteção", $"{distro}: o processo que a mantinha ligada terminou após {lived.TotalSeconds:0} s (distro encerrada por fora?)");
+            if (RefreshRules.RefreshOnKeepAliveExit(lived)) RequestRefresh();
         }, null);
         _shutdownWatcher = new ShutdownWatcher(NeedsShutdownProtection, ShutdownSequenceAsync,
             // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga

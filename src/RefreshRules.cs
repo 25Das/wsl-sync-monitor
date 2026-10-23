@@ -22,6 +22,16 @@ public static class RefreshRules
     public static bool GuardWatching(GuardState state, int idleTicks, bool sessionsWatched, bool timedKeepAlive) =>
         idleTicks > 0 || (state == GuardState.InUse && !sessionsWatched) || (state == GuardState.KeptAlive && timedKeepAlive);
 
+    /// <summary>Quanto o processo que segura a distro precisa ter vivido para o fim dele pedir uma leitura na hora.</summary>
+    public static readonly TimeSpan KeepAliveMinLife = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// O processo que segurava a distro terminou: lê na hora (a distro foi encerrada por fora), a não ser que ele tenha
+    /// terminado logo ao iniciar (a distro não sobe): ler na hora religaria e cairia de novo, sem parar. Aí fica com a
+    /// leitura periódica, como antes.
+    /// </summary>
+    public static bool RefreshOnKeepAliveExit(TimeSpan lived) => lived >= KeepAliveMinLife;
+
     /// <summary>
     /// Vale sondar o Syncthing a cada segundo (ele está para responder): a distro acabou de ligar, ou ele acabou de
     /// parar (reiniciando), ou o app acabou de abrir, e ele ainda não responde. Quem continua sem Syncthing não é sondado

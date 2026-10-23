@@ -27,6 +27,9 @@ public sealed class HoverTracker
     /// <summary>Com o painel aberto por clique e sem o foco (o Windows pode negá-lo), de quanto em quanto conferir o clique fora.</summary>
     public static readonly TimeSpan ClickOutsideCheck = TimeSpan.FromMilliseconds(100);
 
+    /// <summary>Com uma saída avisada mas não confirmada (o mouse ainda na área do painel), de quanto em quanto reconferir.</summary>
+    public static readonly TimeSpan UncertainCheck = TimeSpan.FromMilliseconds(100);
+
     /// <summary>O mouse entrou no widget (<paramref name="enabled"/>: abrir pela passagem está ligado e nada mais está aberto).</summary>
     public void WidgetEntered(DateTime now, bool enabled) => _enteredAt = enabled ? now : null;
 
@@ -47,9 +50,10 @@ public sealed class HoverTracker
     public TimeSpan? NextCheck(DateTime now, PanelState panel, bool panelFocused, int delayMs)
     {
         if (!panel.Visible) return _enteredAt is { } e ? Max0(e.AddMilliseconds(delayMs) - now) : null;
-        if (panel.Clicked || panel.Locked) return panelFocused ? null : ClickOutsideCheck;
+        if (panel.Locked) return null; // fixado: clique fora não fecha
+        if (panel.Clicked) return panelFocused ? null : ClickOutsideCheck;
         if (_outsideSince is { } o) return Max0(o.AddMilliseconds(LeaveGraceMs + 1) - now);
-        return _uncertain ? TimeSpan.FromMilliseconds(LeaveGraceMs) : null;
+        return _uncertain ? UncertainCheck : null;
     }
 
     static TimeSpan Max0(TimeSpan t) => t < TimeSpan.Zero ? TimeSpan.Zero : t;

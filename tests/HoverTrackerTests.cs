@@ -123,7 +123,7 @@ public class HoverTrackerTests
         var h = new HoverTracker();
         h.LeaveSeen();
         h.Tick(T0, On(ByHover, panel: true), delayMs: 400);
-        Assert.Equal(TimeSpan.FromMilliseconds(HoverTracker.LeaveGraceMs), h.NextCheck(T0, ByHover, panelFocused: false, delayMs: 400));
+        Assert.Equal(HoverTracker.UncertainCheck, h.NextCheck(T0, ByHover, panelFocused: false, delayMs: 400));
 
         h.MouseEntered(); // voltou ao painel ou ao widget: os avisos voltam a valer
         Assert.Null(h.NextCheck(T0, ByHover, panelFocused: false, delayMs: 400));
@@ -132,6 +132,10 @@ public class HoverTrackerTests
     [Fact]
     public void Aberto_por_clique_com_o_foco_fecha_pela_perda_do_foco_sem_conferir() =>
         Assert.Null(new HoverTracker().NextCheck(T0, ByClick, panelFocused: true, delayMs: 400));
+
+    [Fact]
+    public void Fixado_nao_fecha_com_clique_fora_e_nao_confere() =>
+        Assert.Null(new HoverTracker().NextCheck(T0, new PanelState(true, true, true), panelFocused: false, delayMs: 400));
 
     [Fact]
     public void Aberto_por_clique_sem_o_foco_confere_o_clique_fora()

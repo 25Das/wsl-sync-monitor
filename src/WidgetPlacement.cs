@@ -61,7 +61,9 @@ public static class WidgetPlacement
     /// De quanto em quanto tempo o widget confere a barra além dos avisos do Windows (ver TaskbarNotifications): rede de
     /// segurança espaçada; por cima da barra que se oculta, acompanha a animação dela (que não tem aviso por quadro).
     /// </summary>
-    public static int FollowIntervalMs(bool autoHide, bool inside) => autoHide && !inside ? 150 : 5000;
+    /// Sem barra (o aviso de barra recriada pode chegar antes de ela estar pronta), confere logo, só enquanto ela falta.
+    public static int FollowIntervalMs(bool autoHide, bool inside, bool taskbarFound) =>
+        !taskbarFound ? 500 : autoHide && !inside ? 150 : 5000;
 
     /// <summary>Espera da animação da barra depois de uma janela abrir ou fechar, antes de reler os ícones.</summary>
     public static readonly TimeSpan IconsSettle = TimeSpan.FromMilliseconds(500);
@@ -83,4 +85,14 @@ public static class WidgetPlacement
     public static bool IconsReadDue(DateTime now, DateTime lastRead, DateTime? changedAt) =>
         (changedAt is { } c && c > lastRead && now - c >= IconsSettle - ClockSlack && now - lastRead >= IconsMinSpacing - ClockSlack)
         || now - lastRead >= IconsMaxAge;
+
+    /// <summary>A janela tem botão na barra de tarefas: de nível superior, sem dona e não "de ferramenta" (Iniciar,
+    /// Pesquisa, dicas), a não ser que peça o botão (WS_EX_APPWINDOW).</summary>
+    public static bool HasTaskbarButton(bool topLevel, bool owned, int exStyle)
+    {
+        const int toolWindow = 0x80, appWindow = 0x40000;
+        if (!topLevel) return false;
+        if ((exStyle & appWindow) != 0) return true;
+        return !owned && (exStyle & toolWindow) == 0;
+    }
 }

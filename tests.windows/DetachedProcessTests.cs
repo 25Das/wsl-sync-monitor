@@ -41,4 +41,28 @@ public sealed class DetachedProcessTests
         p.Kill();
         Assert.False(exited.Wait(TimeSpan.FromSeconds(2)));
     }
+
+    [Fact]
+    public void Descartar_enquanto_espera_nao_avisa()
+    {
+        // o handle do processo só pode ser fechado depois de a espera do Windows ter sido desfeita: senão o número do
+        // handle pode ir para outro objeto e a espera avisaria um "fim" que não aconteceu
+        int spurious = 0;
+        for (int i = 0; i < 20; i++)
+        {
+            var p = Cmd("ping -n 3 127.0.0.1 >nul");
+            p.WatchExit(() => Interlocked.Increment(ref spurious));
+            p.Dispose(); // o processo continua rodando; o app só deixou de acompanhá-lo
+        }
+        Thread.Sleep(500);
+        Assert.Equal(0, spurious);
+    }
+
+    [Fact]
+    public void Sabe_ha_quanto_tempo_o_processo_existe()
+    {
+        using var p = Cmd("ping -n 30 127.0.0.1 >nul");
+        Assert.InRange(DateTime.Now - p.StartedAt, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+        p.Kill();
+    }
 }

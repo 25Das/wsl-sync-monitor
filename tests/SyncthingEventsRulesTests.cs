@@ -91,6 +91,49 @@ public class SyncthingEventsRulesTests
         Assert.Equal("/rest/noauth/health", fake.LastPath); // não precisa da chave nem executa nada na distro
     }
 
+    /// <summary>Responde às consultas de eventos com o que <paramref name="reply"/> mandar (a n-ésima chamada).</summary>
+    sealed class ShuttingDown(Func<int, HttpResponseMessage> reply) : HttpMessageHandler
+    {
+        int _calls;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+        {
+            await Task.Delay(1, ct);
+            return reply(_calls++);
+        }
+    }
+
+    static HttpResponseMessage Json(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
+
+    [Fact]
+    public async Task Conexao_recusada_ou_fechada_e_parado()
+    {
+        using var http = new HttpClient(new ShuttingDown(n => n == 0 ? Json("""[{"id":5}]""")
+            : throw new HttpRequestException(HttpRequestError.ConnectionError, "recusada")));
+        Assert.True(await new SyncthingEvents(http).WaitUntilDownAsync("http://st", "", TimeSpan.FromSeconds(5), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Erro_do_servidor_enquanto_fecha_continua_esperando()
+    {
+        // 503 no meio do fechamento ainda é o Syncthing: espera a conexão cair
+        using var http = new HttpClient(new ShuttingDown(n => n switch
+        {
+            0 => Json("""[{"id":5}]"""),
+            1 => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable),
+            _ => throw new HttpRequestException(HttpRequestError.ConnectionError, "recusada"),
+        }));
+        Assert.True(await new SyncthingEvents(http).WaitUntilDownAsync("http://st", "", TimeSpan.FromSeconds(5), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Erro_de_certificado_nao_e_parado()
+    {
+        // TLS recusado: o Syncthing pode estar rodando; dizer "parou" seguiria o desligamento cedo demais
+        using var http = new HttpClient(new ShuttingDown(_ => throw new HttpRequestException(HttpRequestError.SecureConnectionError, "tls")));
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            new SyncthingEvents(http).WaitUntilDownAsync("https://st", "", TimeSpan.FromSeconds(5), CancellationToken.None));
+    }
+
     [Theory]
     [InlineData(1, 2)]
     [InlineData(2, 4)]
