@@ -43,7 +43,20 @@ public sealed partial class TrayApp
                 () => _ui.Post(_ => ReloadSettingsIfChanged(), null));
         }
         catch (Exception ex) { Log.Warn("configurações", "observar o settings.json", ex); }
+
+        // distro instalada, removida ou trocada a padrão: o Windows avisa (antes, só na próxima leitura)
+        try
+        {
+            _wslRegistry = RegistryChangeWatcher.Open(Microsoft.Win32.RegistryHive.CurrentUser, WslRegistryKey,
+                () => _ui.Post(_ => RequestRefreshSoon(), null));
+        }
+        catch (Exception ex) { Log.Warn("wsl", "observar a lista de distros no registro", ex); }
     }
+
+    /// <summary>Onde o WSL guarda a lista de distros do usuário.</summary>
+    const string WslRegistryKey = @"Software\Microsoft\Windows\CurrentVersion\Lxss";
+
+    RegistryChangeWatcher? _wslRegistry;
 
     /// <summary>A leitura completa diz se o Syncthing está respondendo: é quando o fluxo de eventos pode começar.</summary>
     void SetSyncthingUp(bool up)
@@ -182,5 +195,6 @@ public sealed partial class TrayApp
         _lingerTimer.Stop();
         _refreshSoon.Stop();
         _settingsWatcher?.Dispose();
+        _wslRegistry?.Dispose();
     }
 }
