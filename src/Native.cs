@@ -34,6 +34,7 @@ static class Native
     [DllImport("user32.dll")] public static extern bool DestroyIcon(IntPtr hIcon);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern IntPtr WindowFromPoint(Point p);
+    [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hWnd);
 #pragma warning disable CA1838 // diagnóstico raro (log): o StringBuilder é o mais simples
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int max);
 #pragma warning restore CA1838

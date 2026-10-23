@@ -68,7 +68,7 @@ public sealed class AppE2ETests
             app.Screenshot("falha");
             string items;
             try { items = app.VisibleMenuItems(); } catch (Exception e) { items = e.Message; }
-            throw new Exception($"{ex.Message}\nitens de menu visíveis: {items}", ex);
+            throw new Exception($"{ex.Message}\nitens de menu visíveis: {items}\n{app.LogText()}", ex);
         }
     }
 }

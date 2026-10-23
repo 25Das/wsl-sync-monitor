@@ -201,7 +201,8 @@ public sealed class TaskbarWidget : Form
             if (Visible) Hide();
             return;
         }
-        if (!Visible)
+        bool appearing = !Visible;
+        if (appearing)
             Log.Info("widget", _everShown ? "exibido" : $"exibido {(DateTime.Now - AppStart).TotalSeconds:0.0} s após o início do app");
         _everShown = true;
 
@@ -232,6 +233,9 @@ public sealed class TaskbarWidget : Form
             Show();
             _dirty = true;
         }
+        if (appearing)
+            Log.Info("widget", $"na tela em {ScreenBounds} ({(Inside ? "dentro da barra" : "por cima da barra")}; " +
+                $"visível: {Native.IsWindowVisible(Handle)}, pai: {(Native.GetParent(Handle) == _parent && Inside ? "a barra" : "0x" + ((long)Native.GetParent(Handle)).ToString("x", System.Globalization.CultureInfo.InvariantCulture))})");
         key += $"|{_busy}";
         if (_dirty || key != _lastKey)
         {
