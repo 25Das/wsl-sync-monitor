@@ -120,6 +120,26 @@ public sealed partial class TrayApp
         UpdateRefreshInterval();
     }
 
+    bool _probing;
+
+    /// <summary>
+    /// A distro acabou de ligar (ou o Syncthing de parar) e ele ainda não responde: confere a cada segundo, sem executar
+    /// nada na distro, e lê tudo assim que ele responder (antes, até o próximo ciclo; ver <see cref="RefreshRules.ShouldProbe"/>).
+    /// </summary>
+    async Task ProbeSyncthingAsync()
+    {
+        if (_probing) return;
+        _probing = true;
+        try
+        {
+            if (await new SyncthingEvents(_eventsHttp).WaitUntilUpAsync(_collector.GuiUrl(_settings), TimeSpan.FromSeconds(1),
+                    TimeSpan.FromMinutes(2), _eventsCts.Token))
+                RequestRefresh();
+        }
+        catch (OperationCanceledException) { /* saindo */ }
+        finally { _probing = false; }
+    }
+
     void OnEvents(IReadOnlyList<JsonElement> events)
     {
         Log.Recovered("syncthing", "eventos", "fluxo de eventos do Syncthing conectado");

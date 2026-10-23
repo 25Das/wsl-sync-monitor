@@ -56,6 +56,22 @@ public sealed class SyncthingEventsTests : IDisposable
     }
 
     [SyncthingFact]
+    public async Task Percebe_o_Syncthing_respondendo_sem_a_chave()
+    {
+        using var http = new HttpClient(); // sem a chave: a sonda não precisa dela
+        Assert.True(await new SyncthingEvents(http).WaitUntilUpAsync(_st.Url, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(5), _cts.Token));
+    }
+
+    [SyncthingFact]
+    public async Task Desiste_da_sonda_no_prazo_se_ninguem_responde()
+    {
+        _st.Stop();
+        var t0 = DateTime.Now;
+        Assert.False(await new SyncthingEvents(_st.Http).WaitUntilUpAsync(_st.Url, TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(1), _cts.Token));
+        Assert.InRange(DateTime.Now - t0, TimeSpan.FromSeconds(0.9), TimeSpan.FromSeconds(5));
+    }
+
+    [SyncthingFact]
     public void Termina_quando_o_Syncthing_para()
     {
         var run = Listen();

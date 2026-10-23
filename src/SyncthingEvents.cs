@@ -45,6 +45,31 @@ public sealed class SyncthingEvents(HttpClient http)
         }
     }
 
+    /// <summary>
+    /// Espera o Syncthing responder (logo depois de ligar a distro ele ainda está subindo), conferindo a cada
+    /// <paramref name="every"/> até <paramref name="max"/>. Usa /rest/noauth/health: não precisa da chave e não executa
+    /// nada na distro, então pode ser frequente. true = respondeu.
+    /// </summary>
+    public async Task<bool> WaitUntilUpAsync(string baseUrl, TimeSpan every, TimeSpan max, CancellationToken ct)
+    {
+        var end = DateTime.Now + max;
+        while (true)
+        {
+            using (var attempt = CancellationTokenSource.CreateLinkedTokenSource(ct))
+            {
+                attempt.CancelAfter(TimeSpan.FromSeconds(2)); // endereço que não responde nem recusa
+                try
+                {
+                    using var resp = await http.GetAsync(baseUrl + "/rest/noauth/health", attempt.Token).ConfigureAwait(false);
+                    if (resp.IsSuccessStatusCode) return true;
+                }
+                catch (Exception ex) when (ex is HttpRequestException || (ex is OperationCanceledException && !ct.IsCancellationRequested)) { }
+            }
+            if (DateTime.Now + every > end) return false;
+            await Task.Delay(every, ct).ConfigureAwait(false);
+        }
+    }
+
     /// <summary>Espera antes de tentar de novo após <paramref name="failures"/> falhas seguidas: 2 s, 4 s, 8 s… até 1 min.</summary>
     public static TimeSpan RetryDelay(int failures) => TimeSpan.FromSeconds(Math.Min(60, 2 << Math.Min(Math.Max(failures, 1) - 1, 5)));
 

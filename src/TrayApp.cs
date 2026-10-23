@@ -123,8 +123,10 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             if (_snap == null)
                 Log.Info("atualização", $"primeira leitura do estado em {(DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).TotalSeconds:0.0} s " +
                     $"(WSL: {(snap.WslError ?? (snap.WslRunning ? "ligado" : "desligado"))}, Syncthing: {snap.StStatusText})");
+            bool probe = RefreshRules.ShouldProbe(_snap, snap);
             _snap = snap;
             SetSyncthingUp(snap.St == StState.Running);
+            if (probe) _ = ProbeSyncthingAsync();
             StartupHealthCheck(snap);
             StartKeptAliveAtLaunch(snap);
             GuardTick();

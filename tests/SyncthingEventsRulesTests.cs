@@ -66,6 +66,31 @@ public class SyncthingEventsRulesTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
     }
 
+    /// <summary>Recusa a conexão nas primeiras <paramref name="failures"/> vezes (o Syncthing ainda está subindo).</summary>
+    sealed class StartingSyncthing(int failures) : HttpMessageHandler
+    {
+        public int Calls;
+        public string? LastPath;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+        {
+            await Task.Delay(1, ct);
+            LastPath = req.RequestUri!.PathAndQuery;
+            if (++Calls <= failures) throw new HttpRequestException("Connection refused");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"status":"OK"}""") };
+        }
+    }
+
+    [Fact]
+    public async Task Sonda_tenta_de_novo_ate_o_Syncthing_responder()
+    {
+        var fake = new StartingSyncthing(failures: 3);
+        using var http = new HttpClient(fake);
+        Assert.True(await new SyncthingEvents(http).WaitUntilUpAsync("http://st", TimeSpan.FromMilliseconds(10), TimeSpan.FromSeconds(5), CancellationToken.None));
+        Assert.Equal(4, fake.Calls);
+        Assert.Equal("/rest/noauth/health", fake.LastPath); // não precisa da chave nem executa nada na distro
+    }
+
     [Theory]
     [InlineData(1, 2)]
     [InlineData(2, 4)]
