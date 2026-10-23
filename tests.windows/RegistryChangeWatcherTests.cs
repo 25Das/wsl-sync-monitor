@@ -7,16 +7,15 @@ namespace WslSyncMonitor.WindowsTests;
 /// A lista de distros do WSL (instalar, remover, trocar a padrão) fica no registro: o Windows avisa quando ela muda,
 /// em vez de o app descobrir na próxima leitura. Testado numa chave temporária só do teste.
 /// <para>
-/// O aviso chega por um thread do pool: com os testes pesados rodando ao mesmo tempo no CI, ele pode atrasar. Por isso
-/// a classe roda em série com eles, e o prazo (só limita a falha; o Windows garante o aviso) é largo.
+/// Chave só deste teste, numa pasta própria: outra classe que apagasse a pasta inteira apagaria a chave observada no
+/// meio do teste (já aconteceu: "chave marcada para exclusão").
 /// </para>
 /// </summary>
-[Collection("E2E")]
 public sealed class RegistryChangeWatcherTests : IDisposable
 {
-    readonly string _path = @"Software\WslSyncMonitorTests\" + Guid.NewGuid().ToString("N");
+    readonly string _path = @"Software\WslSyncMonitorTests\Registro-" + Guid.NewGuid().ToString("N");
     readonly RegistryKey _key;
-    static readonly TimeSpan Limit = TimeSpan.FromSeconds(20);
+    static readonly TimeSpan Limit = TimeSpan.FromSeconds(5);
 
     public RegistryChangeWatcherTests() => _key = Registry.CurrentUser.CreateSubKey(_path);
 
@@ -72,24 +71,5 @@ public sealed class RegistryChangeWatcherTests : IDisposable
         using var w = RegistryChangeWatcher.Open(RegistryHive.CurrentUser, _path, () => changed.Release(), subtree: false)!;
         using (var lxss = _key.CreateSubKey("Lxss")) { }
         Assert.True(changed.Wait(Limit), "criar a chave não avisou");
-    }
-
-    [Fact]
-    public void Criar_subchaves_avisa_sempre()
-    {
-        // repetido para o CI mostrar se o aviso de chave criada falha às vezes (e com que diagnóstico)
-        for (int i = 0; i < 30; i++)
-        {
-            foreach (var subtree in new[] { true, false })
-            {
-                using var changed = new SemaphoreSlim(0);
-                using var w = RegistryChangeWatcher.Open(RegistryHive.CurrentUser, _path, () => changed.Release(), subtree)!;
-                var name = $"k{i}{subtree}";
-                using (_key.CreateSubKey(name)) { }
-                bool ok = changed.Wait(TimeSpan.FromSeconds(5));
-                Assert.True(ok, $"volta {i}, subtree={subtree}: sem aviso (sinais={w.Signals}, erro={w.LastError?.Message ?? "nenhum"})");
-                _key.DeleteSubKey(name);
-            }
-        }
     }
 }

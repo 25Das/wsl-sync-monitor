@@ -23,7 +23,8 @@ public sealed class InstallerTests : IDisposable
 
     public void Dispose()
     {
-        Registry.CurrentUser.DeleteSubKeyTree(@"Software\WslSyncMonitorTests", throwOnMissingSubKey: false);
+        // só a chave deste teste: as outras classes de teste usam a mesma pasta e rodam ao mesmo tempo
+        Registry.CurrentUser.DeleteSubKeyTree(_testKey, throwOnMissingSubKey: false);
         try { Directory.Delete(_root, true); } catch { }
     }
 
