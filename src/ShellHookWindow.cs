@@ -10,9 +10,10 @@ public sealed class ShellHookWindow : NativeWindow, IDisposable
 {
     const int HSHELL_WINDOWCREATED = 1, HSHELL_WINDOWDESTROYED = 2, HSHELL_WINDOWREPLACED = 13;
     static readonly int ShellHookMessage = Native.RegisterWindowMessage("SHELLHOOK");
-    readonly Action _changed;
+    readonly Action<IntPtr> _changed;
 
-    public ShellHookWindow(Action changed)
+    /// <param name="changed">recebe a janela que abriu, fechou ou foi trocada</param>
+    public ShellHookWindow(Action<IntPtr> changed)
     {
         _changed = changed;
         CreateHandle(new CreateParams { Caption = "WSL Sync Monitor ShellHook", ExStyle = Native.WS_EX_TOOLWINDOW });
@@ -22,7 +23,7 @@ public sealed class ShellHookWindow : NativeWindow, IDisposable
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == ShellHookMessage && (int)m.WParam is HSHELL_WINDOWCREATED or HSHELL_WINDOWDESTROYED or HSHELL_WINDOWREPLACED)
-            _changed();
+            _changed(m.LParam);
         base.WndProc(ref m);
     }
 

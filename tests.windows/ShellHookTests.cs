@@ -9,35 +9,38 @@ namespace WslSyncMonitor.WindowsTests;
 [Collection("E2E")]
 public sealed class ShellHookTests
 {
+    // o aviso vale para todas as janelas do sistema (no CI, outras também abrem e fecham): conta só as do teste
+
     [Fact]
     public void Avisa_quando_uma_janela_com_botao_na_barra_abre_e_fecha()
     {
-        int changes = 0;
-        using var hook = new ShellHookWindow(() => changes++);
-        using (var app = new Form { ShowInTaskbar = true, Text = "janela de teste", StartPosition = FormStartPosition.Manual, Location = new(-2000, -2000) })
-        {
-            app.Show();
-            Pump(() => changes > 0);
-            Assert.True(changes > 0, "abrir não avisou");
-            int opened = changes;
-            app.Close();
-            Pump(() => changes > opened);
-            Assert.True(changes > opened, "fechar não avisou");
-        }
+        var seen = new List<IntPtr>();
+        using var hook = new ShellHookWindow(seen.Add);
+        using var app = new Form { ShowInTaskbar = true, Text = "janela de teste", StartPosition = FormStartPosition.Manual, Location = new(-2000, -2000) };
+        app.Show();
+        var h = app.Handle;
+        Pump(() => seen.Contains(h));
+        Assert.True(seen.Contains(h), "abrir não avisou");
+        seen.Clear();
+        app.Close();
+        Pump(() => seen.Contains(h));
+        Assert.True(seen.Contains(h), "fechar não avisou");
     }
 
     [Fact]
     public void Janela_sem_botao_na_barra_nao_avisa()
     {
-        int changes = 0;
-        using var hook = new ShellHookWindow(() => changes++);
+        var seen = new List<IntPtr>();
+        using var hook = new ShellHookWindow(seen.Add);
+        IntPtr h;
         using (var tip = new Form { ShowInTaskbar = false, FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, Location = new(-2000, -2000) })
         {
             tip.Show();
+            h = tip.Handle;
             tip.Close();
         }
         Pump(() => false, TimeSpan.FromMilliseconds(700));
-        Assert.Equal(0, changes);
+        Assert.DoesNotContain(h, seen);
     }
 
     static void Pump(Func<bool> done, TimeSpan? max = null)

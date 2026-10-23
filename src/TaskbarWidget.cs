@@ -80,7 +80,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     {
         _hookProc = OnWinEvent;
         const uint flags = Native.WINEVENT_OUTOFCONTEXT | Native.WINEVENT_SKIPOWNPROCESS;
-        _shellHook = new ShellHookWindow(OnTaskbarButtonsChanged);
+        _shellHook = new ShellHookWindow(_ => OnTaskbarButtonsChanged());
         _foregroundHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _hookProc, 0, 0, flags);
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemChange; // tema claro/escuro, barra
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnSystemChange; // monitores, resolução, escala
