@@ -20,6 +20,7 @@ public sealed class TaskbarWidgetTests
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
     [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
 
     const int WM_MOUSEMOVE = 0x200, WM_LBUTTONDOWN = 0x201, WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205;
@@ -38,6 +39,14 @@ public sealed class TaskbarWidgetTests
         Assert.True(IsWindowVisible(h));
         Assert.True(w.IsShown);
         Assert.False(w.ScreenBounds.IsEmpty);
+    }
+
+    [Fact]
+    public void Fica_acima_das_outras_janelas_filhas_da_barra()
+    {
+        // a barra do Windows 11 é desenhada por uma janela filha dela (a ponte XAML): abaixo dela, o widget some
+        using var w = new TaskbarWidget(new Settings());
+        Assert.Equal(IntPtr.Zero, GetWindow(WidgetWindow(w), 3 /* GW_HWNDPREV: nenhuma irmã acima */));
     }
 
     [Fact]
