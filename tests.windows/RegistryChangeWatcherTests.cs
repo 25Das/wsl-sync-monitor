@@ -73,4 +73,23 @@ public sealed class RegistryChangeWatcherTests : IDisposable
         using (var lxss = _key.CreateSubKey("Lxss")) { }
         Assert.True(changed.Wait(Limit), "criar a chave não avisou");
     }
+
+    [Fact]
+    public void Criar_subchaves_avisa_sempre()
+    {
+        // repetido para o CI mostrar se o aviso de chave criada falha às vezes (e com que diagnóstico)
+        for (int i = 0; i < 30; i++)
+        {
+            foreach (var subtree in new[] { true, false })
+            {
+                using var changed = new SemaphoreSlim(0);
+                using var w = RegistryChangeWatcher.Open(RegistryHive.CurrentUser, _path, () => changed.Release(), subtree)!;
+                var name = $"k{i}{subtree}";
+                using (_key.CreateSubKey(name)) { }
+                bool ok = changed.Wait(TimeSpan.FromSeconds(5));
+                Assert.True(ok, $"volta {i}, subtree={subtree}: sem aviso (sinais={w.Signals}, erro={w.LastError?.Message ?? "nenhum"})");
+                _key.DeleteSubKey(name);
+            }
+        }
+    }
 }

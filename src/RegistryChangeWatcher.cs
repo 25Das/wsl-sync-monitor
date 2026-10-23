@@ -27,6 +27,10 @@ public sealed class RegistryChangeWatcher : IDisposable
     readonly object _lock = new();
     bool _disposed;
 
+    // diagnóstico (testes): quantos avisos chegaram e o último erro ao pedir o próximo
+    internal int Signals;
+    internal Exception? LastError;
+
     RegistryChangeWatcher(RegistryKey key, Action changed, bool subtree)
     {
         _key = key;
@@ -63,11 +67,12 @@ public sealed class RegistryChangeWatcher : IDisposable
 
     void OnSignal()
     {
+        Interlocked.Increment(ref Signals);
         lock (_lock)
         {
             if (_disposed) return;
             try { Arm(); } // antes de avisar: uma mudança enquanto quem recebe o aviso trabalha não se perde
-            catch (System.ComponentModel.Win32Exception ex) { Log.Warn("registro", $"observar {_key.Name}", ex); return; }
+            catch (System.ComponentModel.Win32Exception ex) { LastError = ex; Log.Warn("registro", $"observar {_key.Name}", ex); return; }
         }
         _changed();
     }
