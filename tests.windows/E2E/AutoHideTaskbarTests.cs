@@ -44,14 +44,13 @@ public sealed class AutoHideTaskbarTests : IDisposable
         using var app = new AppSession("""{ "SettingsVersion": 2, "ShowTaskbarWidget": true, "InstallPromptDismissed": true }""");
         try
         {
-            // oculto junto com a barra, o widget não aparece na automação de interface: procura pelo título
-            var hwnd = AppSession.WaitFor(() => FindWindow(null, "WSL Sync Monitor Widget") is var h && h != IntPtr.Zero ? (object)h : null,
-                TimeSpan.FromSeconds(30), "janela do widget") is IntPtr found ? found : IntPtr.Zero;
             var screen = System.Windows.Forms.Screen.PrimaryScreen!.Bounds;
+            Thread.Sleep(3000); // o app inicia com a barra recolhida
 
-            // leva o mouse à borda de baixo: a barra aparece, e o widget com ela
+            // leva o mouse à borda de baixo: a barra aparece, e o widget com ela (a janela só existe depois disso)
             Mouse.MoveTo(screen.Width / 2, screen.Bottom - 1);
-            AppSession.WaitFor(() => IsWindowVisible(hwnd) ? "ok" : null, TimeSpan.FromSeconds(10), "widget com a barra à mostra");
+            var hwnd = AppSession.WaitFor(() => FindWindow(null, "WSL Sync Monitor Widget") is var h && h != IntPtr.Zero && IsWindowVisible(h)
+                ? (object)h : null, TimeSpan.FromSeconds(15), "widget com a barra à mostra") is IntPtr found ? found : IntPtr.Zero;
             Thread.Sleep(800);
 
             // e para em cima do widget
