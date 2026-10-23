@@ -152,10 +152,14 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         var size = _painter.Measure(tb);
         var bounds = new Rectangle(Place(tb, size), size);
         if (Inside) bounds.Offset(-tb.Rect.Left, -tb.Rect.Top); // janela filha: posição relativa à barra
+        if (Inside)
+        {
+            // posição relativa à barra e no topo entre as janelas filhas dela: a barra do Windows 11 é desenhada
+            // por uma janela filha (a ponte XAML), que de outro modo cobriria o widget
+            Native.SetWindowPos(Handle, Native.HWND_TOP, bounds.X, bounds.Y, bounds.Width, bounds.Height, Native.SWP_NOACTIVATE);
+        }
         if (bounds != _placed || _dirty)
         {
-            if (Inside) Native.SetWindowPos(Handle, IntPtr.Zero, bounds.X, bounds.Y, bounds.Width, bounds.Height,
-                Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
             _placed = bounds;
             Render();
         }

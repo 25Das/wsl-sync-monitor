@@ -153,7 +153,7 @@ static class Native
     public const int WM_QUERYENDSESSION = 0x11, WM_ENDSESSION = 0x16, WM_SETICON = 0x80, ICON_SMALL = 0, ICON_BIG = 1;
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
-    public static readonly IntPtr HWND_TOPMOST = new(-1);
+    public static readonly IntPtr HWND_TOPMOST = new(-1), HWND_TOP = IntPtr.Zero;
     public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_SHOWWINDOW = 0x40;
 
     // ---- janela em camadas (alpha por pixel) ----
@@ -163,7 +163,7 @@ static class Native
     public struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
 
     // pptDst é um POINT* opcional (IntPtr.Zero = mantém a posição)
-    [DllImport("user32.dll")] static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, IntPtr pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+    [DllImport("user32.dll", SetLastError = true)] static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, IntPtr pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
     [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
     [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr hDC);
@@ -199,7 +199,9 @@ static class Native
                     dst = Marshal.AllocHGlobal(Marshal.SizeOf<POINT>());
                     Marshal.StructureToPtr(new POINT { X = p.X, Y = p.Y }, dst, false);
                 }
-                UpdateLayeredWindow(hwnd, screenDc, dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
+                if (!UpdateLayeredWindow(hwnd, screenDc, dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA))
+                    Log.Failure("widget", "desenho", $"o Windows recusou o desenho do widget (erro {Marshal.GetLastWin32Error()})");
+                else Log.Recovered("widget", "desenho", "desenho do widget voltou a funcionar");
             }
             finally { if (dst != IntPtr.Zero) Marshal.FreeHGlobal(dst); }
         }
