@@ -6,11 +6,17 @@ namespace WslSyncMonitor.WindowsTests;
 /// <summary>
 /// A lista de distros do WSL (instalar, remover, trocar a padrão) fica no registro: o Windows avisa quando ela muda,
 /// em vez de o app descobrir na próxima leitura. Testado numa chave temporária só do teste.
+/// <para>
+/// O aviso chega por um thread do pool: com os testes pesados rodando ao mesmo tempo no CI, ele pode atrasar. Por isso
+/// a classe roda em série com eles, e o prazo (só limita a falha; o Windows garante o aviso) é largo.
+/// </para>
 /// </summary>
+[Collection("E2E")]
 public sealed class RegistryChangeWatcherTests : IDisposable
 {
     readonly string _path = @"Software\WslSyncMonitorTests\" + Guid.NewGuid().ToString("N");
     readonly RegistryKey _key;
+    static readonly TimeSpan Limit = TimeSpan.FromSeconds(20);
 
     public RegistryChangeWatcherTests() => _key = Registry.CurrentUser.CreateSubKey(_path);
 
@@ -27,10 +33,10 @@ public sealed class RegistryChangeWatcherTests : IDisposable
         using var w = RegistryChangeWatcher.Open(RegistryHive.CurrentUser, _path, () => changed.Release())!;
 
         _key.SetValue("DefaultDistribution", "{a}");
-        Assert.True(changed.Wait(TimeSpan.FromSeconds(5)), "primeira mudança não avisou");
+        Assert.True(changed.Wait(Limit), "primeira mudança não avisou");
 
         _key.SetValue("DefaultDistribution", "{b}");
-        Assert.True(changed.Wait(TimeSpan.FromSeconds(5)), "segunda mudança não avisou (não voltou a observar)");
+        Assert.True(changed.Wait(Limit), "segunda mudança não avisou (não voltou a observar)");
     }
 
     [Fact]
@@ -40,7 +46,7 @@ public sealed class RegistryChangeWatcherTests : IDisposable
         using var w = RegistryChangeWatcher.Open(RegistryHive.CurrentUser, _path, () => changed.Release())!;
 
         using (var distro = _key.CreateSubKey("{0f0e}")) distro.SetValue("DistributionName", "Ubuntu");
-        Assert.True(changed.Wait(TimeSpan.FromSeconds(5)), "instalar não avisou");
+        Assert.True(changed.Wait(Limit), "instalar não avisou");
     }
 
     [Fact]
@@ -65,6 +71,6 @@ public sealed class RegistryChangeWatcherTests : IDisposable
         using var changed = new SemaphoreSlim(0);
         using var w = RegistryChangeWatcher.Open(RegistryHive.CurrentUser, _path, () => changed.Release(), subtree: false)!;
         using (var lxss = _key.CreateSubKey("Lxss")) { }
-        Assert.True(changed.Wait(TimeSpan.FromSeconds(5)), "criar a chave não avisou");
+        Assert.True(changed.Wait(Limit), "criar a chave não avisou");
     }
 }
