@@ -237,6 +237,13 @@ public sealed class TaskbarWidget : Form
             Show();
             _dirty = true;
         }
+        // o WinForms "estaciona" a janela filha numa janela interna dele ao mostrá-la: devolve-a à barra
+        if (Inside && Native.GetParent(Handle) != _parent)
+        {
+            Native.SetParent(Handle, _parent);
+            Native.ShowWindow(Handle, Native.SW_SHOWNA);
+            _dirty = true;
+        }
         if (appearing)
             Log.Info("widget", $"na tela em {ScreenBounds} ({(Inside ? "dentro da barra" : "por cima da barra")}; " +
                 $"visível: {Native.IsWindowVisible(Handle)}, pai: {(Native.GetParent(Handle) == _parent && Inside ? "a barra" : "0x" + ((long)Native.GetParent(Handle)).ToString("x", System.Globalization.CultureInfo.InvariantCulture))})");
