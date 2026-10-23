@@ -226,8 +226,16 @@ aparece na ficha técnica.
   15 s), a não ser que a proteção dependa dela; uma sessão do WSL que fecha (VS Code, terminal) avisa na hora.
 - Logo depois de a distro ligar (ou de o Syncthing parar), o app confere `/rest/noauth/health` a cada segundo (sem
   chave e sem executar nada na distro) e lê tudo assim que o Syncthing responde.
-- O widget acompanha a barra pelos avisos do Windows (a barra mudou de lugar, janelas abriram ou fecharam, tema,
-  monitores) e relê os ícones da barra só quando janelas com botão nela aparecem ou somem.
+- O widget acompanha a barra pelos avisos que a própria barra usa: janelas com botão nela (shell hook), troca de
+  área de trabalho virtual (cloak), tela cheia, posição e modo de ocultar (registrado como appbar, sem reservar
+  espaço), Explorer reiniciado (TaskbarCreated), além de tema e monitores. O painel aberto pela passagem do mouse
+  fecha pelos avisos de saída do mouse, sem conferir de tempos em tempos.
+- Distro encerrada por fora é percebida na hora (o processo que a mantém ligada avisa quando termina); instalar,
+  remover ou trocar a distro padrão também (o Windows avisa quando a lista de distros muda no registro; os dados
+  continuam vindo do `wsl.exe`).
+- Ao desligar ou sair, o fim do Syncthing é percebido pelo fechamento da conexão aberta do fluxo de eventos. Para
+  esperar um processo sair da distro, o app usa um único `wsl.exe` com o `waitpid` do util-linux 2.40+ (avisado
+  pelo kernel); sem ele, confere de dentro da distro.
 
 ## Roadmap
 
