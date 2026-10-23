@@ -59,7 +59,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _menu.Closing += KeepMenuOpenIfAsked;
         _popup.VisibleChanged += (_, _) =>
         {
-            UpdateHoverTimer(); // aberto: confere o mouse para fechar; fechado: para
+            ScheduleHover(); // aberto: confere o mouse quando preciso; fechado: para
             if (!_popup.Visible) _widget?.BringAboveTaskbar();
             UpdateRefreshInterval(); // aberto: no ritmo normal (ShowPopup já pede uma leitura nova se a atual for velha)
         };
@@ -82,15 +82,21 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _widget = new WidgetHost(_settings);
         _widget.Clicked += () => { CloseMenu(); TogglePinned(_widget.PopupAnchor); };
         _widget.RightClicked += () => ShowMenu(Cursor.Position);
+        // o mouse é conferido nos avisos de entrada e saída do widget e do painel, e nos instantes que o HoverTracker pede
         _widget.HoverStarted += () =>
         {
             _hover.WidgetEntered(DateTime.Now, enabled: _settings.HoverPopup && !_popup.Visible && !_menu.Visible);
-            UpdateHoverTimer();
+            _hover.MouseEntered();
+            HoverTick();
         };
-        _widget.HoverEnded += () => _hover.WidgetLeft(); // painel aberto pela passagem: quem decide fechar é o HoverTick
+        _widget.HoverEnded += () => { _hover.WidgetLeft(); _hover.LeaveSeen(); HoverTick(); };
+        _popup.MouseEnter += (_, _) => { _hover.MouseEntered(); HoverTick(); };
+        _popup.MouseLeave += (_, _) => { _hover.LeaveSeen(); HoverTick(); };
+        _popup.Activated += (_, _) => ScheduleHover();  // com o foco, clicar fora fecha pela perda do foco
+        _popup.Deactivate += (_, _) => ScheduleHover();
         _widget.OffsetChanged += SaveSettings;
 
-        _hoverTimer.Tick += (_, _) => HoverTick();
+        _hoverTimer.Tick += (_, _) => { _hoverTimer.Stop(); HoverTick(); }; // uma vez: o HoverTick agenda a próxima
 
         _refreshTimer.Tick += (_, _) => _ = _refresher.RunIfIdleAsync(); // já lendo: essa leitura serve
         InitGuard();
@@ -260,7 +266,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     // ------------------------------------------------------------------ hover / clique
 
-    /// <summary>Confere o mouse (só enquanto o painel está aberto ou esperando para abrir; ver <see cref="HoverTracker"/>).</summary>
+    /// <summary>Confere o mouse (nos avisos de entrada e saída e nos instantes pedidos; ver <see cref="HoverTracker"/>).</summary>
     void HoverTick()
     {
         var cur = Cursor.Position;
@@ -278,11 +284,20 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             case HoverAction.MouseLeft: _popup.Apply(PanelEvent.MouseLeft); break;
             case HoverAction.ClickOutside: _popup.Apply(PanelEvent.ClickOutside); break;
         }
-        UpdateHoverTimer();
+        ScheduleHover();
     }
 
-    /// <summary>O timer do mouse só roda quando há o que conferir (antes, a cada 100 ms o tempo todo).</summary>
-    void UpdateHoverTimer() => _hoverTimer.Enabled = _hover.NeedsTicks(_popup.State);
+    /// <summary>
+    /// Agenda a próxima conferência do mouse para o instante que importa (fim do atraso, fim da tolerância), ou nenhuma:
+    /// os avisos de entrada e saída bastam. Antes, a cada 100 ms o tempo todo.
+    /// </summary>
+    void ScheduleHover()
+    {
+        _hoverTimer.Stop();
+        if (_hover.NextCheck(DateTime.Now, _popup.State, panelFocused: Form.ActiveForm == _popup, _settings.HoverDelayMs) is not { } next) return;
+        _hoverTimer.Interval = Math.Max(1, (int)Math.Ceiling(next.TotalMilliseconds));
+        _hoverTimer.Start();
+    }
 
     void ShowMenu(Point pt)
     {

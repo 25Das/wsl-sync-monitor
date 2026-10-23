@@ -29,7 +29,7 @@ public class HoverTrackerTests
         var h = new HoverTracker();
         h.WidgetEntered(T0, enabled: true);
         h.WidgetLeft();
-        Assert.False(h.NeedsTicks(Closed)); // nada a conferir: o timer para
+        Assert.Null(h.NextCheck(T0, Closed, panelFocused: false, delayMs: 400)); // nada a conferir: o timer para
         Assert.Equal(HoverAction.None, h.Tick(T0.AddSeconds(1), On(Closed, widget: true), delayMs: 400));
     }
 
@@ -48,11 +48,11 @@ public class HoverTrackerTests
     {
         var h = new HoverTracker();
         h.WidgetEntered(T0, enabled: false);
-        Assert.False(h.NeedsTicks(Closed));
+        Assert.Null(h.NextCheck(T0, Closed, panelFocused: false, delayMs: 400));
 
         h.WidgetEntered(T0, enabled: true);
         Assert.Equal(HoverAction.None, h.Tick(T0.AddSeconds(1), On(Closed, widget: true, menu: true), delayMs: 400));
-        Assert.False(h.NeedsTicks(Closed));
+        Assert.Null(h.NextCheck(T0, Closed, panelFocused: false, delayMs: 400));
     }
 
     [Fact]
@@ -83,13 +83,60 @@ public class HoverTrackerTests
         Assert.Equal(HoverAction.ClickOutside, h.Tick(T0, On(ByClick, button: true), delayMs: 400));
     }
 
+
+    // ---- quando conferir de novo: só nos instantes que importam, a partir dos avisos de entrada e saída do mouse
+
     [Fact]
-    public void So_confere_o_mouse_com_o_painel_aberto_ou_esperando_abrir()
+    public void Esperando_abrir_confere_exatamente_no_fim_do_atraso()
     {
         var h = new HoverTracker();
-        Assert.False(h.NeedsTicks(Closed));
-        Assert.True(h.NeedsTicks(ByClick));
         h.WidgetEntered(T0, enabled: true);
-        Assert.True(h.NeedsTicks(Closed));
+        h.Tick(T0.AddMilliseconds(100), On(Closed, widget: true), delayMs: 400);
+        Assert.Equal(TimeSpan.FromMilliseconds(300), h.NextCheck(T0.AddMilliseconds(100), Closed, panelFocused: false, delayMs: 400));
+    }
+
+    [Fact]
+    public void Nada_aberto_nem_esperando_nao_confere() =>
+        Assert.Null(new HoverTracker().NextCheck(T0, Closed, panelFocused: false, delayMs: 400));
+
+    [Fact]
+    public void Aberto_pela_passagem_com_o_mouse_dentro_nao_confere()
+    {
+        var h = new HoverTracker();
+        h.Tick(T0, On(ByHover, panel: true), delayMs: 400);
+        Assert.Null(h.NextCheck(T0, ByHover, panelFocused: false, delayMs: 400)); // a saída do mouse avisa
+    }
+
+    [Fact]
+    public void Mouse_saiu_confere_no_fim_da_tolerancia()
+    {
+        var h = new HoverTracker();
+        h.LeaveSeen();
+        h.Tick(T0, On(ByHover), delayMs: 400);
+        Assert.Equal(TimeSpan.FromMilliseconds(HoverTracker.LeaveGraceMs + 1), h.NextCheck(T0, ByHover, panelFocused: false, delayMs: 400));
+    }
+
+    [Fact]
+    public void Saida_sem_sair_de_verdade_reconfere_ate_o_mouse_voltar()
+    {
+        // ex.: o mouse foi para cima de uma dica dentro do painel: o painel avisou a saída, mas o mouse está na área dele
+        var h = new HoverTracker();
+        h.LeaveSeen();
+        h.Tick(T0, On(ByHover, panel: true), delayMs: 400);
+        Assert.Equal(TimeSpan.FromMilliseconds(HoverTracker.LeaveGraceMs), h.NextCheck(T0, ByHover, panelFocused: false, delayMs: 400));
+
+        h.MouseEntered(); // voltou ao painel ou ao widget: os avisos voltam a valer
+        Assert.Null(h.NextCheck(T0, ByHover, panelFocused: false, delayMs: 400));
+    }
+
+    [Fact]
+    public void Aberto_por_clique_com_o_foco_fecha_pela_perda_do_foco_sem_conferir() =>
+        Assert.Null(new HoverTracker().NextCheck(T0, ByClick, panelFocused: true, delayMs: 400));
+
+    [Fact]
+    public void Aberto_por_clique_sem_o_foco_confere_o_clique_fora()
+    {
+        // o Windows pode negar o foco: sem ele, não há aviso de perda do foco
+        Assert.Equal(TimeSpan.FromMilliseconds(100), new HoverTracker().NextCheck(T0, ByClick, panelFocused: false, delayMs: 400));
     }
 }
