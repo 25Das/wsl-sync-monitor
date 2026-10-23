@@ -66,22 +66,22 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
 
     // ------------------------------------------------------------------ avisos do Windows
 
-    // Em vez de conferir a barra a cada meio segundo, o widget reage aos avisos do Windows: a barra (ou algo dentro
-    // dela, como a área de notificação) mudou de lugar ou tamanho; uma janela com botão na barra abriu ou fechou
-    // (ShellHookWindow); outra foi para o primeiro plano (um app pode ter entrado em tela cheia); o tema ou os
-    // monitores mudaram.
+    // Em vez de conferir a barra a cada meio segundo, o widget reage aos avisos do Windows: algo dentro da barra (como
+    // a área de notificação) mudou de lugar ou tamanho; o que a própria barra avisa (TaskbarNotifications: botões,
+    // tela cheia, posição, modo de ocultar, Explorer reiniciado); o tema ou os monitores mudaram.
     // O timer _follow continua como rede de segurança, bem mais espaçado (WidgetPlacement.FollowIntervalMs).
     Native.WinEventProc? _hookProc;
-    IntPtr _foregroundHook, _taskbarHook;
+    IntPtr _taskbarHook;
     uint _taskbarPid;
-    ShellHookWindow? _shellHook;
+    TaskbarNotifications? _notifications;
 
     void StartHooks()
     {
         _hookProc = OnWinEvent;
-        const uint flags = Native.WINEVENT_OUTOFCONTEXT | Native.WINEVENT_SKIPOWNPROCESS;
-        _shellHook = new ShellHookWindow(_ => OnTaskbarButtonsChanged());
-        _foregroundHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _hookProc, 0, 0, flags);
+        _notifications = new TaskbarNotifications();
+        _notifications.ButtonsChanged += _ => OnTaskbarButtonsChanged();
+        _notifications.TaskbarChanged += FollowSoon;  // tela cheia, posição, modo de ocultar
+        _notifications.TaskbarCreated += FollowSoon;  // Explorer reiniciou: cria o widget na barra nova
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemChange; // tema claro/escuro, barra
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnSystemChange; // monitores, resolução, escala
     }
@@ -99,11 +99,10 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
 
     void StopHooks()
     {
-        foreach (var h in new[] { _foregroundHook, _taskbarHook })
-            if (h != IntPtr.Zero) Native.UnhookWinEvent(h);
-        _foregroundHook = _taskbarHook = IntPtr.Zero;
-        _shellHook?.Dispose();
-        _shellHook = null;
+        if (_taskbarHook != IntPtr.Zero) Native.UnhookWinEvent(_taskbarHook);
+        _taskbarHook = IntPtr.Zero;
+        _notifications?.Dispose();
+        _notifications = null;
         _taskbarPid = 0;
         Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnSystemChange;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnSystemChange;
@@ -115,13 +114,8 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     void OnWinEvent(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time)
     {
         if (_disposed || idObject != Native.OBJID_WINDOW || idChild != Native.CHILDID_SELF || hwnd == IntPtr.Zero) return;
-        if (evt == Native.EVENT_OBJECT_LOCATIONCHANGE)
-        {
-            // a barra ou algo dentro dela (área de notificação, botões) mudou de lugar ou tamanho
-            if (hwnd != _hwnd && (hwnd == _tb.Hwnd || Native.GetAncestor(hwnd, Native.GA_ROOT) == _tb.Hwnd)) FollowSoon();
-            return;
-        }
-        if (evt == Native.EVENT_SYSTEM_FOREGROUND) FollowSoon(); // tela cheia começa ou termina
+        // a barra ou algo dentro dela (área de notificação, botões) mudou de lugar ou tamanho
+        if (hwnd != _hwnd && (hwnd == _tb.Hwnd || Native.GetAncestor(hwnd, Native.GA_ROOT) == _tb.Hwnd)) FollowSoon();
     }
 
     /// <summary>
@@ -205,14 +199,10 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         Log.Info("widget", Inside ? "criado dentro da barra de tarefas" : "criado por cima da barra de tarefas");
     }
 
-    bool _destroying;
-
     void Destroy()
     {
         WatchForeground(false);
-        _destroying = true;
-        try { if (Handle != IntPtr.Zero) DestroyHandle(); }
-        finally { _destroying = false; }
+        if (Handle != IntPtr.Zero) DestroyHandle();
     }
 
     /// <summary>A janela nativa mudou (criada, destruída por nós ou junto com a barra): atualiza a cópia lida por outros threads.</summary>
@@ -255,7 +245,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         if (taskbar && NeedsRecreate(tb)) { Destroy(); Create(tb); }
         if (taskbar) HookTaskbar(tb.Hwnd);
 
-        int interval = WidgetPlacement.FollowIntervalMs(tb.AutoHide, Inside, taskbar);
+        int interval = WidgetPlacement.FollowIntervalMs(tb.AutoHide, Inside);
         if (_follow.Interval != interval) _follow.Interval = interval; // trocar reinicia a contagem: só quando muda
         var (show, reason) = WidgetPlacement.Visibility(_settings.ShowTaskbarWidget, _settings.WidgetInsideTaskbar,
             taskbar, tb.Thickness, tb.FullyShown, tb.FullscreenApp, tb.NotificationState);
@@ -400,9 +390,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
                 return; // sem o tratamento padrão, que geraria o pedido de menu de contexto
             case Native.WM_CONTEXTMENU:
                 return; // o tratamento padrão repassaria à barra (a janela pai), que abriria o menu dela
-            case Native.WM_NCDESTROY:
-                if (!_destroying) FollowSoon(); // destruída junto com a barra (o Explorer reiniciou): recria assim que ela voltar
-                break;
+
         }
         base.WndProc(ref m);
     }

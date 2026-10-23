@@ -108,19 +108,15 @@ public class WidgetFollowScheduleTests
 
     [Fact]
     public void Rede_de_seguranca_espaçada_com_os_avisos_do_Windows() =>
-        Assert.Equal(2000, WidgetPlacement.FollowIntervalMs(autoHide: false, inside: true, taskbarFound: true));
+        Assert.Equal(5000, WidgetPlacement.FollowIntervalMs(autoHide: false, inside: true));
 
     [Fact]
     public void Por_cima_da_barra_que_se_oculta_acompanha_a_animacao() =>
-        Assert.Equal(150, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: false, taskbarFound: true));
+        Assert.Equal(150, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: false));
 
     [Fact]
     public void Dentro_da_barra_que_se_oculta_desliza_junto_sozinho() =>
-        Assert.Equal(2000, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: true, taskbarFound: true));
-
-    [Fact]
-    public void Sem_barra_o_Explorer_esta_reiniciando_e_confere_logo() =>
-        Assert.Equal(500, WidgetPlacement.FollowIntervalMs(autoHide: false, inside: true, taskbarFound: false));
+        Assert.Equal(5000, WidgetPlacement.FollowIntervalMs(autoHide: true, inside: true));
 
     [Fact]
     public void Icones_relidos_logo_depois_de_janelas_abrirem_ou_fecharem()
