@@ -29,7 +29,7 @@ public sealed class AppE2ETests
             Thread.Sleep(1500); // primeira atualização e busca de atualização (servidor falso: em dia)
             app.Screenshot("2-widget");
 
-            // 3. botão direito no widget abre o menu
+            // 3. botão direito no widget abre o menu do app (não o da barra, que é a janela pai do widget)
             widget.RightClick();
             AppSession.WaitFor(app.OpenMenu, null, "menu principal");
             app.Screenshot("3-menu");

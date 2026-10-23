@@ -50,7 +50,7 @@ static class Native
     }
 
     public const int WM_MOUSEMOVE = 0x200, WM_LBUTTONDOWN = 0x201, WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205,
-        WM_MOUSELEAVE = 0x2A3, WM_CAPTURECHANGED = 0x215, WM_MOUSEACTIVATE = 0x21, MA_NOACTIVATE = 3;
+        WM_MOUSELEAVE = 0x2A3, WM_CAPTURECHANGED = 0x215, WM_MOUSEACTIVATE = 0x21, MA_NOACTIVATE = 3, WM_CONTEXTMENU = 0x7B;
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     public delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject, int idChild, uint thread, uint time);

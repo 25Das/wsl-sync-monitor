@@ -269,7 +269,9 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
                 break;
             case Native.WM_RBUTTONUP:
                 RightClicked?.Invoke();
-                break;
+                return; // sem o tratamento padrão, que geraria o pedido de menu de contexto
+            case Native.WM_CONTEXTMENU:
+                return; // o tratamento padrão repassaria à barra (a janela pai), que abriria o menu dela
         }
         base.WndProc(ref m);
     }
