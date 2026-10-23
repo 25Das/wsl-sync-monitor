@@ -51,3 +51,49 @@ public class TaskbarCornerTests
     public void Canto_do_botao_Widgets(int build, int? alignment, int? widgets, bool reserved) =>
         Assert.Equal(reserved, WidgetPlacement.WidgetsCornerReserved(build, alignment, widgets));
 }
+
+/// <summary>Quando o widget aparece e, quando não, o motivo (vai para o log).</summary>
+public class WidgetVisibilityTests
+{
+    static (bool, string?) V(bool enabled = true, bool inside = true, bool taskbar = true, int thickness = 48,
+        bool fullyShown = true, bool fullscreen = false) =>
+        WidgetPlacement.Visibility(enabled, inside, taskbar, thickness, fullyShown, fullscreen, notificationState: 2);
+
+    [Fact]
+    public void Dentro_da_barra_aparece_com_ela_mesmo_recolhida_ou_com_tela_cheia() =>
+        Assert.Equal((true, (string?)null), V(fullyShown: false, fullscreen: true));
+
+    [Fact]
+    public void Desligado_nas_preferencias_nao_aparece_e_nao_e_motivo_de_log() =>
+        Assert.Equal((false, (string?)null), V(enabled: false));
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Sem_barra_ainda_nao_aparece_em_nenhum_modo(bool inside) =>
+        Assert.Equal((false, "a barra de tarefas ainda não existe (Windows iniciando?)"), V(inside: inside, taskbar: false));
+
+    [Fact]
+    public void Barra_sem_tamanho() =>
+        Assert.Equal((false, "a barra de tarefas não tem tamanho ainda"), V(thickness: 0));
+
+    [Fact]
+    public void Por_cima_da_barra_some_com_ela_recolhida_ou_com_tela_cheia()
+    {
+        Assert.Equal((false, "a barra de tarefas está oculta ou fora da tela"), V(inside: false, fullyShown: false));
+        Assert.Equal((false, "o Windows informa app em tela cheia ou ocupado (estado 2)"), V(inside: false, fullscreen: true));
+        Assert.Equal((true, (string?)null), V(inside: false));
+    }
+}
+
+public class LevelPrecedenceTests
+{
+    [Theory]
+    [InlineData(new[] { Level.Ok, Level.Warn, Level.Busy }, Level.Busy)]
+    [InlineData(new[] { Level.Ok, Level.Error, Level.Busy }, Level.Error)]
+    [InlineData(new[] { Level.Ok, Level.Warn }, Level.Warn)]
+    [InlineData(new[] { Level.Off, Level.Ok }, Level.Ok)]
+    [InlineData(new[] { Level.Off }, Level.Off)]
+    [InlineData(new Level[0], Level.Off)]
+    public void Erro_ocupado_atencao_ok(Level[] levels, Level worst) => Assert.Equal(worst, Levels.Worst(levels));
+}

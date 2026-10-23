@@ -86,7 +86,7 @@ public sealed class WidgetPainter
         var st = s?.StLevel ?? Level.Off;
         var folders = running ? $"{s!.FoldersOk}/{s.Folders.Count}" : "–";
         var devices = running ? $"{s!.DevicesOnline}/{s.Devices.Count}" : "–";
-        var fLevel = running ? Worst(s!.Folders.Select(f => f.Status.Level)) : Level.Off;
+        var fLevel = running ? Levels.Worst(s!.Folders.Select(f => f.Status.Level)) : Level.Off;
         var dLevel = running ? s!.DevicesLevel : Level.Off;
 
         int dot = P(7);
@@ -153,13 +153,6 @@ public sealed class WidgetPainter
             Count(x, cy, DeviceGlyph, dLevel, devices);
         }
         return maxX + P(8);
-    }
-
-    static Level Worst(IEnumerable<Level> levels)
-    {
-        var l = levels.ToList();
-        foreach (var x in new[] { Level.Error, Level.Busy, Level.Warn, Level.Ok }) if (l.Contains(x)) return x;
-        return Level.Off;
     }
 
     static GraphicsPath Round(Rectangle r, int rad)

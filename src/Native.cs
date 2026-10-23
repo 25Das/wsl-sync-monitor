@@ -35,6 +35,8 @@ static class Native
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
     public const int SW_HIDE = 0, SW_SHOWNA = 8;
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hWnd, uint cmd);
+    public const uint GW_HWNDPREV = 3;
     [DllImport("user32.dll")] public static extern IntPtr SetCapture(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ReleaseCapture();
 

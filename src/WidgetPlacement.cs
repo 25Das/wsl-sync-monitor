@@ -8,6 +8,21 @@ namespace WslSyncMonitor;
 public static class WidgetPlacement
 {
     /// <summary>
+    /// O widget deve aparecer? Senão, o motivo (para o log; null = escolha do usuário). Dentro da barra ele vai e
+    /// volta com ela sozinho; por cima, some quando ela se recolhe ou quando há app em tela cheia.
+    /// </summary>
+    public static (bool Show, string? Reason) Visibility(bool enabled, bool inside, bool taskbarExists, int thickness,
+        bool fullyShown, bool fullscreen, int notificationState)
+    {
+        if (!enabled) return (false, null);
+        if (!taskbarExists) return (false, "a barra de tarefas ainda não existe (Windows iniciando?)");
+        if (thickness <= 0) return (false, "a barra de tarefas não tem tamanho ainda");
+        if (inside) return (true, null);
+        if (fullscreen) return (false, $"o Windows informa app em tela cheia ou ocupado (estado {notificationState})");
+        return fullyShown ? (true, null) : (false, "a barra de tarefas está oculta ou fora da tela");
+    }
+
+    /// <summary>
     /// Windows 11 com os ícones centralizados mostra o botão Widgets (clima) no canto esquerdo, e nem sempre a
     /// automação de interface o enxerga: o canto fica reservado. Valores do registro Explorer\Advanced:
     /// TaskbarAl (0 = ícones à esquerda) e TaskbarDa (0 = Widgets desligado); ausentes = padrão (centralizado, ligado).

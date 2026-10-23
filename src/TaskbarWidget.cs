@@ -25,7 +25,8 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     IntPtr _parent;         // a barra, no modo dentro dela; zero no modo por cima
     volatile IntPtr _hwnd;  // lido de outros threads (WidgetHost)
     Rectangle _placed;      // última posição (relativa à barra, dentro dela) e tamanho aplicados
-    bool _hover, _dirty = true, _disposed;
+    bool _hover, _dirty = true, _disposed, _light;
+    string? _hiddenReason;  // último motivo de estar oculto registrado no log
 
     // arrastar
     bool _down, _dragging;
@@ -41,6 +42,11 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     {
         _settings = settings;
         _follow.Tick += (_, _) => Follow();
+    }
+
+    /// <summary>Cria a janela e passa a acompanhar a barra (chamar depois de ligar os eventos e o YieldTo).</summary>
+    public void Start()
+    {
         _follow.Start();
         Follow();
     }
@@ -102,23 +108,37 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
             Style = Inside ? Native.WS_CHILD | Native.WS_CLIPSIBLINGS : Native.WS_POPUP,
             ExStyle = Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE | (Inside ? 0 : Native.WS_EX_TOPMOST),
         });
-        _hwnd = Handle;
         _placed = Rectangle.Empty;
         _dirty = true;
-        if (!Inside)
-        {
-            _fgProc = (_, _, _, _, _, _, _) => BringAboveTaskbar();
-            _fgHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero,
-                _fgProc, 0, 0, Native.WINEVENT_OUTOFCONTEXT);
-        }
+        // a janela nova começa sem mouse em cima e sem arrasto
+        _hover = _down = _dragging = false;
         Log.Info("widget", Inside ? "criado dentro da barra de tarefas" : "criado por cima da barra de tarefas");
     }
 
     void Destroy()
     {
-        if (_fgHook != IntPtr.Zero) { Native.UnhookWinEvent(_fgHook); _fgHook = IntPtr.Zero; }
+        WatchForeground(false);
         if (Handle != IntPtr.Zero) DestroyHandle();
-        _hwnd = IntPtr.Zero;
+    }
+
+    /// <summary>A janela nativa mudou (criada, destruída por nós ou junto com a barra): atualiza a cópia lida por outros threads.</summary>
+    protected override void OnHandleChange() => _hwnd = Handle;
+
+    /// <summary>Modo por cima da barra, visível: recoloca-se acima dela a cada troca de janela em primeiro plano.</summary>
+    void WatchForeground(bool on)
+    {
+        if (on == (_fgHook != IntPtr.Zero)) return;
+        if (on)
+        {
+            _fgProc = (_, _, _, _, _, _, _) => BringAboveTaskbar();
+            _fgHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero,
+                _fgProc, 0, 0, Native.WINEVENT_OUTOFCONTEXT);
+        }
+        else
+        {
+            Native.UnhookWinEvent(_fgHook);
+            _fgHook = IntPtr.Zero;
+        }
     }
 
     /// <summary>A janela não existe mais (a barra foi destruída com ela) ou está no modo/barra errados.</summary>
@@ -137,48 +157,51 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         if (_disposed) return;
         var tb = TaskbarInfo.Get();
         _tb = tb;
-        if (tb.Hwnd == IntPtr.Zero) return; // barra ainda não existe (Windows iniciando, Explorer reiniciando)
-        if (NeedsRecreate(tb)) { Destroy(); Create(tb); }
+        bool taskbar = tb.Hwnd != IntPtr.Zero; // sem barra: Windows iniciando ou Explorer reiniciando
+        if (taskbar && NeedsRecreate(tb)) { Destroy(); Create(tb); }
 
         // por cima da barra auto-ocultável, o widget acompanha a animação dela; dentro, desliza junto sozinho
         _follow.Interval = tb.AutoHide && !Inside ? 150 : 500;
-        bool show = _settings.ShowTaskbarWidget && tb.Thickness > 0 && (Inside || (tb.FullyShown && !tb.FullscreenApp));
+        var (show, reason) = WidgetPlacement.Visibility(_settings.ShowTaskbarWidget, _settings.WidgetInsideTaskbar,
+            taskbar, tb.Thickness, tb.FullyShown, tb.FullscreenApp, tb.NotificationState);
         if (!show)
         {
-            SetShown(false, tb);
+            SetShown(false);
+            if (reason != null && reason != _hiddenReason) Log.Info("widget", "oculto: " + reason);
+            _hiddenReason = reason;
             return;
         }
 
+        if (Theme.TaskbarLight != _light) { _light = Theme.TaskbarLight; _dirty = true; } // tema mudou: redesenha
         var size = _painter.Measure(tb);
         var bounds = new Rectangle(Place(tb, size), size);
-        if (Inside) bounds.Offset(-tb.Rect.Left, -tb.Rect.Top); // janela filha: posição relativa à barra
         if (Inside)
         {
             // posição relativa à barra e no topo entre as janelas filhas dela: a barra do Windows 11 é desenhada
             // por uma janela filha (a ponte XAML), que de outro modo cobriria o widget
-            Native.SetWindowPos(Handle, Native.HWND_TOP, bounds.X, bounds.Y, bounds.Width, bounds.Height, Native.SWP_NOACTIVATE);
+            bounds.Offset(-tb.Rect.Left, -tb.Rect.Top);
+            if (bounds != _placed || Native.GetWindow(Handle, Native.GW_HWNDPREV) != IntPtr.Zero)
+                Native.SetWindowPos(Handle, Native.HWND_TOP, bounds.X, bounds.Y, bounds.Width, bounds.Height, Native.SWP_NOACTIVATE);
         }
         if (bounds != _placed || _dirty)
         {
             _placed = bounds;
             Render();
         }
-        SetShown(true, tb);
+        SetShown(true);
         BringAboveTaskbar();
     }
 
-    /// <summary>Mostra ou esconde a janela, registrando no log só as mudanças.</summary>
-    void SetShown(bool shown, TaskbarInfo tb)
+    /// <summary>Mostra ou esconde a janela (o motivo de esconder é registrado por quem chama).</summary>
+    void SetShown(bool shown)
     {
+        WatchForeground(shown && !Inside);
         if (Handle == IntPtr.Zero || Native.IsWindowVisible(Handle) == shown) return;
         Native.ShowWindow(Handle, shown ? Native.SW_SHOWNA : Native.SW_HIDE);
-        if (shown)
-            Log.Info("widget", _everShown ? "exibido" : $"exibido {(DateTime.Now - AppStart).TotalSeconds:0.0} s após o início do app");
-        else if (_settings.ShowTaskbarWidget)
-            Log.Info("widget", "oculto: " + (tb.FullscreenApp
-                ? $"o Windows informa app em tela cheia ou ocupado (estado {tb.NotificationState})"
-                : "a barra de tarefas está oculta ou fora da tela"));
-        _everShown |= shown;
+        if (!shown) return;
+        Log.Info("widget", _everShown ? "exibido" : $"exibido {(DateTime.Now - AppStart).TotalSeconds:0.0} s após o início do app");
+        _everShown = true;
+        _hiddenReason = null;
     }
 
     /// <summary>Posição do widget na tela, junto da bandeja (ou do outro lado, sem espaço; ver WidgetPlacement).</summary>

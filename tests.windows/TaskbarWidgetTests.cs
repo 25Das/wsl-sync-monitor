@@ -30,10 +30,43 @@ public sealed class TaskbarWidgetTests
 
     static IntPtr WidgetWindow(TaskbarWidget w) => w.Handle;
 
+    /// <summary>Widget já com a janela criada (Start), como o WidgetHost faz depois de ligar os eventos.</summary>
+    static TaskbarWidget Started(Settings settings)
+    {
+        var w = new TaskbarWidget(settings);
+        w.Start();
+        return w;
+    }
+
+    [Fact]
+    public void So_cria_a_janela_no_Start_depois_de_os_eventos_estarem_ligados()
+    {
+        using var w = new TaskbarWidget(new Settings());
+        Assert.Equal(IntPtr.Zero, w.Handle);
+        w.Start();
+        Assert.NotEqual(IntPtr.Zero, w.Handle);
+    }
+
+    [Fact]
+    public void Janela_recriada_nao_herda_o_estado_do_mouse()
+    {
+        var settings = new Settings();
+        using var w = Started(settings);
+        int hovers = 0;
+        w.HoverStarted += () => hovers++;
+        SendMessage(WidgetWindow(w), WM_MOUSEMOVE, IntPtr.Zero, IntPtr.Zero);
+
+        settings.WidgetInsideTaskbar = false; // recria a janela (como quando o Explorer reinicia)
+        w.Follow();
+        SendMessage(WidgetWindow(w), WM_MOUSEMOVE, IntPtr.Zero, IntPtr.Zero);
+
+        Assert.Equal(2, hovers); // a janela nova começa sem hover: o mouse entrando de novo avisa de novo
+    }
+
     [Fact]
     public void Nasce_como_janela_filha_da_barra_e_visivel()
     {
-        using var w = new TaskbarWidget(new Settings());
+        using var w = Started(new Settings());
         var h = WidgetWindow(w);
         Assert.Equal(Taskbar, GetParent(h));
         Assert.True(IsWindowVisible(h));
@@ -45,14 +78,14 @@ public sealed class TaskbarWidgetTests
     public void Fica_acima_das_outras_janelas_filhas_da_barra()
     {
         // a barra do Windows 11 é desenhada por uma janela filha dela (a ponte XAML): abaixo dela, o widget some
-        using var w = new TaskbarWidget(new Settings());
+        using var w = Started(new Settings());
         Assert.Equal(IntPtr.Zero, GetWindow(WidgetWindow(w), 3 /* GW_HWNDPREV: nenhuma irmã acima */));
     }
 
     [Fact]
     public void No_modo_antigo_e_uma_janela_sempre_visivel_por_cima_da_barra()
     {
-        using var w = new TaskbarWidget(new Settings { WidgetInsideTaskbar = false });
+        using var w = Started(new Settings { WidgetInsideTaskbar = false });
         var h = WidgetWindow(w);
         Assert.Equal(h, GetAncestor(h, 2 /* GA_ROOT */)); // janela de nível superior
         Assert.NotEqual(0, GetWindowLong(h, GWL_EXSTYLE) & WS_EX_TOPMOST);
@@ -62,7 +95,7 @@ public sealed class TaskbarWidgetTests
     public void Trocar_de_modo_recria_a_janela_no_modo_novo()
     {
         var settings = new Settings();
-        using var w = new TaskbarWidget(settings);
+        using var w = Started(settings);
         var inside = WidgetWindow(w);
 
         settings.WidgetInsideTaskbar = false;
@@ -76,7 +109,7 @@ public sealed class TaskbarWidgetTests
     public void Desligado_nas_preferencias_fica_oculto()
     {
         var settings = new Settings();
-        using var w = new TaskbarWidget(settings);
+        using var w = Started(settings);
         settings.ShowTaskbarWidget = false;
         w.Follow();
         Assert.False(w.IsShown);
@@ -85,7 +118,7 @@ public sealed class TaskbarWidgetTests
     [Fact]
     public void Passar_o_mouse_avisa_na_hora()
     {
-        using var w = new TaskbarWidget(new Settings());
+        using var w = Started(new Settings());
         int hovers = 0;
         w.HoverStarted += () => hovers++;
         SendMessage(WidgetWindow(w), WM_MOUSEMOVE, IntPtr.Zero, IntPtr.Zero);
@@ -96,7 +129,7 @@ public sealed class TaskbarWidgetTests
     [Fact]
     public void Clique_e_clique_direito()
     {
-        using var w = new TaskbarWidget(new Settings());
+        using var w = Started(new Settings());
         int clicks = 0, right = 0;
         w.Clicked += () => clicks++;
         w.RightClicked += () => right++;
@@ -115,7 +148,7 @@ public sealed class TaskbarWidgetTests
     public void Arrastar_muda_o_deslocamento_e_nao_conta_como_clique()
     {
         var settings = new Settings();
-        using var w = new TaskbarWidget(settings);
+        using var w = Started(settings);
         int clicks = 0, moved = 0;
         w.Clicked += () => clicks++;
         w.OffsetChanged += () => moved++;
@@ -135,7 +168,7 @@ public sealed class TaskbarWidgetTests
     [Fact]
     public void Descartar_destroi_a_janela()
     {
-        var w = new TaskbarWidget(new Settings());
+        var w = Started(new Settings());
         var h = WidgetWindow(w);
         w.Dispose();
         Assert.False(IsWindow(h));

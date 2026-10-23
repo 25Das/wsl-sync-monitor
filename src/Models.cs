@@ -126,11 +126,8 @@ public sealed class Snapshot
             if (!WslInstalled) return Level.Error;
             if (!WslRunning) return Level.Off;
             if (St != StState.Running) return Level.Error;
-            var levels = Folders.Select(f => f.Status.Level).Append(DevicesLevel).ToList();
-            if (levels.Contains(Level.Error)) return Level.Error;
-            if (levels.Contains(Level.Busy)) return Level.Busy;
-            if (levels.Contains(Level.Warn)) return Level.Warn;
-            return Level.Ok;
+            var worst = Levels.Worst(Folders.Select(f => f.Status.Level).Append(DevicesLevel));
+            return worst == Level.Off ? Level.Ok : worst; // nada pendente nem desligado conta: tudo ok
         }
     }
 
@@ -143,6 +140,19 @@ public sealed class Snapshot
         StState.AuthError => "Chave da API inválida",
         _ => "Desconhecido",
     };
+}
+
+/// <summary>Precedência dos estados: erro, depois ocupado (sincronizando), atenção e ok.</summary>
+public static class Levels
+{
+    static readonly Level[] Precedence = [Level.Error, Level.Busy, Level.Warn, Level.Ok];
+
+    /// <summary>O estado mais importante da lista (sem nenhum: desligado).</summary>
+    public static Level Worst(IEnumerable<Level> levels)
+    {
+        var set = levels.ToHashSet();
+        return Precedence.FirstOrDefault(set.Contains, Level.Off);
+    }
 }
 
 public static class Fmt

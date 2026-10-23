@@ -36,6 +36,7 @@ public sealed class WidgetHost : IDisposable
             _w.RightClicked += () => _app.Post(_ => RightClicked?.Invoke(), null);
             _w.HoverStarted += () => _app.Post(_ => HoverStarted?.Invoke(), null);
             _w.OffsetChanged += () => _app.Post(_ => OffsetChanged?.Invoke(), null);
+            _w.Start(); // só depois de os eventos estarem ligados
             ready.Set();
             Application.Run();
         })
