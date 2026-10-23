@@ -76,6 +76,19 @@ public sealed class AppSession : IDisposable
         }
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string? cls, string? title);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hWnd);
+
+    /// <summary>O widget visível: dentro da barra de tarefas (janela filha dela) ou, no modo antigo, por cima.</summary>
+    public AutomationElement Widget(TimeSpan? timeout = null) => WaitFor(() =>
+    {
+        var tray = FindWindowEx(IntPtr.Zero, IntPtr.Zero, "Shell_TrayWnd", null);
+        var h = FindWindowEx(tray, IntPtr.Zero, null, "WSL Sync Monitor Widget");
+        if (h == IntPtr.Zero) h = FindWindowEx(IntPtr.Zero, IntPtr.Zero, null, "WSL Sync Monitor Widget");
+        return h != IntPtr.Zero && IsWindowVisible(h) ? Automation.FromHandle(h) : null;
+    }, timeout, "widget");
+
     /// <summary>Janela de nível superior do app com o título dado (espera até aparecer).</summary>
     public Window WaitWindow(string title, TimeSpan? timeout = null) =>
         WaitFor(() => Automation.GetDesktop()

@@ -53,7 +53,9 @@ Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 atualizadas*, *Disposi
 **Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas atualizadas / dispositivos
 conectados). Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
 junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado, sem ocupar o canto
-do botão Widgets (clima) do Windows 11. Com a barra que se oculta sozinha, o widget aparece e some junto com ela.
+do botão Widgets (clima) do Windows 11. O widget fica **dentro** da barra (é uma janela filha dela): continua
+visível com o menu Iniciar aberto e, com a barra que se oculta sozinha, desliza junto com ela. Se der problema no
+seu Windows, `WidgetInsideTaskbar: false` volta ao modo antigo (uma janela por cima da barra).
 
 **Verificação de pastas e dispositivos:** ao iniciar, assim que o Syncthing responde e teve tempo de conectar,
 o app procura pastas com erro, fora de sincronia ou pausadas e dispositivos pausados, que nunca conectaram ou
@@ -165,6 +167,7 @@ Botão direito → *Editar configurações…* abre `%APPDATA%\WslSyncMonitor\se
 | `StartupGraceSeconds` | `90` | Tempo para o Syncthing conectar após ligar. |
 | `StableSeconds` | `10` | Tempo que "sincronizado" precisa durar. |
 | `PeriodicSyncMinutes` | `60` | Sincronização periódica (0 = desligada). |
+| `WidgetInsideTaskbar` | `true` | Widget dentro da barra de tarefas (`false` = por cima dela, modo antigo). |
 | `DeviceStaleDays` | `7` | Verificação de pastas e dispositivos: avisa de dispositivo que não conecta há tantos dias. |
 | `KeepAliveDistro` | `""` | Distro mantida ligada "até eu desligar". |
 | `HiddenDevices` | `[]` | IDs dos dispositivos ocultados do painel. |

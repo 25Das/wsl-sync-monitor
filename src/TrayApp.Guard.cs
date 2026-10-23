@@ -28,6 +28,7 @@ public sealed partial class TrayApp
             // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga
             () => _settings.ShutdownMaxWaitSeconds + 300);
         _shutdownWatcher.SessionEnded += () => { WslService.Release(); ExitThread(); };
+        _shutdownWatcher.SessionEnding += () => _widget.DetachForShutdown();
     }
 
     string? _guardText;
@@ -320,6 +321,7 @@ sealed class ShutdownWatcher : NativeWindow
     const long ENDSESSION_CLOSEAPP = 0x1;
 
     public event Action? SessionEnded;
+    public event Action? SessionEnding;
 
     public ShutdownWatcher(Func<bool> needed, Func<Task> sequence, Func<int> timeoutSeconds)
     {
@@ -344,6 +346,7 @@ sealed class ShutdownWatcher : NativeWindow
             bool sessionEnding = ((long)m.LParam & ENDSESSION_CLOSEAPP) == 0;
             if (sessionEnding && !WslService.SessionEnding)
             {
+                SessionEnding?.Invoke(); // antes de a interface ficar ocupada esperando a sequência
                 // a partir daqui, wsl.exe novos falhariam (0xc0000142): as atualizações e a proteção param
                 WslService.SessionEnding = true;
                 Log.Info("desligamento", "o Windows está encerrando a sessão");

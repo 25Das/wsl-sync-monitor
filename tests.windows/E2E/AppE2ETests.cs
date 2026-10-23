@@ -25,7 +25,7 @@ public sealed class AppE2ETests
             install.FindFirstDescendant(cf => cf.ByName("Só executar")).AsButton().Invoke();
 
             // 2. o widget aparece sobre a barra de tarefas
-            var widget = app.WaitWindow("WSL Sync Monitor Widget", TimeSpan.FromSeconds(30));
+            var widget = app.Widget(TimeSpan.FromSeconds(30));
             Thread.Sleep(1500); // primeira atualização e busca de atualização (servidor falso: em dia)
             app.Screenshot("2-widget");
 

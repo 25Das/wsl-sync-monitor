@@ -70,6 +70,12 @@ public sealed class Settings
     /// <summary>Mostra o mini‑widget sobre a barra de tarefas (além do ícone na bandeja).</summary>
     public bool ShowTaskbarWidget { get; set; } = true;
 
+    /// <summary>
+    /// Widget dentro da barra de tarefas (janela filha dela): sempre visível com ela, inclusive com o menu Iniciar
+    /// aberto. false = modo antigo, uma janela por cima da barra.
+    /// </summary>
+    public bool WidgetInsideTaskbar { get; set; } = true;
+
     /// <summary>Deslocamento extra (px) do widget em relação à área de notificação. Ajustável arrastando o widget.</summary>
     public int WidgetOffset { get; set; } = 0;
 

@@ -249,7 +249,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             return;
         }
 
-        bool overWidget = _widget.Visible && _widget.Bounds.Contains(cur);
+        bool overWidget = _widget.Visible && _widget.ScreenBounds.Contains(cur);
 
         if (!_popup.Visible)
         {

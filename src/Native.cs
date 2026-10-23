@@ -149,6 +149,7 @@ static class Native
     public struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
 
     [DllImport("user32.dll")] public static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+    [DllImport("user32.dll", EntryPoint = "UpdateLayeredWindow")] static extern bool UpdateLayeredWindowKeepPos(IntPtr hwnd, IntPtr hdcDst, IntPtr pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
     [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
     [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr hDC);
@@ -159,9 +160,11 @@ static class Native
     public const byte AC_SRC_OVER = 0, AC_SRC_ALPHA = 1;
 
     public const int WS_EX_LAYERED = 0x80000, WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8, WS_EX_NOACTIVATE = 0x8000000;
+    public const int WS_CHILD = 0x40000000, WS_CLIPSIBLINGS = 0x04000000;
 
     /// <summary>Exibe um bitmap ARGB 32bpp numa janela WS_EX_LAYERED.</summary>
-    public static void SetLayeredBitmap(IntPtr hwnd, Bitmap bmp, int x, int y)
+    /// <summary>Desenha a janela em camadas; <paramref name="position"/> null mantém a posição (janela filha).</summary>
+    public static void SetLayeredBitmap(IntPtr hwnd, Bitmap bmp, Point? position)
     {
         IntPtr screenDc = GetDC(IntPtr.Zero), memDc = CreateCompatibleDC(screenDc);
         IntPtr hBmp = IntPtr.Zero, old = IntPtr.Zero;
@@ -171,9 +174,13 @@ static class Native
             old = SelectObject(memDc, hBmp);
             var size = new SIZE { cx = bmp.Width, cy = bmp.Height };
             var src = new POINT();
-            var dst = new POINT { X = x, Y = y };
             var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = 255, AlphaFormat = AC_SRC_ALPHA };
-            UpdateLayeredWindow(hwnd, screenDc, ref dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
+            if (position is { } p)
+            {
+                var dst = new POINT { X = p.X, Y = p.Y };
+                UpdateLayeredWindow(hwnd, screenDc, ref dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
+            }
+            else UpdateLayeredWindowKeepPos(hwnd, screenDc, IntPtr.Zero, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
         }
         finally
         {

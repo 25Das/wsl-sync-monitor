@@ -4,9 +4,14 @@ using System.Drawing.Text;
 namespace WslSyncMonitor;
 
 /// <summary>
-/// Mini‑widget compacto desenhado sobre a barra de tarefas, ao lado da área de notificação.
-/// Acompanha a barra: some quando ela se auto‑oculta (ou quando há app em tela cheia) e volta junto com ela.
-/// Arraste com o botão esquerdo para reposicionar.
+/// Mini‑widget compacto na barra de tarefas, ao lado da área de notificação. Arraste com o botão esquerdo para
+/// reposicionar.
+/// <para>
+/// Por padrão é uma janela filha da própria barra (<see cref="Settings.WidgetInsideTaskbar"/>): fica sempre visível
+/// junto com ela, inclusive quando o menu Iniciar do Windows 11 põe a barra numa camada acima de todas as janelas
+/// "sempre visíveis" (por cima dela, o widget ficava escondido), desliza junto no auto-ocultar e o mouse sobre ele
+/// conta como mouse sobre a barra. No modo antigo é uma janela por cima da barra, que acompanha a posição dela.
+/// </para>
 /// </summary>
 public sealed class TaskbarWidget : Form
 {
@@ -41,14 +46,38 @@ public sealed class TaskbarWidget : Form
 
     protected override bool ShowWithoutActivation => true;
 
+    IntPtr _parent; // janela da barra de tarefas, no modo dentro da barra
+
+    bool Inside => _parent != IntPtr.Zero;
+
     protected override CreateParams CreateParams
     {
         get
         {
             var cp = base.CreateParams;
-            cp.ExStyle |= Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_TOPMOST | Native.WS_EX_NOACTIVATE;
+            if (Inside)
+            {
+                cp.Parent = _parent;
+                cp.Style = Native.WS_CHILD | Native.WS_CLIPSIBLINGS;
+                cp.ExStyle = Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_NOACTIVATE;
+            }
+            else cp.ExStyle |= Native.WS_EX_LAYERED | Native.WS_EX_TOOLWINDOW | Native.WS_EX_TOPMOST | Native.WS_EX_NOACTIVATE;
             return cp;
         }
+    }
+
+    /// <summary>Retângulo do widget na tela (dentro da barra, a posição da janela é relativa a ela).</summary>
+    public Rectangle ScreenBounds =>
+        IsHandleCreated && Native.GetWindowRect(Handle, out var r) ? r.ToRectangle() : Bounds;
+
+    /// <summary>
+    /// No desligamento do Windows: solta o widget da barra antes de a interface do app ficar ocupada (uma janela
+    /// filha de outro processo liga as filas de entrada dos dois: a barra travaria junto).
+    /// </summary>
+    public void DetachForShutdown()
+    {
+        _follow.Stop();
+        if (IsHandleCreated) DestroyHandle();
     }
 
     public void SetSnapshot(Snapshot s) { _snap = s; _dirty = true; Follow(); }
@@ -63,7 +92,7 @@ public sealed class TaskbarWidget : Form
     /// <summary>Recoloca o widget acima da barra (a barra sobe na ordem Z ao ganhar o foco).</summary>
     public void BringAboveTaskbar()
     {
-        if (IsHandleCreated && Visible && !(YieldTo?.Invoke() ?? false))
+        if (IsHandleCreated && Visible && !Inside && !(YieldTo?.Invoke() ?? false))
             Native.SetWindowPos(Handle, Native.HWND_TOPMOST, 0, 0, 0, 0, Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
     }
 
@@ -85,7 +114,7 @@ public sealed class TaskbarWidget : Form
     }
 
     /// <summary>Ponto de ancoragem para o painel detalhado.</summary>
-    public Point PopupAnchor => new(Left + Width / 2, Top + Height / 2);
+    public Point PopupAnchor => ScreenBounds is var r ? new(r.Left + r.Width / 2, r.Top + r.Height / 2) : default;
 
     float S => (_tb?.Dpi ?? 96) / 96f;
     int P(float v) => (int)Math.Round(v * S);
@@ -111,6 +140,20 @@ public sealed class TaskbarWidget : Form
     bool _hiddenLogged;
 
     /// <summary>
+    /// Modo dentro da barra: vira janela filha dela, e de novo se a barra for recriada (o Explorer reiniciou).
+    /// Desligado nas configurações: volta a ser uma janela por cima da barra.
+    /// </summary>
+    void AttachToTaskbar(TaskbarInfo tb)
+    {
+        var wanted = _settings.WidgetInsideTaskbar ? tb.Hwnd : IntPtr.Zero;
+        if (wanted == _parent && (IsHandleCreated || wanted == IntPtr.Zero)) return;
+        _parent = wanted;
+        if (IsHandleCreated) RecreateHandle(); // os estilos e o pai vêm do CreateParams
+        _dirty = true;
+        Log.Info("widget", Inside ? "dentro da barra de tarefas" : "por cima da barra de tarefas");
+    }
+
+    /// <summary>
     /// Onde estava o mouse quando o widget sumiu: com a barra que se oculta sozinha, o Windows pode recolhê-la
     /// quando o mouse está sobre o widget (uma janela por cima dela), e o widget some e volta em ciclo.
     /// </summary>
@@ -123,7 +166,7 @@ public sealed class TaskbarWidget : Form
             var under = Native.WindowFromPoint(cur);
             var cls = new System.Text.StringBuilder(64);
             _ = Native.GetClassName(under, cls, cls.Capacity);
-            return $" · auto-ocultar; mouse em {cur.X},{cur.Y} ({(Bounds.Contains(cur) ? "sobre o widget" : "fora do widget")}," +
+            return $" · auto-ocultar; mouse em {cur.X},{cur.Y} ({(ScreenBounds.Contains(cur) ? "sobre o widget" : "fora do widget")}," +
                    $" janela sob o mouse: {(under == Handle ? "o widget" : cls.ToString())}); barra {tb.Rect}";
         }
         catch { return ""; }
@@ -144,9 +187,12 @@ public sealed class TaskbarWidget : Form
         if (IsDisposed) return;
         var tb = TaskbarInfo.Get();
         _tb = tb;
-        // com a barra auto-ocultável o widget precisa acompanhar a animação; fixa, basta conferir de vez em quando
-        _follow.Interval = tb.AutoHide ? 150 : 500;
-        bool show = _settings.ShowTaskbarWidget && tb.FullyShown && !tb.FullscreenApp && tb.Thickness > 0;
+        if (WslService.SessionEnding) return; // desligando: o widget já foi solto da barra
+        AttachToTaskbar(tb);
+        // por cima da barra, com ela auto-ocultável, o widget precisa acompanhar a animação; dentro dela, desliza junto
+        _follow.Interval = tb.AutoHide && !Inside ? 150 : 500;
+        bool show = _settings.ShowTaskbarWidget && tb.Thickness > 0 &&
+                    (Inside ? tb.Hwnd != IntPtr.Zero : tb.FullyShown && !tb.FullscreenApp);
         if (!show)
         {
             if (_settings.ShowTaskbarWidget && (Visible || !_hiddenLogged))
@@ -178,6 +224,7 @@ public sealed class TaskbarWidget : Form
             loc = new Point(tb.Rect.Left + (tb.Rect.Width - size.Width) / 2, y);
         }
 
+        if (Inside) loc.Offset(-tb.Rect.Left, -tb.Rect.Top); // janela filha: posição relativa à barra
         var key = $"{loc}|{size}|{tb.Horizontal}|{Theme.TaskbarLight}|{_hover}";
         if (!Visible)
         {
@@ -240,7 +287,8 @@ public sealed class TaskbarWidget : Form
 
             PaintContent(g, Width, Height, draw: true);
         }
-        Native.SetLayeredBitmap(Handle, bmp, Left, Top);
+        // dentro da barra a posição já foi definida (e é relativa a ela); por cima, vai junto com o desenho
+        Native.SetLayeredBitmap(Handle, bmp, Inside ? null : new Point(Left, Top));
     }
 
     /// <summary>O conteúdo do widget sobre uma barra da cor do tema, sem exibir a janela (capturas de tela do CI).</summary>
