@@ -37,8 +37,9 @@ public sealed class SyncthingEventsTests : IDisposable
         var basis = new Snapshot { Time = DateTime.Now.AddMinutes(-1), St = StState.Running };
         basis.Folders.Add(new FolderInfo { Id = "claude", Label = "Claude", State = "idle" });
         basis.AllFolders.AddRange(basis.Folders);
-        SyncthingInstance.Wait(() => activity.Overlay(basis, DateTime.Now).Folders[0].RecentFiles == 1, "a atividade chegar", 20);
-        Assert.Equal("Sincronizado agora · 1 arquivo", activity.Overlay(basis, DateTime.Now).Folders[0].Status.Text);
+        // primeiro "Verificando" (o Syncthing ainda está registrando), depois "Sincronizado agora"
+        SyncthingInstance.Wait(() => activity.Overlay(basis, DateTime.Now).Folders[0].Status.Text == "Sincronizado agora · 1 arquivo",
+            "a atividade aparecer", 20);
     }
 
     [SyncthingFact]
