@@ -125,6 +125,7 @@ public sealed class TaskbarWidget : Form
 
     // ícones da barra (Iniciar, apps, clima…), lidos pela UIA num thread de fundo a cada poucos segundos
     volatile List<(int Start, int End)>? _taskbarIcons;
+    string? _iconsDesc;
     DateTime _iconsReadAt;
     bool _readingIcons;
 
@@ -136,6 +137,8 @@ public sealed class TaskbarWidget : Form
         var (hwnd, notify, left, cornerWidth) = (tb.Hwnd, tb.NotifyRect, tb.Rect.Left, P(200));
         Task.Run(() => TaskbarIcons.Read(hwnd, notify, left, cornerWidth)).ContinueWith(t =>
         {
+            var desc = t.Result == null ? "não lidos" : string.Join(" ", t.Result.Select(i => $"{i.Start}–{i.End}"));
+            if (desc != _iconsDesc) { _iconsDesc = desc; Log.Info("widget", "ícones da barra: " + desc); }
             _taskbarIcons = t.Result;
             _readingIcons = false;
         }, TaskScheduler.Default);

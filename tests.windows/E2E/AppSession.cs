@@ -142,6 +142,7 @@ public sealed class AppSession : IDisposable
     public void Dispose()
     {
         try { if (!Process.HasExited) Process.Kill(true); } catch { }
+        try { File.WriteAllText(Path.Combine(_evidence, $"e2e-log-{Guid.NewGuid().ToString("N")[..6]}.txt"), LogText()); } catch { }
         _server.Close();
         Automation.Dispose();
         try { Directory.Delete(Home, recursive: true); } catch { }
