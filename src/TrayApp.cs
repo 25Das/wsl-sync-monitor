@@ -98,6 +98,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             if (_balloon == BalloonKind.Update && _updater.Available != null) InstallUpdate();
             else if (_balloon == BalloonKind.Health) ShowPopup(_widget.Visible ? _widget.PopupAnchor : Cursor.Position, pin: true);
         };
+        StartRealTime();
         _ = RefreshAsync();
         _ = CheckUpdateAsync(retryOnFail: true); // procura atualização logo ao iniciar (e depois a cada 24 h)
         ListenForExitRequests();
@@ -118,12 +119,11 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
                 Log.Info("atualização", $"primeira leitura do estado em {(DateTime.Now - System.Diagnostics.Process.GetCurrentProcess().StartTime).TotalSeconds:0.0} s " +
                     $"(WSL: {(snap.WslError ?? (snap.WslRunning ? "ligado" : "desligado"))}, Syncthing: {snap.StStatusText})");
             _snap = snap;
+            SetSyncthingUp(snap.St == StState.Running);
             StartupHealthCheck(snap);
             StartKeptAliveAtLaunch(snap);
-            _popup.SetSnapshot(snap);
-            _widget.SetSnapshot(snap);
             GuardTick();
-            UpdateTrayIcon();
+            ShowState();
             _ = RefreshDiskFreeAsync();
         }
         catch (WslService.SessionEndingException) { /* o Windows começou a encerrar a sessão no meio da atualização */ }
@@ -140,11 +140,12 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     /// <summary>Ícone e texto da bandeja a partir do estado (regras em <see cref="TrayIconModel"/>).</summary>
     void UpdateTrayIcon()
     {
-        var kept = _snap?.Target is { } t && IsKeptAlive(t.Name);
-        _tray.Icon = _icons.Render(TrayIconModel.From(_snap, kept, _updater.Available != null));
+        var shown = Display;
+        var kept = shown?.Target is { } t && IsKeptAlive(t.Name);
+        _tray.Icon = _icons.Render(TrayIconModel.From(shown, kept, _updater.Available != null));
         _tray.Text = _busyText != null
             ? Trim($"{AppName} · {_busyText}", 127)
-            : TrayIconModel.Tooltip(_snap, kept ? KeepAliveText : null, _updater.Available?.Version);
+            : TrayIconModel.Tooltip(shown, kept ? KeepAliveText : null, _updater.Available?.Version);
     }
 
     static DateTime SettingsMtime() { try { return File.GetLastWriteTimeUtc(Settings.FilePath); } catch { return default; } }
@@ -300,7 +301,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     void ShowPopup(Point anchor, bool pin)
     {
-        if (_snap != null) _popup.SetSnapshot(_snap);
+        if (Display is { } shown) _popup.SetSnapshot(shown);
         _popup.ShowAt(anchor, pin);
         if (_snap == null || (DateTime.Now - _snap.Time).TotalSeconds > 2) _ = RefreshAsync();
     }
@@ -447,6 +448,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     protected override void ExitThreadCore()
     {
         Log.Info("app", _handingOver ? "fechado para a nova versão assumir" : "fechado");
+        StopRealTime();
         if (!_handingOver) WslService.Release();
         _exitWait?.Unregister(null);
         _exitEvent?.Dispose();

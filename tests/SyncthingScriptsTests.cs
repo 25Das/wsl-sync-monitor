@@ -169,6 +169,9 @@ public sealed class KeepAliveScriptTests : IDisposable
         try { Directory.Delete(_dir, true); } catch { }
     }
 
+    // nome de processo só deste teste: o script nunca pode parar o Syncthing de quem roda os testes
+    readonly string _target = "wsmt" + Random.Shared.Next(10000, 99999);
+
     void Start()
     {
         var psi = new ProcessStartInfo("sh");
@@ -176,6 +179,7 @@ public sealed class KeepAliveScriptTests : IDisposable
         psi.ArgumentList.Add(SyncthingScripts.ForSh(SyncthingScripts.KeepAlive));
         psi.ArgumentList.Add(SyncthingScripts.KeepAliveMarker);
         psi.ArgumentList.Add(_dir);
+        psi.ArgumentList.Add(_target);
         _p = Process.Start(psi)!;
         Assert.True(WaitFile(Path.Combine(_dir, "ready"))); // só depois da limpeza inicial
     }
@@ -194,6 +198,28 @@ public sealed class KeepAliveScriptTests : IDisposable
         Assert.True(WaitFile(Path.Combine(_dir, "synced")));
         Assert.False(File.Exists(Path.Combine(_dir, "sync"))); // pedido consumido
         Assert.False(_p!.HasExited);
+    }
+
+    [ShFact]
+    public void Pedido_de_parar_o_syncthing_para_so_o_processo_pedido()
+    {
+        // um processo com o nome pedido (cópia do sleep): é ele, e só ele, que o pedido para
+        var bin = Path.Combine(Path.GetTempPath(), _target);
+        File.Copy("/bin/sleep", bin, overwrite: true);
+        File.SetUnixFileMode(bin, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.UserWrite);
+        using var target = Process.Start(bin, "60");
+        try
+        {
+            Start();
+            File.WriteAllText(Path.Combine(_dir, "stop-syncthing"), "");
+            Assert.True(WaitFile(Path.Combine(_dir, "stopped")));
+            Assert.True(target.WaitForExit(5000));
+        }
+        finally
+        {
+            try { target.Kill(); } catch { }
+            File.Delete(bin);
+        }
     }
 
     [ShFact]

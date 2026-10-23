@@ -206,7 +206,14 @@ public sealed partial class TrayApp
                     if (!await WslService.ProcessMayBeRunningAsync(distro, "syncthing")) return true; // nada a proteger
                 }
             }
-            try { await Task.Delay(2000, ct); } catch (OperationCanceledException) { break; }
+            try
+            {
+                // confere de novo quando um evento do Syncthing muda algo (ou a cada 2 s, sem eventos); num sync
+                // grande, com muitos eventos, no máximo ~3 conferências por segundo
+                await Task.Delay(300, ct);
+                await _activity.WaitForChangeAsync(TimeSpan.FromMilliseconds(1700), ct);
+            }
+            catch (OperationCanceledException) { break; }
         }
         return false;
     }

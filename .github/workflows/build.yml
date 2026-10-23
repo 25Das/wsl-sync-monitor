@@ -21,6 +21,10 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # Syncthing de verdade para os testes do fluxo de eventos (SyncthingFact)
+      - name: Instalar o Syncthing
+        run: sudo apt-get install -y -q syncthing
+
       - name: Testes
         run: dotnet test tests -c Release --logger GitHubActions
 

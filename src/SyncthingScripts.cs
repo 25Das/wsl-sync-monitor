@@ -14,14 +14,14 @@ public static class SyncthingScripts
     /// <see cref="KeepAliveDir"/>: "sync" (grava os dados em disco → "synced") e "stop-syncthing" (SIGTERM e espera
     /// até 30 s → "stopped"). No desligamento do Windows não dá para iniciar o wsl.exe, mas dá para criar arquivos
     /// pela rede do WSL (\\wsl.localhost). Uma linha, sem aspas duplas (vai na linha de comando do wsl.exe).
-    /// O 1º argumento troca a pasta (testes).
+    /// O 1º argumento troca a pasta e o 2º, o nome do processo a parar (testes: nunca o Syncthing de quem os roda).
     /// </summary>
     public const string KeepAlive =
-        "d=${1:-" + KeepAliveDir + "}; mkdir -p $d; rm -f $d/sync $d/synced $d/stop-syncthing $d/stopped; : > $d/ready; " +
+        "d=${1:-" + KeepAliveDir + "}; p=${2:-syncthing}; mkdir -p $d; rm -f $d/sync $d/synced $d/stop-syncthing $d/stopped; : > $d/ready; " +
         "while :; do " +
         "if [ -e $d/sync ]; then rm -f $d/sync; sync; : > $d/synced; fi; " +
-        "if [ -e $d/stop-syncthing ]; then rm -f $d/stop-syncthing; pkill -TERM -x syncthing; n=0; " +
-        "while pgrep -x syncthing >/dev/null && [ $n -lt 30 ]; do sleep 1; n=$((n+1)); done; sync; : > $d/stopped; fi; " +
+        "if [ -e $d/stop-syncthing ]; then rm -f $d/stop-syncthing; pkill -TERM -x $p; n=0; " +
+        "while pgrep -x $p >/dev/null && [ $n -lt 30 ]; do sleep 1; n=$((n+1)); done; sync; : > $d/stopped; fi; " +
         "sleep 1; done";
 
     // imprime "@@FILE <caminho>" seguido do conteúdo de cada config.xml legível, sem repetir arquivos

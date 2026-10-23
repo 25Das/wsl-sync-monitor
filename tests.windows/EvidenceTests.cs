@@ -80,6 +80,8 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
     {
         { "ok", "Tudo sincronizado (um dispositivo desligado), versão em dia" },
         { "sincronizando", "Sincronizando uma pasta" },
+        { "arquivo", "Recebendo um arquivo agora (eventos do Syncthing)" },
+        { "agora", "Sync pequeno que acabou de acontecer: fica visível por alguns segundos" },
         { "atualizacao", "Versão nova disponível (botão Atualizar)" },
         { "falhou", "Busca de atualização falhou" },
         { "operacao", "Operação longa em andamento (status cortado com reticências)" },
@@ -103,6 +105,18 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
                 {
                     case "ok": popup.SetSnapshot(Snap()); popup.SetGuard("Ubuntu-26.04 em uso por 2 programa(s). Ao fechar, espera sincronizar antes de desligar."); break;
                     case "sincronizando": popup.SetSnapshot(Syncing()); break;
+                    case "arquivo":
+                        var receiving = Snap();
+                        receiving.Folders[0].State = "syncing";
+                        receiving.Folders[0].CurrentItem = "relatorio.md";
+                        popup.SetSnapshot(receiving);
+                        break;
+                    case "agora":
+                        var recent = Snap();
+                        recent.Folders[0].RecentFiles = 5;
+                        recent.Devices[0].RecentActivity = true;
+                        popup.SetSnapshot(recent);
+                        break;
                     case "atualizacao": popup.SetSnapshot(Snap()); popup.SetUpdate(UpdateState.Found(new Version(9, 9, 9), At)); break;
                     case "falhou": popup.SetSnapshot(Snap()); popup.SetUpdate(UpdateState.Failed("Nenhuma conexão")); break;
                     case "operacao": popup.SetSnapshot(Snap()); popup.SetBusy("Encerrando Ubuntu-26.04 com segurança: aguardando o Syncthing terminar de sincronizar 3 pastas…"); break;

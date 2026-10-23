@@ -14,6 +14,10 @@ public sealed class FolderInfo
     public int SharedWith;
     public List<string> DeviceIds = new(); // dispositivos (exceto este) com quem a pasta é compartilhada
     public string? Error;
+    public string? CurrentItem;  // arquivo sendo sincronizado agora (eventos do Syncthing)
+    public int RecentFiles;      // arquivos sincronizados há pouco (eventos): mostrados por alguns segundos
+
+    public FolderInfo Clone() => (FolderInfo)MemberwiseClone();
 
     public double Percent => GlobalBytes <= 0 ? 100 : Math.Clamp(100.0 * InSyncBytes / GlobalBytes, 0, 100);
 
@@ -21,9 +25,11 @@ public sealed class FolderInfo
     {
         "idle" when Errors > 0 || Error != null => ($"{Errors} erro(s)", Level.Error),
         "idle" when NeedBytes > 0 || NeedItems > 0 => ($"Fora de sincronia ({Fmt.Bytes(NeedBytes)})", Level.Warn),
+        "idle" when RecentFiles > 0 => ($"Sincronizado agora · {RecentFiles} arquivo{(RecentFiles == 1 ? "" : "s")}", Level.Busy),
         "idle" => ("Atualizada", Level.Ok),
         "scanning" => ("Verificando", Level.Busy),
         "scan-waiting" => ("Aguardando verificação", Level.Busy),
+        "syncing" when CurrentItem != null => ($"Sincronizando {CurrentItem}…", Level.Busy),
         "syncing" => ($"Sincronizando {Percent:0}%", Level.Busy),
         "sync-preparing" => ("Preparando sincronização", Level.Busy),
         "sync-waiting" => ("Aguardando sincronização", Level.Busy),
@@ -42,6 +48,9 @@ public sealed class DeviceInfo
     public long NeedBytes;
     public DateTime? LastSeen;
     public double InRate, OutRate;
+    public bool RecentActivity; // trocou índices ou dados há pouco (eventos): mostrado por alguns segundos
+
+    public DeviceInfo Clone() => (DeviceInfo)MemberwiseClone();
 
     /// <summary>Velocidades, tipo e endereço da conexão e versão do Syncthing remoto (só o que se conhece).</summary>
     public string ConnectionText
@@ -64,6 +73,7 @@ public sealed class DeviceInfo
                 return (LastSeen is { Year: > 1970 } ls ? $"Desconectado · visto {Fmt.Ago(ls)}" : "Desconectado", Level.Off);
             if (Completion < 100 || NeedBytes > 0)
                 return ($"Sincronizando {Math.Floor(Completion):0}% ({Fmt.Bytes(NeedBytes)})", Level.Busy);
+            if (RecentActivity) return ("Sincronizado agora", Level.Busy);
             return ("Atualizado", Level.Ok);
         }
     }
@@ -73,6 +83,22 @@ public enum StState { Unknown, DistroStopped, NotRunning, Unreachable, AuthError
 
 public sealed class Snapshot
 {
+    /// <summary>
+    /// Cópia em que pastas e dispositivos podem ser alterados sem afetar o original (as listas visíveis apontam
+    /// para as mesmas cópias que as listas completas).
+    /// </summary>
+    public Snapshot Clone()
+    {
+        var c = (Snapshot)MemberwiseClone();
+        var folders = AllFolders.ToDictionary<FolderInfo, FolderInfo, FolderInfo>(f => f, f => f.Clone(), ReferenceEqualityComparer.Instance);
+        var devices = AllDevices.ToDictionary<DeviceInfo, DeviceInfo, DeviceInfo>(d => d, d => d.Clone(), ReferenceEqualityComparer.Instance);
+        c.AllFolders = AllFolders.Select(f => folders[f]).ToList();
+        c.Folders = Folders.Select(f => folders.TryGetValue(f, out var x) ? x : f.Clone()).ToList();
+        c.AllDevices = AllDevices.Select(d => devices[d]).ToList();
+        c.Devices = Devices.Select(d => devices.TryGetValue(d, out var x) ? x : d.Clone()).ToList();
+        return c;
+    }
+
     public DateTime Time = DateTime.Now;
 
     public bool WslInstalled = true;

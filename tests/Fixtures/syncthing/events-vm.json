@@ -1,0 +1,498 @@
+[
+ {
+  "id": 32,
+  "globalID": 38,
+  "time": "2026-10-23T19:37:54.271216863Z",
+  "type": "RemoteIndexUpdated",
+  "data": {
+   "device": "QZ3DGLP-YXG63IA-GAK5XWT-6AZSQ65-EEMUENC-J4DRA55-TPBBPIO-C5J27QD",
+   "folder": "claude",
+   "items": 1,
+   "sequence": 37,
+   "version": 37
+  }
+ },
+ {
+  "id": 33,
+  "globalID": 39,
+  "time": "2026-10-23T19:37:54.271371087Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 5.27137019,
+   "folder": "claude",
+   "from": "idle",
+   "to": "sync-waiting"
+  }
+ },
+ {
+  "id": 34,
+  "globalID": 40,
+  "time": "2026-10-23T19:37:54.271499829Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.271499265,
+   "folder": "claude",
+   "from": "sync-waiting",
+   "to": "sync-preparing"
+  }
+ },
+ {
+  "id": 35,
+  "globalID": 41,
+  "time": "2026-10-23T19:37:54.271676918Z",
+  "type": "ItemStarted",
+  "data": {
+   "action": "update",
+   "folder": "claude",
+   "item": "nota.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 36,
+  "globalID": 42,
+  "time": "2026-10-23T19:37:54.272066236Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.272065464,
+   "folder": "claude",
+   "from": "sync-preparing",
+   "to": "syncing"
+  }
+ },
+ {
+  "id": 37,
+  "globalID": 43,
+  "time": "2026-10-23T19:37:54.317457002Z",
+  "type": "ItemFinished",
+  "data": {
+   "action": "update",
+   "error": null,
+   "folder": "claude",
+   "item": "nota.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 38,
+  "globalID": 44,
+  "time": "2026-10-23T19:37:54.319080718Z",
+  "type": "LocalIndexUpdated",
+  "data": {
+   "filenames": [
+    "nota.txt"
+   ],
+   "folder": "claude",
+   "items": 1,
+   "sequence": 37,
+   "version": 37
+  }
+ },
+ {
+  "id": 39,
+  "globalID": 46,
+  "time": "2026-10-23T19:37:54.319137011Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.319136331,
+   "folder": "claude",
+   "from": "syncing",
+   "to": "sync-preparing"
+  }
+ },
+ {
+  "id": 40,
+  "globalID": 47,
+  "time": "2026-10-23T19:37:54.31952857Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.319527707,
+   "folder": "claude",
+   "from": "sync-preparing",
+   "to": "idle"
+  }
+ },
+ {
+  "id": 41,
+  "globalID": 48,
+  "time": "2026-10-23T19:37:54.319571607Z",
+  "type": "FolderSummary",
+  "data": {
+   "folder": "claude",
+   "summary": {
+    "errors": 0,
+    "pullErrors": 0,
+    "invalid": "",
+    "globalFiles": 1,
+    "globalDirectories": 0,
+    "globalSymlinks": 0,
+    "globalDeleted": 5,
+    "globalBytes": 10000,
+    "globalTotalItems": 6,
+    "localFiles": 1,
+    "localDirectories": 0,
+    "localSymlinks": 0,
+    "localDeleted": 5,
+    "localBytes": 10000,
+    "localTotalItems": 6,
+    "needFiles": 0,
+    "needDirectories": 0,
+    "needSymlinks": 0,
+    "needDeletes": 0,
+    "needBytes": 0,
+    "needTotalItems": 0,
+    "receiveOnlyChangedFiles": 0,
+    "receiveOnlyChangedDirectories": 0,
+    "receiveOnlyChangedSymlinks": 0,
+    "receiveOnlyChangedDeletes": 0,
+    "receiveOnlyChangedBytes": 0,
+    "receiveOnlyTotalItems": 0,
+    "inSyncFiles": 1,
+    "inSyncBytes": 10000,
+    "state": "idle",
+    "stateChanged": "2026-10-23T19:37:54Z",
+    "error": "",
+    "version": 37,
+    "sequence": 37,
+    "ignorePatterns": false,
+    "watchError": ""
+   }
+  }
+ },
+ {
+  "id": 42,
+  "globalID": 49,
+  "time": "2026-10-23T19:37:54.319639924Z",
+  "type": "FolderCompletion",
+  "data": {
+   "completion": 100,
+   "device": "QZ3DGLP-YXG63IA-GAK5XWT-6AZSQ65-EEMUENC-J4DRA55-TPBBPIO-C5J27QD",
+   "folder": "claude",
+   "globalBytes": 10000,
+   "globalItems": 1,
+   "needBytes": 0,
+   "needDeletes": 0,
+   "needItems": 0,
+   "remoteState": "valid",
+   "sequence": 37
+  }
+ },
+ {
+  "id": 43,
+  "globalID": 50,
+  "time": "2026-10-23T19:37:58.272579362Z",
+  "type": "RemoteIndexUpdated",
+  "data": {
+   "device": "QZ3DGLP-YXG63IA-GAK5XWT-6AZSQ65-EEMUENC-J4DRA55-TPBBPIO-C5J27QD",
+   "folder": "claude",
+   "items": 5,
+   "sequence": 42,
+   "version": 42
+  }
+ },
+ {
+  "id": 44,
+  "globalID": 51,
+  "time": "2026-10-23T19:37:58.272808095Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 4.272806877,
+   "folder": "claude",
+   "from": "idle",
+   "to": "sync-waiting"
+  }
+ },
+ {
+  "id": 45,
+  "globalID": 52,
+  "time": "2026-10-23T19:37:58.272876826Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.272876425,
+   "folder": "claude",
+   "from": "sync-waiting",
+   "to": "sync-preparing"
+  }
+ },
+ {
+  "id": 46,
+  "globalID": 53,
+  "time": "2026-10-23T19:37:58.273039632Z",
+  "type": "ItemStarted",
+  "data": {
+   "action": "update",
+   "folder": "claude",
+   "item": "n2.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 47,
+  "globalID": 54,
+  "time": "2026-10-23T19:37:58.273289452Z",
+  "type": "ItemStarted",
+  "data": {
+   "action": "update",
+   "folder": "claude",
+   "item": "n3.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 48,
+  "globalID": 55,
+  "time": "2026-10-23T19:37:58.273479616Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.273478524,
+   "folder": "claude",
+   "from": "sync-preparing",
+   "to": "syncing"
+  }
+ },
+ {
+  "id": 49,
+  "globalID": 56,
+  "time": "2026-10-23T19:37:58.273664027Z",
+  "type": "ItemStarted",
+  "data": {
+   "action": "update",
+   "folder": "claude",
+   "item": "n0.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 50,
+  "globalID": 57,
+  "time": "2026-10-23T19:37:58.273785058Z",
+  "type": "ItemStarted",
+  "data": {
+   "action": "update",
+   "folder": "claude",
+   "item": "n1.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 51,
+  "globalID": 58,
+  "time": "2026-10-23T19:37:58.273877903Z",
+  "type": "ItemStarted",
+  "data": {
+   "action": "update",
+   "folder": "claude",
+   "item": "n4.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 52,
+  "globalID": 59,
+  "time": "2026-10-23T19:37:58.27621919Z",
+  "type": "ItemFinished",
+  "data": {
+   "action": "update",
+   "error": null,
+   "folder": "claude",
+   "item": "n2.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 53,
+  "globalID": 60,
+  "time": "2026-10-23T19:37:58.277383946Z",
+  "type": "ItemFinished",
+  "data": {
+   "action": "update",
+   "error": null,
+   "folder": "claude",
+   "item": "n1.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 54,
+  "globalID": 61,
+  "time": "2026-10-23T19:37:58.278078942Z",
+  "type": "ItemFinished",
+  "data": {
+   "action": "update",
+   "error": null,
+   "folder": "claude",
+   "item": "n3.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 55,
+  "globalID": 62,
+  "time": "2026-10-23T19:37:58.278810773Z",
+  "type": "ItemFinished",
+  "data": {
+   "action": "update",
+   "error": null,
+   "folder": "claude",
+   "item": "n0.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 56,
+  "globalID": 63,
+  "time": "2026-10-23T19:37:58.320444325Z",
+  "type": "ItemFinished",
+  "data": {
+   "action": "update",
+   "error": null,
+   "folder": "claude",
+   "item": "n4.txt",
+   "type": "file"
+  }
+ },
+ {
+  "id": 57,
+  "globalID": 64,
+  "time": "2026-10-23T19:37:58.321221208Z",
+  "type": "LocalIndexUpdated",
+  "data": {
+   "filenames": [
+    "n2.txt",
+    "n1.txt",
+    "n3.txt",
+    "n0.txt",
+    "n4.txt"
+   ],
+   "folder": "claude",
+   "items": 5,
+   "sequence": 42,
+   "version": 42
+  }
+ },
+ {
+  "id": 58,
+  "globalID": 70,
+  "time": "2026-10-23T19:37:58.321287624Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.321286981,
+   "folder": "claude",
+   "from": "syncing",
+   "to": "sync-preparing"
+  }
+ },
+ {
+  "id": 59,
+  "globalID": 71,
+  "time": "2026-10-23T19:37:58.321576906Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.321576054,
+   "folder": "claude",
+   "from": "sync-preparing",
+   "to": "idle"
+  }
+ },
+ {
+  "id": 60,
+  "globalID": 72,
+  "time": "2026-10-23T19:37:58.321621877Z",
+  "type": "FolderSummary",
+  "data": {
+   "folder": "claude",
+   "summary": {
+    "errors": 0,
+    "pullErrors": 0,
+    "invalid": "",
+    "globalFiles": 6,
+    "globalDirectories": 0,
+    "globalSymlinks": 0,
+    "globalDeleted": 0,
+    "globalBytes": 25000,
+    "globalTotalItems": 6,
+    "localFiles": 6,
+    "localDirectories": 0,
+    "localSymlinks": 0,
+    "localDeleted": 0,
+    "localBytes": 25000,
+    "localTotalItems": 6,
+    "needFiles": 0,
+    "needDirectories": 0,
+    "needSymlinks": 0,
+    "needDeletes": 0,
+    "needBytes": 0,
+    "needTotalItems": 0,
+    "receiveOnlyChangedFiles": 0,
+    "receiveOnlyChangedDirectories": 0,
+    "receiveOnlyChangedSymlinks": 0,
+    "receiveOnlyChangedDeletes": 0,
+    "receiveOnlyChangedBytes": 0,
+    "receiveOnlyTotalItems": 0,
+    "inSyncFiles": 6,
+    "inSyncBytes": 25000,
+    "state": "idle",
+    "stateChanged": "2026-10-23T19:37:58Z",
+    "error": "",
+    "version": 42,
+    "sequence": 42,
+    "ignorePatterns": false,
+    "watchError": ""
+   }
+  }
+ },
+ {
+  "id": 61,
+  "globalID": 73,
+  "time": "2026-10-23T19:37:58.321648924Z",
+  "type": "FolderCompletion",
+  "data": {
+   "completion": 100,
+   "device": "QZ3DGLP-YXG63IA-GAK5XWT-6AZSQ65-EEMUENC-J4DRA55-TPBBPIO-C5J27QD",
+   "folder": "claude",
+   "globalBytes": 25000,
+   "globalItems": 6,
+   "needBytes": 0,
+   "needDeletes": 0,
+   "needItems": 0,
+   "remoteState": "valid",
+   "sequence": 42
+  }
+ },
+ {
+  "id": 62,
+  "globalID": 74,
+  "time": "2026-10-23T19:37:59.277869838Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 1.2778678669999999,
+   "folder": "claude",
+   "from": "idle",
+   "to": "scan-waiting"
+  }
+ },
+ {
+  "id": 63,
+  "globalID": 75,
+  "time": "2026-10-23T19:37:59.277925156Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.277924749,
+   "folder": "claude",
+   "from": "scan-waiting",
+   "to": "scanning"
+  }
+ },
+ {
+  "id": 64,
+  "globalID": 76,
+  "time": "2026-10-23T19:37:59.27872319Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.278722388,
+   "folder": "claude",
+   "from": "scanning",
+   "to": "idle"
+  }
+ }
+]

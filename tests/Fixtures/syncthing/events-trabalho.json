@@ -1,0 +1,329 @@
+[
+ {
+  "id": 18,
+  "globalID": 24,
+  "time": "2026-10-23T19:37:53.591386647Z",
+  "type": "FolderSummary",
+  "data": {
+   "folder": "claude",
+   "summary": {
+    "errors": 0,
+    "pullErrors": 0,
+    "invalid": "",
+    "globalFiles": 0,
+    "globalDirectories": 0,
+    "globalSymlinks": 0,
+    "globalDeleted": 6,
+    "globalBytes": 0,
+    "globalTotalItems": 6,
+    "localFiles": 0,
+    "localDirectories": 0,
+    "localSymlinks": 0,
+    "localDeleted": 6,
+    "localBytes": 0,
+    "localTotalItems": 6,
+    "needFiles": 0,
+    "needDirectories": 0,
+    "needSymlinks": 0,
+    "needDeletes": 0,
+    "needBytes": 0,
+    "needTotalItems": 0,
+    "receiveOnlyChangedFiles": 0,
+    "receiveOnlyChangedDirectories": 0,
+    "receiveOnlyChangedSymlinks": 0,
+    "receiveOnlyChangedDeletes": 0,
+    "receiveOnlyChangedBytes": 0,
+    "receiveOnlyTotalItems": 0,
+    "inSyncFiles": 0,
+    "inSyncBytes": 0,
+    "state": "idle",
+    "stateChanged": "2026-10-23T19:37:49Z",
+    "error": "",
+    "version": 36,
+    "sequence": 36,
+    "ignorePatterns": false,
+    "watchError": ""
+   }
+  }
+ },
+ {
+  "id": 19,
+  "globalID": 25,
+  "time": "2026-10-23T19:37:53.591508449Z",
+  "type": "FolderCompletion",
+  "data": {
+   "completion": 100,
+   "device": "NHSFH3O-OYPNMRV-MDS4GFX-HIBXOW3-RBJNUEB-FGMR4WF-FACMW4M-UFDOZAR",
+   "folder": "claude",
+   "globalBytes": 0,
+   "globalItems": 0,
+   "needBytes": 0,
+   "needDeletes": 0,
+   "needItems": 0,
+   "remoteState": "valid",
+   "sequence": 36
+  }
+ },
+ {
+  "id": 20,
+  "globalID": 26,
+  "time": "2026-10-23T19:37:54.269559756Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 5.269558403,
+   "folder": "claude",
+   "from": "idle",
+   "to": "scan-waiting"
+  }
+ },
+ {
+  "id": 21,
+  "globalID": 27,
+  "time": "2026-10-23T19:37:54.269610984Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.269610617,
+   "folder": "claude",
+   "from": "scan-waiting",
+   "to": "scanning"
+  }
+ },
+ {
+  "id": 22,
+  "globalID": 28,
+  "time": "2026-10-23T19:37:54.270391766Z",
+  "type": "LocalIndexUpdated",
+  "data": {
+   "filenames": [
+    "nota.txt"
+   ],
+   "folder": "claude",
+   "items": 1,
+   "sequence": 37,
+   "version": 37
+  }
+ },
+ {
+  "id": 23,
+  "globalID": 30,
+  "time": "2026-10-23T19:37:54.270483444Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.270483044,
+   "folder": "claude",
+   "from": "scanning",
+   "to": "idle"
+  }
+ },
+ {
+  "id": 24,
+  "globalID": 31,
+  "time": "2026-10-23T19:37:54.320147113Z",
+  "type": "RemoteIndexUpdated",
+  "data": {
+   "device": "NHSFH3O-OYPNMRV-MDS4GFX-HIBXOW3-RBJNUEB-FGMR4WF-FACMW4M-UFDOZAR",
+   "folder": "claude",
+   "items": 1,
+   "sequence": 37,
+   "version": 37
+  }
+ },
+ {
+  "id": 25,
+  "globalID": 32,
+  "time": "2026-10-23T19:37:55.593325358Z",
+  "type": "FolderSummary",
+  "data": {
+   "folder": "claude",
+   "summary": {
+    "errors": 0,
+    "pullErrors": 0,
+    "invalid": "",
+    "globalFiles": 1,
+    "globalDirectories": 0,
+    "globalSymlinks": 0,
+    "globalDeleted": 5,
+    "globalBytes": 10000,
+    "globalTotalItems": 6,
+    "localFiles": 1,
+    "localDirectories": 0,
+    "localSymlinks": 0,
+    "localDeleted": 5,
+    "localBytes": 10000,
+    "localTotalItems": 6,
+    "needFiles": 0,
+    "needDirectories": 0,
+    "needSymlinks": 0,
+    "needDeletes": 0,
+    "needBytes": 0,
+    "needTotalItems": 0,
+    "receiveOnlyChangedFiles": 0,
+    "receiveOnlyChangedDirectories": 0,
+    "receiveOnlyChangedSymlinks": 0,
+    "receiveOnlyChangedDeletes": 0,
+    "receiveOnlyChangedBytes": 0,
+    "receiveOnlyTotalItems": 0,
+    "inSyncFiles": 1,
+    "inSyncBytes": 10000,
+    "state": "idle",
+    "stateChanged": "2026-10-23T19:37:54Z",
+    "error": "",
+    "version": 37,
+    "sequence": 37,
+    "ignorePatterns": false,
+    "watchError": ""
+   }
+  }
+ },
+ {
+  "id": 26,
+  "globalID": 33,
+  "time": "2026-10-23T19:37:55.593410816Z",
+  "type": "FolderCompletion",
+  "data": {
+   "completion": 100,
+   "device": "NHSFH3O-OYPNMRV-MDS4GFX-HIBXOW3-RBJNUEB-FGMR4WF-FACMW4M-UFDOZAR",
+   "folder": "claude",
+   "globalBytes": 10000,
+   "globalItems": 1,
+   "needBytes": 0,
+   "needDeletes": 0,
+   "needItems": 0,
+   "remoteState": "valid",
+   "sequence": 37
+  }
+ },
+ {
+  "id": 27,
+  "globalID": 34,
+  "time": "2026-10-23T19:37:58.26945086Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 4.2694494689999996,
+   "folder": "claude",
+   "from": "idle",
+   "to": "scan-waiting"
+  }
+ },
+ {
+  "id": 28,
+  "globalID": 35,
+  "time": "2026-10-23T19:37:58.26951058Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.26951024,
+   "folder": "claude",
+   "from": "scan-waiting",
+   "to": "scanning"
+  }
+ },
+ {
+  "id": 29,
+  "globalID": 36,
+  "time": "2026-10-23T19:37:58.271536029Z",
+  "type": "LocalIndexUpdated",
+  "data": {
+   "filenames": [
+    "n1.txt",
+    "n0.txt",
+    "n2.txt",
+    "n4.txt",
+    "n3.txt"
+   ],
+   "folder": "claude",
+   "items": 5,
+   "sequence": 42,
+   "version": 42
+  }
+ },
+ {
+  "id": 30,
+  "globalID": 42,
+  "time": "2026-10-23T19:37:58.271966959Z",
+  "type": "StateChanged",
+  "data": {
+   "duration": 0.271966348,
+   "folder": "claude",
+   "from": "scanning",
+   "to": "idle"
+  }
+ },
+ {
+  "id": 31,
+  "globalID": 43,
+  "time": "2026-10-23T19:37:58.3235313Z",
+  "type": "RemoteIndexUpdated",
+  "data": {
+   "device": "NHSFH3O-OYPNMRV-MDS4GFX-HIBXOW3-RBJNUEB-FGMR4WF-FACMW4M-UFDOZAR",
+   "folder": "claude",
+   "items": 5,
+   "sequence": 42,
+   "version": 42
+  }
+ },
+ {
+  "id": 32,
+  "globalID": 44,
+  "time": "2026-10-23T19:37:59.595537183Z",
+  "type": "FolderSummary",
+  "data": {
+   "folder": "claude",
+   "summary": {
+    "errors": 0,
+    "pullErrors": 0,
+    "invalid": "",
+    "globalFiles": 6,
+    "globalDirectories": 0,
+    "globalSymlinks": 0,
+    "globalDeleted": 0,
+    "globalBytes": 25000,
+    "globalTotalItems": 6,
+    "localFiles": 6,
+    "localDirectories": 0,
+    "localSymlinks": 0,
+    "localDeleted": 0,
+    "localBytes": 25000,
+    "localTotalItems": 6,
+    "needFiles": 0,
+    "needDirectories": 0,
+    "needSymlinks": 0,
+    "needDeletes": 0,
+    "needBytes": 0,
+    "needTotalItems": 0,
+    "receiveOnlyChangedFiles": 0,
+    "receiveOnlyChangedDirectories": 0,
+    "receiveOnlyChangedSymlinks": 0,
+    "receiveOnlyChangedDeletes": 0,
+    "receiveOnlyChangedBytes": 0,
+    "receiveOnlyTotalItems": 0,
+    "inSyncFiles": 6,
+    "inSyncBytes": 25000,
+    "state": "idle",
+    "stateChanged": "2026-10-23T19:37:58Z",
+    "error": "",
+    "version": 42,
+    "sequence": 42,
+    "ignorePatterns": false,
+    "watchError": ""
+   }
+  }
+ },
+ {
+  "id": 33,
+  "globalID": 45,
+  "time": "2026-10-23T19:37:59.595652541Z",
+  "type": "FolderCompletion",
+  "data": {
+   "completion": 100,
+   "device": "NHSFH3O-OYPNMRV-MDS4GFX-HIBXOW3-RBJNUEB-FGMR4WF-FACMW4M-UFDOZAR",
+   "folder": "claude",
+   "globalBytes": 25000,
+   "globalItems": 6,
+   "needBytes": 0,
+   "needDeletes": 0,
+   "needItems": 0,
+   "remoteState": "valid",
+   "sequence": 42
+  }
+ }
+]

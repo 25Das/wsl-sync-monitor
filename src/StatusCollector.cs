@@ -214,6 +214,9 @@ public sealed class StatusCollector : IDisposable
     const string SeeTechInfo = " Detalhes: menu → Informações técnicas.";
 
     /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>
+    /// <summary>Endereço e chave da API (para o fluxo de eventos, que tem conexão própria).</summary>
+    public (string Url, string Key) ApiAccess(Settings s) => (GuiUrl(s), ApiKey(s));
+
     string ApiKey(Settings s)
     {
         var key = !string.IsNullOrWhiteSpace(s.ApiKey) ? s.ApiKey : _cachedKey ?? "";

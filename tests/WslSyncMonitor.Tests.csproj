@@ -41,6 +41,9 @@
     <Compile Include="../src/SyncthingApi.cs" Link="src/SyncthingApi.cs" />
     <Compile Include="../src/HealthCheck.cs" Link="src/HealthCheck.cs" />
     <Compile Include="../src/WidgetPlacement.cs" Link="src/WidgetPlacement.cs" />
+    <Compile Include="../src/SyncthingActivity.cs" Link="src/SyncthingActivity.cs" />
+    <Compile Include="../src/SyncthingEvents.cs" Link="src/SyncthingEvents.cs" />
+    <Compile Include="../src/FileChangeWatcher.cs" Link="src/FileChangeWatcher.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />
