@@ -237,3 +237,107 @@ public sealed class KeepAliveScriptTests : IDisposable
         Assert.DoesNotContain('\n', SyncthingScripts.ForSh(SyncthingScripts.KeepAlive).Trim());
     }
 }
+
+/// <summary>
+/// Espera um processo da distro terminar num único comando (antes, um wsl.exe com pgrep a cada segundo). Usa o
+/// waitpid do util-linux (2.40+, avisado pelo kernel via pidfd) quando existe; senão, confere de dentro da distro.
+/// </summary>
+public sealed class WaitExitScriptTests : IDisposable
+{
+    readonly string _name = "wsmw" + Random.Shared.Next(10000, 99999);  // nunca o Syncthing de quem roda os testes
+    readonly string _bin;
+    readonly string _stubDir = Path.Combine(Path.GetTempPath(), "wsm-stub-" + Guid.NewGuid().ToString("N")[..8]);
+    readonly List<Process> _started = new();
+
+    public WaitExitScriptTests() => _bin = Path.Combine(Path.GetTempPath(), _name);
+
+    public void Dispose()
+    {
+        foreach (var p in _started) { try { p.Kill(); } catch (InvalidOperationException) { } p.Dispose(); }
+        try { File.Delete(_bin); } catch (IOException) { }
+        try { Directory.Delete(_stubDir, true); } catch (IOException) { }
+    }
+
+    Process StartTarget(string seconds)
+    {
+        File.Copy("/bin/sleep", _bin, overwrite: true);
+        File.SetUnixFileMode(_bin, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.UserWrite);
+        var p = Process.Start(_bin, seconds);
+        _started.Add(p);
+        return p;
+    }
+
+    (string Output, TimeSpan Took) Run(int timeoutSeconds, string? path = null)
+    {
+        var psi = new ProcessStartInfo("sh") { RedirectStandardOutput = true, RedirectStandardError = true };
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add(SyncthingScripts.ForSh(SyncthingScripts.WaitExit(_name, timeoutSeconds)));
+        if (path != null) psi.Environment["PATH"] = path + ":" + Environment.GetEnvironmentVariable("PATH");
+        var sw = Stopwatch.StartNew();
+        using var p = Process.Start(psi)!;
+        var output = p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        return (output.Trim(), sw.Elapsed);
+    }
+
+    /// <summary>Um waitpid de mentira que registra os argumentos e termina com o código pedido.</summary>
+    void StubWaitpid(int exitCode)
+    {
+        Directory.CreateDirectory(_stubDir);
+        var stub = Path.Combine(_stubDir, "waitpid");
+        File.WriteAllText(stub, $"#!/bin/sh\necho \"$@\" > {_stubDir}/args\nexit {exitCode}\n");
+        File.SetUnixFileMode(stub, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.UserWrite);
+    }
+
+    [ShFact]
+    public void Sem_o_processo_responde_na_hora() =>
+        Assert.Equal("exited", Run(10).Output);
+
+    [ShFact]
+    public void Responde_assim_que_o_processo_termina_e_nao_no_fim_do_prazo()
+    {
+        StartTarget("0.5");
+        var (output, took) = Run(20);
+        Assert.Equal("exited", output);
+        Assert.True(took < TimeSpan.FromSeconds(3), $"levou {took}");
+    }
+
+    [ShFact]
+    public void Processo_que_continua_rodando_responde_no_prazo()
+    {
+        StartTarget("30");
+        var (output, took) = Run(1);
+        Assert.Equal("running", output);
+        Assert.InRange(took, TimeSpan.FromSeconds(0.9), TimeSpan.FromSeconds(4));
+    }
+
+    [ShFact]
+    public void Usa_o_waitpid_quando_existe()
+    {
+        var target = StartTarget("30");
+        StubWaitpid(0);
+        Assert.Equal("exited", Run(7, _stubDir).Output);
+        var args = File.ReadAllText(Path.Combine(_stubDir, "args")).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Assert.Contains(target.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), args);
+        Assert.Contains("7", args); // o prazo
+    }
+
+    [ShFact]
+    public void Prazo_do_waitpid_vencido_responde_que_continua()
+    {
+        StartTarget("30");
+        StubWaitpid(3); // código do waitpid para prazo vencido
+        Assert.Equal("running", Run(1, _stubDir).Output);
+    }
+
+    [ShFact]
+    public void Waitpid_que_falha_por_outro_motivo_cai_na_conferencia_de_dentro_da_distro()
+    {
+        // ex.: kernel sem pidfd (WSL 1) ou versão sem uma opção
+        StartTarget("0.5");
+        StubWaitpid(1);
+        var (output, took) = Run(20, _stubDir);
+        Assert.Equal("exited", output);
+        Assert.True(took < TimeSpan.FromSeconds(3), $"levou {took}");
+    }
+}

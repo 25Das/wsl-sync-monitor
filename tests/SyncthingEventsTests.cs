@@ -72,6 +72,44 @@ public sealed class SyncthingEventsTests : IDisposable
     }
 
     [SyncthingFact]
+    public async Task Percebe_na_hora_que_o_Syncthing_parou()
+    {
+        // a conexão aberta do fluxo de eventos é fechada pelo próprio Syncthing ao parar: não precisa conferir de tempos em tempos
+        var events = new SyncthingEvents(_st.Http);
+        var wait = events.WaitUntilDownAsync(_st.Url, _st.ApiKey, TimeSpan.FromSeconds(30), _cts.Token);
+        await Task.Delay(500);
+        Assert.False(wait.IsCompleted);
+        var t0 = DateTime.Now;
+        _st.Stop();
+        Assert.True(await wait.WaitAsync(TimeSpan.FromSeconds(20)));
+        Assert.True(DateTime.Now - t0 < TimeSpan.FromSeconds(10), $"levou {DateTime.Now - t0}");
+    }
+
+    [SyncthingFact]
+    public async Task Syncthing_que_continua_rodando_responde_no_prazo()
+    {
+        var t0 = DateTime.Now;
+        Assert.False(await new SyncthingEvents(_st.Http).WaitUntilDownAsync(_st.Url, _st.ApiKey, TimeSpan.FromSeconds(1), _cts.Token));
+        Assert.InRange(DateTime.Now - t0, TimeSpan.FromSeconds(0.9), TimeSpan.FromSeconds(5));
+    }
+
+    [SyncthingFact]
+    public async Task Ja_parado_responde_na_hora()
+    {
+        _st.Stop();
+        Assert.True(await new SyncthingEvents(_st.Http).WaitUntilDownAsync(_st.Url, _st.ApiKey, TimeSpan.FromSeconds(30), _cts.Token)
+            .WaitAsync(TimeSpan.FromSeconds(10)));
+    }
+
+    [SyncthingFact]
+    public async Task Chave_recusada_nao_conta_como_parado()
+    {
+        // 403 é o Syncthing respondendo: dizer que parou deixaria o desligamento seguir com ele aberto
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            new SyncthingEvents(new HttpClient()).WaitUntilDownAsync(_st.Url, "chave-errada", TimeSpan.FromSeconds(5), _cts.Token));
+    }
+
+    [SyncthingFact]
     public void Termina_quando_o_Syncthing_para()
     {
         var run = Listen();

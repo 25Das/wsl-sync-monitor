@@ -17,12 +17,35 @@ public static class SyncthingScripts
     /// O 1º argumento troca a pasta e o 2º, o nome do processo a parar (testes: nunca o Syncthing de quem os roda).
     /// </summary>
     public const string KeepAlive =
+        WaitExitFunction + " " +
         "d=${1:-" + KeepAliveDir + "}; p=${2:-syncthing}; mkdir -p $d; rm -f $d/sync $d/synced $d/stop-syncthing $d/stopped; : > $d/ready; " +
         "while :; do " +
         "if [ -e $d/sync ]; then rm -f $d/sync; sync; : > $d/synced; fi; " +
-        "if [ -e $d/stop-syncthing ]; then rm -f $d/stop-syncthing; pkill -TERM -x $p; n=0; " +
-        "while pgrep -x $p >/dev/null && [ $n -lt 30 ]; do sleep 1; n=$((n+1)); done; sync; : > $d/stopped; fi; " +
+        "if [ -e $d/stop-syncthing ]; then rm -f $d/stop-syncthing; pkill -TERM -x $p; we $p 30; sync; : > $d/stopped; fi; " +
         "sleep 1; done";
+
+    /// <summary>
+    /// Função de shell we NOME SEGUNDOS: espera todos os processos com esse nome terminarem (0) ou o prazo vencer (1).
+    /// Usa o waitpid do util-linux (2.40+), que o kernel avisa quando o processo termina (pidfd), sem consultas; sem
+    /// ele (distros mais antigas, busybox) ou se ele falhar por outro motivo (ex.: WSL 1, sem pidfd), confere de dentro
+    /// da distro a cada 0,2 s. O código 3 do waitpid é o prazo vencido. Uma linha, sem aspas duplas.
+    /// </summary>
+    const string WaitExitFunction =
+        "we() { ps=$(pgrep -x $1) || return 0; " +
+        "if command -v waitpid >/dev/null 2>&1; then waitpid -e -t $2 $ps >/dev/null 2>&1; r=$?; " +
+        "[ $r -eq 0 ] && return 0; [ $r -eq 3 ] && return 1; fi; " +
+        "n=0; while pgrep -x $1 >/dev/null; do [ $n -ge $(($2*5)) ] && return 1; sleep 0.2; n=$((n+1)); done; return 0; };";
+
+    /// <summary>
+    /// Espera o processo <paramref name="name"/> terminar, num único comando (antes, um wsl.exe com pgrep a cada
+    /// segundo). Imprime "exited" ou, vencido o prazo, "running".
+    /// </summary>
+    public static string WaitExit(string name, int seconds)
+    {
+        if (name.Length == 0 || !name.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+            throw new ArgumentException("nome de processo inválido", nameof(name));
+        return WaitExitFunction + $" we {name} {Math.Max(1, seconds)} && echo exited || echo running";
+    }
 
     // imprime "@@FILE <caminho>" seguido do conteúdo de cada config.xml legível, sem repetir arquivos
     const string Emit = """

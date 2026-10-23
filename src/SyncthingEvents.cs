@@ -25,8 +25,7 @@ public sealed class SyncthingEvents(HttpClient http)
         Action? onConnected = null)
     {
         string? started = await StartTimeAsync(baseUrl, apiKey, ct).ConfigureAwait(false);
-        long since = (await GetAsync(baseUrl, apiKey, "/rest/events?limit=1&timeout=0", ct).ConfigureAwait(false))
-            .Select(e => (long)SyncthingApi.Num(e, "id")).DefaultIfEmpty(0).Max();
+        long since = await LatestIdAsync(baseUrl, apiKey, ct).ConfigureAwait(false);
         onConnected?.Invoke();
         while (!ct.IsCancellationRequested)
         {
@@ -69,6 +68,35 @@ public sealed class SyncthingEvents(HttpClient http)
             await Task.Delay(every, ct).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// Espera o Syncthing parar (depois de pedir que ele feche): mantém um pedido do fluxo de eventos aberto, e o
+    /// próprio Syncthing o fecha ao parar, então a resposta vem na hora, sem conferir de tempos em tempos.
+    /// true = parou (conexão recusada ou fechada); false = continua respondendo no fim do prazo. Uma recusa com
+    /// código HTTP (ex.: chave errada) é o Syncthing respondendo: vira exceção, nunca "parou".
+    /// </summary>
+    public async Task<bool> WaitUntilDownAsync(string baseUrl, string apiKey, TimeSpan max, CancellationToken ct)
+    {
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        limit.CancelAfter(max);
+        try
+        {
+            long since = await LatestIdAsync(baseUrl, apiKey, limit.Token).ConfigureAwait(false);
+            while (true)
+            {
+                var batch = await GetAsync(baseUrl, apiKey, $"/rest/events?since={since}&timeout={(int)LongPoll.TotalSeconds}", limit.Token)
+                    .ConfigureAwait(false);
+                if (batch.Count > 0) since = batch.Max(e => (long)SyncthingApi.Num(e, "id"));
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == null) { return true; } // recusou ou fechou a conexão
+        catch (IOException) { return true; }                                          // fechou no meio da resposta
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return false; } // prazo
+    }
+
+    async Task<long> LatestIdAsync(string baseUrl, string apiKey, CancellationToken ct) =>
+        (await GetAsync(baseUrl, apiKey, "/rest/events?limit=1&timeout=0", ct).ConfigureAwait(false))
+            .Select(e => (long)SyncthingApi.Num(e, "id")).DefaultIfEmpty(0).Max();
 
     /// <summary>Espera antes de tentar de novo após <paramref name="failures"/> falhas seguidas: 2 s, 4 s, 8 s… até 1 min.</summary>
     public static TimeSpan RetryDelay(int failures) => TimeSpan.FromSeconds(Math.Min(60, 2 << Math.Min(Math.Max(failures, 1) - 1, 5)));

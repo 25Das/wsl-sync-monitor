@@ -418,15 +418,18 @@ public static class WslService
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{windowsPath}\"") { UseShellExecute = true });
 
 
-    /// <summary>Espera um processo sumir da distro. Retorna false se ainda existir após o timeout.</summary>
+    /// <summary>
+    /// Espera um processo sumir da distro num único wsl.exe (ver <see cref="SyncthingScripts.WaitExit"/>). Retorna false
+    /// se ainda existir após o prazo (ou se não deu para saber).
+    /// </summary>
     public static async Task<bool> WaitProcessExitAsync(string distro, string name, TimeSpan timeout)
     {
-        var end = DateTime.Now + timeout;
-        while (DateTime.Now < end)
+        int seconds = (int)Math.Ceiling(timeout.TotalSeconds);
+        try
         {
-            if (!await IsProcessRunningAsync(distro, name)) return true;
-            await Task.Delay(1000);
+            var r = await ShAsync(distro, SyncthingScripts.WaitExit(name, seconds), (seconds + 15) * 1000);
+            return r.Output.Trim() == "exited";
         }
-        return false;
+        catch (TimeoutException) { return false; } // sem resposta: não dá para dizer que parou
     }
 }

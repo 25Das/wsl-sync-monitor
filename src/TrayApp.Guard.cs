@@ -300,8 +300,10 @@ public sealed partial class TrayApp
         bool stopped = false;
         try
         {
+            var (url, key) = _collector.ApiAccess(_settings);
             await _collector.ShutdownSyncthingAsync(_settings);
-            stopped = await _collector.WaitApiDownAsync(_settings, TimeSpan.FromSeconds(30));
+            // o Syncthing fecha a conexão aberta do fluxo de eventos ao parar: a resposta vem na hora
+            stopped = await new SyncthingEvents(_eventsHttp).WaitUntilDownAsync(url, key, TimeSpan.FromSeconds(30), CancellationToken.None);
             Log.Info("desligamento", stopped ? "Syncthing parado pela API" : "Syncthing não parou em 30 s após o pedido");
         }
         catch (Exception ex) { Log.Info("desligamento", $"a API não atendeu ao pedido de parar ({ex.Message})"); }

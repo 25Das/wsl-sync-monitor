@@ -221,21 +221,6 @@ public sealed class StatusCollector : IDisposable
     /// <summary>Pede ao Syncthing para encerrar de forma limpa (POST /rest/system/shutdown).</summary>
     public Task ShutdownSyncthingAsync(Settings s) => SendAsync(s, HttpMethod.Post, "/rest/system/shutdown");
 
-    /// <summary>
-    /// Espera a API parar de responder (o Syncthing terminou de fechar) sem executar nada na distro: no
-    /// desligamento do Windows, cada wsl.exe novo pode falhar. true = parou dentro do prazo.
-    /// </summary>
-    public async Task<bool> WaitApiDownAsync(Settings s, TimeSpan timeout)
-    {
-        var end = DateTime.Now + timeout;
-        while (DateTime.Now < end)
-        {
-            try { await GetAsync(GuiUrl(s), ApiKey(s), "/rest/system/ping"); }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException) { return true; }
-            await Task.Delay(500);
-        }
-        return false;
-    }
     public Task RestartSyncthingAsync(Settings s) => SendAsync(s, HttpMethod.Post, "/rest/system/restart");
 
     /// <summary>Pausa ou retoma todos os dispositivos (como "Pausar tudo" da interface do Syncthing).</summary>
