@@ -151,9 +151,9 @@ public class SyncthingActivityTests
     {
         var a = new SyncthingActivity(Linger);
         var wait = a.WaitForChangeAsync(a.Version, TimeSpan.FromSeconds(5), CancellationToken.None);
-        Assert.False(a.Apply([Event("Ping", "{}")], T0));
+        Assert.Equal(ActivityChange.None, a.Apply([Event("Ping", "{}")], T0));
         Assert.False(wait.IsCompleted);
-        Assert.True(a.Apply(Range("vm", 33, 33), T0)); // StateChanged
+        Assert.Equal(ActivityChange.Redraw, a.Apply(Range("vm", 33, 33), T0)); // StateChanged
         await wait.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
@@ -250,6 +250,107 @@ public class SyncthingActivityTests
         var a = new SyncthingActivity(Linger);
         a.Apply(events, at);
         return a;
+    }
+
+    [Theory]
+    [InlineData("ConfigSaved", "{}")]                                         // pasta ou dispositivo criado, removido ou alterado
+    [InlineData("PendingDevicesChanged", """{"added":[{"deviceID":"X"}]}""")] // dispositivo novo pedindo para conectar
+    [InlineData("PendingFoldersChanged", """{"added":[{"folderID":"f"}]}""")]
+    public void Mudancas_de_configuracao_pedem_leitura_completa_na_hora(string type, string data) =>
+        Assert.True(new SyncthingActivity(Linger).Apply([Event(type, data)], T0).HasFlag(ActivityChange.NeedsRefresh));
+
+    [Fact]
+    public void Pasta_pausada_e_retomada_na_hora()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("FolderPaused", """{"id":"claude","label":"Claude"}""")], T0);
+        Assert.Equal(("Pausada", Level.Off), a.Overlay(Base(Trabalho, T0.AddSeconds(-1)), T0).Folders[0].Status);
+
+        a.Apply([Event("FolderResumed", """{"id":"claude","label":"Claude"}""")], T0.AddSeconds(1));
+        Assert.False(a.Overlay(Base(Trabalho, T0.AddSeconds(-1)), T0.AddSeconds(1)).Folders[0].Paused);
+    }
+
+    [Fact]
+    public void Dispositivo_pausado_na_hora()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("DevicePaused", $$"""{"device":"{{Trabalho}}"}""")], T0);
+        Assert.Equal(("Pausado", Level.Off), a.Overlay(Base(Trabalho, T0.AddSeconds(-1)), T0).Devices[0].Status);
+    }
+
+    [Fact]
+    public void Erros_da_pasta_aparecem_na_hora()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("FolderErrors", """{"folder":"claude","errors":[{"path":"a.txt","error":"permission denied"},{"path":"b.txt","error":"no space"}]}""")], T0);
+        Assert.Equal(("2 erro(s)", Level.Error), a.Overlay(Base(Trabalho, T0.AddSeconds(-1)), T0).Folders[0].Status);
+    }
+
+    [Fact]
+    public void Resumo_mais_novo_que_os_erros_vale()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("FolderErrors", """{"folder":"claude","errors":[{"path":"a.txt","error":"x"}]}"""),
+                 Event("FolderSummary", """{"folder":"claude","summary":{"state":"idle","needBytes":0,"needFiles":0,"globalBytes":10,"inSyncBytes":10,"errors":0,"pullErrors":0}}""")], T0);
+        Assert.Equal(0, a.Overlay(Base(Trabalho, T0.AddSeconds(-1)), T0).Folders[0].Errors);
+    }
+
+    [Fact]
+    public void Historico_mostra_o_que_chegou_e_o_que_mudou_aqui_do_mais_novo_ao_mais_antigo()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply(Range("vm", 32, 42), T0);                   // a vm recebeu nota.txt (ItemFinished e depois LocalIndexUpdated)
+        a.Apply(Range("trabalho", 27, 33), T0.AddSeconds(1)); // e (como se fosse aqui) 5 arquivos alterados localmente
+
+        var h = a.History();
+
+        Assert.Equal(6, h.Count); // nota.txt uma vez só: o índice local atualizado depois de receber não é "mudou aqui"
+        Assert.Equal(new ActivityEntry(T0, "claude", "nota.txt", ActivityKind.Received, null), h[^1]);
+        Assert.All(h.Take(5), e => Assert.Equal(ActivityKind.ChangedHere, e.Kind));
+    }
+
+    [Fact]
+    public void Historico_guarda_falhas_e_filtra_por_pasta()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("ItemFinished", """{"folder":"claude","item":"x.bin","error":"insufficient space","type":"file","action":"update"}"""),
+                 Event("ItemFinished", """{"folder":"outra","item":"y.txt","error":null,"type":"file","action":"delete"}""")], T0);
+
+        Assert.Equal([new ActivityEntry(T0, "claude", "x.bin", ActivityKind.Failed, "insufficient space")], a.History("claude"));
+        Assert.Equal(ActivityKind.Deleted, a.History("outra")[0].Kind);
+    }
+
+    [Fact]
+    public void Historico_tem_limite_e_sobrevive_ao_recomeco_do_fluxo()
+    {
+        var a = new SyncthingActivity(Linger);
+        for (int i = 0; i < SyncthingActivity.HistorySize + 10; i++)
+            a.Apply([Event("ItemFinished", $$"""{"folder":"claude","item":"f{{i}}","error":null,"type":"file","action":"update"}""")], T0.AddSeconds(i));
+        a.Reset(); // o histórico continua verdadeiro mesmo se o Syncthing reiniciou
+
+        var h = a.History();
+        Assert.Equal(SyncthingActivity.HistorySize, h.Count);
+        Assert.Equal($"f{SyncthingActivity.HistorySize + 9}", h[0].Item);
+    }
+
+    [Fact]
+    public void Texto_do_historico()
+    {
+        var entries = new[]
+        {
+            new ActivityEntry(T0.AddSeconds(2), "claude", "x.bin", ActivityKind.Failed, "insufficient space"),
+            new ActivityEntry(T0.AddSeconds(1), "claude", "velho.txt", ActivityKind.Deleted, null),
+            new ActivityEntry(T0, "claude", "nota.txt", ActivityKind.Received, null),
+            new ActivityEntry(T0, "sumiu", "n.txt", ActivityKind.ChangedHere, null),
+        };
+        var labels = new Dictionary<string, string> { ["claude"] = "Claude" };
+
+        Assert.Equal(
+            "16:00:02  ✕ Claude/x.bin (falhou: insufficient space)\n" +
+            "16:00:01  − Claude/velho.txt (apagado)\n" +
+            "16:00:00  ↓ Claude/nota.txt (recebido)\n" +
+            "16:00:00  ↑ sumiu/n.txt (alterado aqui)",
+            ActivityEntry.Format(entries, labels));
     }
 
     /// <summary>Duas pastas compartilhadas com a "trabalho", que na leitura completa estava com <paramref name="completion"/>.</summary>

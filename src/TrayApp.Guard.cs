@@ -10,6 +10,8 @@ public sealed partial class TrayApp
     GuardState _guard = GuardState.Off;
     CancellationTokenSource? _verifyCts;
     int _idleTicks;
+    /// <summary>Sessões de outros programas na distro: quando uma fecha, a proteção confere na hora.</summary>
+    readonly ProcessExitWatcher _sessionWatch = new();
     DateTime _lastRunningAt = DateTime.Now;
     bool _exiting;
     CancellationTokenSource? _exitCts;
@@ -24,6 +26,7 @@ public sealed partial class TrayApp
         // depois de uma atualização: continua segurando a distro que a versão anterior segurava
         try { WslService.AdoptKeepAlives(); } catch (Exception ex) { Log.Warn("proteção", "assumir as distros da versão anterior", ex); }
         LoadKeepAlive();
+        _sessionWatch.Exited += () => _ui.Post(_ => RequestRefresh(), null);
         _shutdownWatcher = new ShutdownWatcher(NeedsShutdownProtection, ShutdownSequenceAsync,
             // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga
             () => _settings.ShutdownMaxWaitSeconds + 300);
@@ -97,11 +100,13 @@ public sealed partial class TrayApp
         if (_keepAliveRequest is { Persist: false } k && !k.IsActive(DateTime.Now)) _keepAliveRequest = null;
 
         bool canCount = d.Running && !_busy && (_settings.ProtectSync || IsKeptAlive(d.Name));
+        var sessions = canCount ? WslService.ExternalSessions(d.Name, DefaultDistro) : [];
+        _sessionWatch.Watch(sessions);
         var input = new GuardInput(
             Running: d.Running,
             ProtectEnabled: _settings.ProtectSync,
             Busy: _busy,
-            Sessions: canCount ? WslService.CountExternalSessions(d.Name, DefaultDistro) : 0,
+            Sessions: sessions.Count,
             KeepAliveActive: IsKeptAlive(d.Name),
             IdleTicks: _idleTicks);
         var step = GuardRules.Step(_guard, input);

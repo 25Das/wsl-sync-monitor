@@ -22,6 +22,8 @@ public sealed partial class TrayApp
     TaskCompletionSource<(string Url, string Key)> _syncthingUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
     CancellationTokenSource? _eventsConnection;
     FileChangeWatcher? _settingsWatcher;
+    /// <summary>O fluxo de eventos está conectado (só lido e escrito na thread da interface).</summary>
+    bool _eventsLive;
 
     /// <summary>O que painel, widget e ícone mostram: a leitura completa mais a atividade em tempo real.</summary>
     Snapshot? Display => _snap == null ? null : _activity.Overlay(_snap, DateTime.Now);
@@ -30,6 +32,7 @@ public sealed partial class TrayApp
     {
         _ui = SynchronizationContext.Current!;
         _lingerTimer.Tick += (_, _) => { _lingerTimer.Stop(); ShowState(); }; // a atividade recente venceu
+        _refreshSoon.Tick += (_, _) => { _refreshSoon.Stop(); RequestRefresh(); };
         _ = EventsLoopAsync();
 
         // settings.json editado à mão vale na hora (antes, só na próxima atualização)
@@ -84,8 +87,8 @@ public sealed partial class TrayApp
             bool received = false;
             try
             {
-                await stream.RunAsync(access.Url, access.Key, events => { received = true; OnEvents(events); }, connection.Token)
-                    .ConfigureAwait(false);
+                await stream.RunAsync(access.Url, access.Key, events => { received = true; OnEvents(events); }, connection.Token,
+                    onConnected: () => _ui.Post(_ => SetEventsLive(true), null)).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (connection.IsCancellationRequested)
             {
@@ -95,6 +98,7 @@ public sealed partial class TrayApp
             catch (Exception ex) { Log.Failure("syncthing", "eventos", "fluxo de eventos interrompido: " + ex.Message); }
             finally
             {
+                _ui.Post(_ => SetEventsLive(false), null);
                 lock (_eventsLock) _eventsConnection = null;
                 connection.Dispose();
             }
@@ -109,10 +113,32 @@ public sealed partial class TrayApp
         }
     }
 
+    /// <summary>Com o fluxo conectado, a leitura completa periódica pode ser mais espaçada (ver <see cref="RefreshRules"/>).</summary>
+    void SetEventsLive(bool live)
+    {
+        _eventsLive = live;
+        UpdateRefreshInterval();
+    }
+
     void OnEvents(IReadOnlyList<JsonElement> events)
     {
         Log.Recovered("syncthing", "eventos", "fluxo de eventos do Syncthing conectado");
-        if (_activity.Apply(events, DateTime.Now)) _ui.Post(_ => ShowState(), null); // só redesenha se algo mudou
+        var change = _activity.Apply(events, DateTime.Now);
+        if (change == ActivityChange.None) return; // só redesenha se algo mudou
+        _ui.Post(_ =>
+        {
+            if (change.HasFlag(ActivityChange.NeedsRefresh)) RequestRefreshSoon(); // pasta ou dispositivo novo, removido…
+            if (change.HasFlag(ActivityChange.Redraw)) ShowState();
+        }, null);
+    }
+
+    readonly System.Windows.Forms.Timer _refreshSoon = new() { Interval = 300 };
+
+    /// <summary>A configuração do Syncthing mudou: lê tudo de novo em instantes (as mudanças costumam vir em rajada).</summary>
+    void RequestRefreshSoon()
+    {
+        _refreshSoon.Stop();
+        _refreshSoon.Start();
     }
 
     /// <summary>Mostra o estado atual (leitura completa + tempo real) e agenda o fim do aviso de atividade recente.</summary>
@@ -134,6 +160,7 @@ public sealed partial class TrayApp
     {
         _eventsCts.Cancel();
         _lingerTimer.Stop();
+        _refreshSoon.Stop();
         _settingsWatcher?.Dispose();
     }
 }

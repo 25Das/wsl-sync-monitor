@@ -144,6 +144,7 @@ public sealed partial class TrayApp
         yield return Item("Verificar pastas e dispositivos…", ShowHealthCheck, enabled: on);
         yield return Item("Reiniciar o Syncthing…", RestartSyncthingAsync, enabled: on);
         yield return Item("Copiar o ID deste dispositivo", CopyMyId, enabled: _snap?.MyId != null);
+        yield return Item("Ver atividade recente…", () => ShowActivity());
         yield return Item("Ver erros recentes…", ShowSyncthingErrors, enabled: on);
         yield return Sep();
         yield return Item("Esperar a sincronização antes de desligar", () =>
@@ -163,7 +164,7 @@ public sealed partial class TrayApp
 
     IEnumerable<ToolStripItem> FoldersMenu()
     {
-        var all = _snap?.AllFolders ?? [];
+        var all = Display?.AllFolders ?? []; // com o que os eventos trouxeram (pausada, erros) desde a última leitura
         if (all.Count == 0) yield return Info(_snap?.St == StState.Running ? "Nenhuma pasta" : "O Syncthing não está em execução");
         foreach (var f in all.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
             yield return Sub(f.Label, FolderMenu(f), Dot(f.Status.Level));
@@ -194,6 +195,7 @@ public sealed partial class TrayApp
         yield return f.Paused
             ? Item("Retomar", () => SetFolderPausedAsync(f, false), enabled: on)
             : Item("Pausar", () => SetFolderPausedAsync(f, true), enabled: on);
+        yield return Item("Atividade recente…", () => ShowActivity(f));
         yield return Item("Arquivos em conflito…", () => ShowConflicts(f));
         yield return Item("Versões antigas", () => OpenFolderVersionsAsync(f));
         yield return Sep();

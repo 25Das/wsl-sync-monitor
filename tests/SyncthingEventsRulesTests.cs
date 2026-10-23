@@ -53,6 +53,19 @@ public class SyncthingEventsRulesTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
     }
 
+    [Fact]
+    public async Task Avisa_quando_conectou()
+    {
+        var fake = new FakeSyncthing(_ => "2026-10-23T10:00:00Z");
+        using var http = new HttpClient(fake);
+        using var cts = new CancellationTokenSource();
+        using var connected = new SemaphoreSlim(0);
+        var run = new SyncthingEvents(http).RunAsync("http://st", "", _ => { }, cts.Token, onConnected: () => connected.Release());
+        Assert.True(await connected.WaitAsync(TimeSpan.FromSeconds(5)));
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+    }
+
     [Theory]
     [InlineData(1, 2)]
     [InlineData(2, 4)]

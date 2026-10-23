@@ -28,9 +28,12 @@ public static class WslService
     /// Conta as sessões abertas na distro por outros programas (VS Code, dev containers, terminais):
     /// processos wsl.exe do Windows que não foram criados por este app e cuja linha de comando aponta para a distro.
     /// </summary>
-    public static int CountExternalSessions(string distro, string? defaultDistro)
+    public static int CountExternalSessions(string distro, string? defaultDistro) => ExternalSessions(distro, defaultDistro).Count;
+
+    /// <summary>Os processos das sessões contadas por <see cref="CountExternalSessions"/> (para saber na hora quando fecham).</summary>
+    public static List<int> ExternalSessions(string distro, string? defaultDistro)
     {
-        int n = 0;
+        var sessions = new List<int>();
         foreach (var p in Process.GetProcessesByName("wsl"))
         {
             using (p)
@@ -41,10 +44,10 @@ public static class WslService
                 var cmd = Native.GetCommandLine(p.Id);
                 if (WslCommandLine.IsKeepAlive(cmd, out _)) continue; // de outra instância do app (ver AdoptKeepAlives)
                 var target = WslCommandLine.SessionTarget(cmd, defaultDistro);
-                if (target == null || target.Equals(distro, StringComparison.OrdinalIgnoreCase)) n++;
+                if (target == null || target.Equals(distro, StringComparison.OrdinalIgnoreCase)) sessions.Add(p.Id);
             }
         }
-        return n;
+        return sessions;
     }
 
     public static bool IsInstalled => File.Exists(WslExe) || WslExe == "wsl.exe";

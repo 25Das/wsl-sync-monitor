@@ -13,6 +13,9 @@ namespace WslSyncMonitor;
 /// </summary>
 public sealed class SyncthingActivity
 {
+    /// <summary>Quantos arquivos o histórico de atividade guarda.</summary>
+    public const int HistorySize = 100;
+
     readonly TimeSpan _linger;
     readonly object _lock = new();
     readonly Dictionary<string, FolderLive> _folders = new();
@@ -20,6 +23,7 @@ public sealed class SyncthingActivity
     TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     long _seq; // ordem de chegada (eventos do mesmo lote chegam no mesmo instante)
     long _version; // muda a cada lote que altera algo (quem espera compara com o que já viu)
+    readonly LinkedList<ActivityEntry> _history = new(); // mais novo primeiro
 
     sealed class FolderLive
     {
@@ -31,6 +35,12 @@ public sealed class SyncthingActivity
         public long SummarySeq;
         public readonly Dictionary<string, long> InProgress = new();     // arquivo → ordem em que começou
         public readonly Dictionary<string, DateTime> Recent = new();     // arquivo → quando terminou (cada um uma vez)
+        public readonly Dictionary<string, DateTime> Pulled = new();     // recebidos cujo índice local ainda não foi atualizado
+        public bool? Paused;
+        public DateTime PausedAt;
+        public int? Errors;
+        public DateTime ErrorsAt;
+        public long ErrorsSeq;
     }
 
     sealed class DeviceLive
@@ -38,41 +48,61 @@ public sealed class SyncthingActivity
         public bool? Connected;
         public DateTime ConnectedAt;
         public DateTime LastActivity;
+        public bool? Paused;
+        public DateTime PausedAt;
         public readonly Dictionary<string, (double Completion, double NeedBytes, DateTime At)> Completion = new(); // por pasta
     }
 
     public SyncthingActivity(TimeSpan linger) => _linger = linger;
 
     /// <summary>
-    /// Aplica um lote de eventos chegados em <paramref name="now"/>; se algum muda pastas ou dispositivos, acorda quem
-    /// espera mudança e devolve true (vale redesenhar).
+    /// Aplica um lote de eventos chegados em <paramref name="now"/> e diz o que mudou: pastas ou dispositivos (vale
+    /// redesenhar; acorda quem espera mudança) e/ou a configuração (vale uma leitura completa já).
     /// </summary>
-    public bool Apply(IEnumerable<JsonElement> events, DateTime now)
+    public ActivityChange Apply(IEnumerable<JsonElement> events, DateTime now)
     {
-        bool relevant = false;
+        var change = ActivityChange.None;
         lock (_lock)
         {
             foreach (var e in events)
-                relevant |= ApplyOne(SyncthingApi.Str(e, "type") ?? "", e.TryGetProperty("data", out var d) ? d : default, now);
+                change |= ApplyOne(SyncthingApi.Str(e, "type") ?? "", e.TryGetProperty("data", out var d) ? d : default, now);
             Prune(now);
         }
-        if (relevant) Signal();
-        return relevant;
+        if (change != ActivityChange.None) Signal();
+        return change;
     }
 
     /// <summary>Esquece arquivos que já saíram da tela (o app fica aberto por semanas: a lista não pode só crescer).</summary>
     void Prune(DateTime now)
     {
         foreach (var f in _folders.Values)
-            foreach (var old in f.Recent.Where(p => now - p.Value >= _linger).Select(p => p.Key).ToList())
-                f.Recent.Remove(old);
+        {
+            foreach (var old in f.Recent.Where(p => now - p.Value >= _linger).Select(p => p.Key).ToList()) f.Recent.Remove(old);
+            foreach (var old in f.Pulled.Where(p => now - p.Value >= PulledMemory).Select(p => p.Key).ToList()) f.Pulled.Remove(old);
+        }
+    }
+
+    /// <summary>Quanto esperar o índice local citar um arquivo recebido (chega logo depois; mais que isso, se perdeu).</summary>
+    static readonly TimeSpan PulledMemory = TimeSpan.FromMinutes(1);
+
+    void Remember(ActivityEntry e)
+    {
+        _history.AddFirst(e);
+        while (_history.Count > HistorySize) _history.RemoveLast();
+    }
+
+    /// <summary>Arquivos recebidos, alterados aqui ou que falharam, do mais novo ao mais antigo (de uma pasta ou de todas).</summary>
+    public IReadOnlyList<ActivityEntry> History(string? folder = null)
+    {
+        lock (_lock) return _history.Where(e => folder == null || e.Folder == folder).ToList();
     }
 
     /// <summary>Quantos arquivos estão sendo lembrados (em andamento ou recentes).</summary>
     internal int TrackedFiles { get { lock (_lock) return _folders.Values.Sum(f => f.InProgress.Count + f.Recent.Count); } }
 
-    bool ApplyOne(string type, JsonElement d, DateTime now)
+    ActivityChange ApplyOne(string type, JsonElement d, DateTime now)
     {
+        const ActivityChange redraw = ActivityChange.Redraw;
         string folder = SyncthingApi.Str(d, "folder") ?? "";
         long seq = ++_seq;
         switch (type)
@@ -83,45 +113,75 @@ public sealed class SyncthingActivity
                 f.StateAt = now;
                 f.StateSeq = seq;
                 if (f.State != "syncing") f.InProgress.Clear(); // parou: nada mais está baixando (mesmo se um ItemFinished se perdeu)
-                return true;
+                return redraw;
             case "ItemStarted":
                 Folder(folder).InProgress[SyncthingApi.Str(d, "item") ?? ""] = seq;
-                return true;
+                return redraw;
             case "ItemFinished":
                 var item = SyncthingApi.Str(d, "item") ?? "";
+                var error = SyncthingApi.NonEmpty(SyncthingApi.Str(d, "error"));
                 Folder(folder).InProgress.Remove(item);
                 Folder(folder).Recent[item] = now;
-                return true;
+                Folder(folder).Pulled[item] = now;
+                Remember(new ActivityEntry(now, folder, item,
+                    error != null ? ActivityKind.Failed : SyncthingApi.Str(d, "action") == "delete" ? ActivityKind.Deleted : ActivityKind.Received, error));
+                return redraw;
             case "LocalIndexUpdated":
                 // alterações detectadas aqui (quem envia) ou gravadas depois de receber (quem recebe: mesmos nomes)
                 var names = d.TryGetProperty("filenames", out var fn) && fn.ValueKind == JsonValueKind.Array
                     ? fn.EnumerateArray().Select(x => x.GetString() ?? "").ToList()
                     : Enumerable.Range(0, (int)SyncthingApi.Num(d, "items")).Select(i => $"#{SyncthingApi.Num(d, "sequence")}-{i}").ToList();
                 foreach (var name in names) Folder(folder).Recent[name] = now;
-                return true;
+                // os que não acabaram de ser recebidos foram alterados aqui (e vão ser enviados)
+                if (fn.ValueKind == JsonValueKind.Array)
+                    foreach (var name in names)
+                        if (!Folder(folder).Pulled.Remove(name)) Remember(new ActivityEntry(now, folder, name, ActivityKind.ChangedHere, null));
+                return redraw;
             case "RemoteIndexUpdated":
                 Device(SyncthingApi.Str(d, "device") ?? "").LastActivity = now; // ele mudou algo ou confirmou o que recebeu
-                return true;
+                return redraw;
             case "FolderCompletion":
                 var dev = Device(SyncthingApi.Str(d, "device") ?? "");
                 double completion = SyncthingApi.Num(d, "completion", 100);
                 dev.Completion[folder] = (completion, SyncthingApi.Num(d, "needBytes"), now);
                 if (completion < 100) dev.LastActivity = now;
-                return true;
+                return redraw;
             case "FolderSummary":
                 var fs = Folder(folder);
                 fs.Summary = d.TryGetProperty("summary", out var sum) ? sum.Clone() : null;
                 fs.SummaryAt = now;
                 fs.SummarySeq = seq;
-                return true;
+                return redraw;
             case "DeviceConnected":
             case "DeviceDisconnected":
                 var c = Device(SyncthingApi.Str(d, "id") ?? "");
                 c.Connected = type == "DeviceConnected";
                 c.ConnectedAt = now;
-                return true;
+                return redraw;
+            case "FolderPaused":
+            case "FolderResumed":
+                var p = Folder(SyncthingApi.Str(d, "id") ?? "");
+                p.Paused = type == "FolderPaused";
+                p.PausedAt = now;
+                return redraw;
+            case "DevicePaused":
+            case "DeviceResumed":
+                var dp = Device(SyncthingApi.Str(d, "device") ?? "");
+                dp.Paused = type == "DevicePaused";
+                dp.PausedAt = now;
+                return redraw;
+            case "FolderErrors":
+                var fe = Folder(folder);
+                fe.Errors = d.TryGetProperty("errors", out var errs) && errs.ValueKind == JsonValueKind.Array ? errs.GetArrayLength() : 0;
+                fe.ErrorsAt = now;
+                fe.ErrorsSeq = seq;
+                return redraw;
+            case "ConfigSaved":             // pasta ou dispositivo criado, removido ou alterado (aqui ou pela interface web)
+            case "PendingDevicesChanged":   // dispositivo novo pedindo para conectar
+            case "PendingFoldersChanged":   // pasta oferecida por outro dispositivo
+                return ActivityChange.NeedsRefresh;
             default:
-                return false;
+                return ActivityChange.None;
         }
     }
 
@@ -146,6 +206,8 @@ public sealed class SyncthingActivity
                 if (summary && (!state || f.SummarySeq < f.StateSeq)) SyncthingApi.ApplyFolderStatus(fi, f.Summary!.Value);
                 if (state) fi.State = f.State!;
                 if (summary && state && f.SummarySeq > f.StateSeq) SyncthingApi.ApplyFolderStatus(fi, f.Summary!.Value);
+                if (f.Errors is { } errors && f.ErrorsAt >= basis.Time && (!summary || f.ErrorsSeq > f.SummarySeq)) fi.Errors = errors;
+                if (f.Paused is { } paused && f.PausedAt >= basis.Time) fi.Paused = paused;
                 if (fi.State == "syncing" && f.InProgress.Count > 0) fi.CurrentItem = f.InProgress.MaxBy(p => p.Value).Key;
                 fi.RecentFiles = f.Recent.Count(p => now - p.Value < _linger);
             }
@@ -153,6 +215,7 @@ public sealed class SyncthingActivity
             {
                 if (!_devices.TryGetValue(di.Id, out var d)) continue;
                 if (d.Connected is { } connected && d.ConnectedAt >= basis.Time) di.Connected = connected;
+                if (d.Paused is { } devicePaused && d.PausedAt >= basis.Time) di.Paused = devicePaused;
                 ApplyCompletion(di, d, s, basis.Time);
                 di.RecentActivity = now - d.LastActivity < _linger;
             }
@@ -230,4 +293,36 @@ public sealed class SyncthingActivity
     {
         lock (_lock) { _folders.Clear(); _devices.Clear(); }
     }
+}
+
+/// <summary>O que um lote de eventos mudou.</summary>
+[Flags]
+public enum ActivityChange
+{
+    None = 0,
+    /// <summary>Pastas ou dispositivos mudaram: vale redesenhar.</summary>
+    Redraw = 1,
+    /// <summary>A configuração mudou (pastas ou dispositivos novos, removidos, pedidos de conexão): vale uma leitura completa já.</summary>
+    NeedsRefresh = 2,
+}
+
+public enum ActivityKind { Received, Deleted, ChangedHere, Failed }
+
+/// <summary>Um arquivo no histórico de atividade.</summary>
+public sealed record ActivityEntry(DateTime At, string Folder, string Item, ActivityKind Kind, string? Error)
+{
+    /// <summary>Uma linha por arquivo, com o nome da pasta (ou o id, se ela não existe mais).</summary>
+    public static string Format(IEnumerable<ActivityEntry> entries, IReadOnlyDictionary<string, string> folderLabels) =>
+        string.Join("\n", entries.Select(e =>
+        {
+            var (mark, what) = e.Kind switch
+            {
+                ActivityKind.Received => ("↓", "recebido"),
+                ActivityKind.Deleted => ("−", "apagado"),
+                ActivityKind.ChangedHere => ("↑", "alterado aqui"),
+                _ => ("✕", "falhou: " + e.Error),
+            };
+            var folder = folderLabels.TryGetValue(e.Folder, out var label) ? label : e.Folder;
+            return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{e.At:HH:mm:ss}  {mark} {folder}/{e.Item} ({what})");
+        }));
 }

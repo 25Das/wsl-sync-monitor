@@ -19,12 +19,15 @@ public sealed class SyncthingEvents(HttpClient http)
     /// <summary>
     /// Entrega lotes de eventos a <paramref name="onEvents"/> a partir de agora (sem repetir os antigos), até o
     /// cancelamento ou até o Syncthing parar de responder ou reiniciar (exceção: quem chama decide quando tentar de novo).
+    /// <paramref name="onConnected"/> é chamado quando o fluxo está pronto (daí em diante, nada se perde).
     /// </summary>
-    public async Task RunAsync(string baseUrl, string apiKey, Action<IReadOnlyList<JsonElement>> onEvents, CancellationToken ct)
+    public async Task RunAsync(string baseUrl, string apiKey, Action<IReadOnlyList<JsonElement>> onEvents, CancellationToken ct,
+        Action? onConnected = null)
     {
         string? started = await StartTimeAsync(baseUrl, apiKey, ct).ConfigureAwait(false);
         long since = (await GetAsync(baseUrl, apiKey, "/rest/events?limit=1&timeout=0", ct).ConfigureAwait(false))
             .Select(e => (long)SyncthingApi.Num(e, "id")).DefaultIfEmpty(0).Max();
+        onConnected?.Invoke();
         while (!ct.IsCancellationRequested)
         {
             var batch = await GetAsync(baseUrl, apiKey, $"/rest/events?since={since}&timeout={(int)LongPoll.TotalSeconds}", ct)

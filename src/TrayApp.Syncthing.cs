@@ -49,6 +49,16 @@ public sealed partial class TrayApp
         await SyncthingCommandAsync(() => _collector.RestartSyncthingAsync(_settings));
     }
 
+    /// <summary>Arquivos recebidos, alterados aqui ou que falharam desde que o app abriu (de uma pasta ou de todas).</summary>
+    void ShowActivity(FolderInfo? f = null) => ShowText(f == null ? "atividade recente" : $"atividade recente em {f.Label}", () =>
+    {
+        var history = _activity.History(f?.Id);
+        var labels = (_snap?.AllFolders ?? []).ToDictionary(x => x.Id, x => x.Label);
+        return Task.FromResult(history.Count == 0
+            ? "Nenhum arquivo sincronizado desde que o app abriu (ou desde que o Syncthing ligou)."
+            : ActivityEntry.Format(history, labels));
+    });
+
     void CopyMyId() { if (_snap?.MyId is { } id) CopyToClipboard(id); }
 
     void ShowSyncthingErrors() => ShowText("erros recentes do Syncthing", async () =>

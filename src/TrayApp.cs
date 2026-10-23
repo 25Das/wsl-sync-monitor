@@ -57,7 +57,12 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _menu.Opened += (_, _) => { if (_widget != null) _widget.MenuOpen = true; };
         _menu.Closed += (_, _) => { if (_widget == null) return; _widget.MenuOpen = false; _widget.BringAboveTaskbar(); };
         _menu.Closing += KeepMenuOpenIfAsked;
-        _popup.VisibleChanged += (_, _) => { if (!_popup.Visible) _widget?.BringAboveTaskbar(); };
+        _popup.VisibleChanged += (_, _) =>
+        {
+            if (!_popup.Visible) _widget?.BringAboveTaskbar();
+            else if (_snap == null || DateTime.Now - _snap.Time > TimeSpan.FromSeconds(Math.Max(2, _settings.RefreshSeconds))) RequestRefresh();
+            UpdateRefreshInterval();
+        };
 
         _tray = new NotifyIcon
         {
@@ -123,6 +128,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             StartupHealthCheck(snap);
             StartKeptAliveAtLaunch(snap);
             GuardTick();
+            UpdateRefreshInterval();
             ShowState();
             _ = RefreshDiskFreeAsync();
         }
@@ -132,7 +138,11 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             Log.Failure("atualização", "refresh", "falha ao atualizar o estado: " + ex.Message);
             _tray.Text = Trim("Erro: " + ex.Message, 127);
         }
-        finally { _refreshing = false; }
+        finally
+        {
+            _refreshing = false;
+            if (_refreshAgain) { _refreshAgain = false; _ = RefreshAsync(); }
+        }
     }
 
     static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
@@ -230,8 +240,24 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
 
     void ApplySettings()
     {
-        _refreshTimer.Interval = Math.Max(2, _settings.RefreshSeconds) * 1000;
+        UpdateRefreshInterval();
         _refreshTimer.Start();
+    }
+
+    /// <summary>Lê menos vezes quando nada depende da leitura periódica (regras em <see cref="RefreshRules"/>).</summary>
+    void UpdateRefreshInterval()
+    {
+        int ms = (int)RefreshRules.Interval(_settings.RefreshSeconds, _eventsLive, _popup.Visible, guardCounting: _idleTicks > 0).TotalMilliseconds;
+        if (_refreshTimer.Interval != ms) _refreshTimer.Interval = ms; // trocar reinicia a contagem: só quando muda
+    }
+
+    bool _refreshAgain;
+
+    /// <summary>Lê o estado completo agora (algo mudou); se uma leitura já está em andamento, faz outra logo depois dela.</summary>
+    void RequestRefresh()
+    {
+        if (_refreshing) _refreshAgain = true;
+        else _ = RefreshAsync();
     }
 
     // ------------------------------------------------------------------ hover / clique
@@ -459,6 +485,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _tray.Visible = false;
         _refreshTimer.Stop();
         _hoverTimer.Stop();
+        _sessionWatch.Dispose();
         _tray.Dispose();
         _popup.Dispose();
         _menuOwner.Dispose();
