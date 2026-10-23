@@ -66,19 +66,15 @@ public sealed class TaskbarWidget : Form
         }
     }
 
-    /// <summary>Retângulo do widget na tela (dentro da barra, a posição da janela é relativa a ela).</summary>
-    public Rectangle ScreenBounds =>
-        IsHandleCreated && Native.GetWindowRect(Handle, out var r) ? r.ToRectangle() : Bounds;
+    // lidos de outros threads (WidgetHost): a janela nativa, não as propriedades do WinForms
+    volatile IntPtr _hwnd;
 
-    /// <summary>
-    /// No desligamento do Windows: solta o widget da barra antes de a interface do app ficar ocupada (uma janela
-    /// filha de outro processo liga as filas de entrada dos dois: a barra travaria junto).
-    /// </summary>
-    public void DetachForShutdown()
-    {
-        _follow.Stop();
-        if (IsHandleCreated) DestroyHandle();
-    }
+    /// <summary>Retângulo do widget na tela; vazio sem janela (pode ser lido de outro thread).</summary>
+    public Rectangle ScreenBounds =>
+        _hwnd != IntPtr.Zero && Native.GetWindowRect(_hwnd, out var r) ? r.ToRectangle() : Rectangle.Empty;
+
+    /// <summary>A janela do widget está à mostra (pode ser lido de outro thread).</summary>
+    public bool IsShown => _hwnd != IntPtr.Zero && Native.IsWindowVisible(_hwnd);
 
     public void SetSnapshot(Snapshot s) { _snap = s; _dirty = true; Follow(); }
 
@@ -103,6 +99,7 @@ public sealed class TaskbarWidget : Form
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+        _hwnd = Handle;
         // o WinForms não usa o pai do CreateParams num Form (põe a janela filha numa janela interna oculta):
         // prende-a à barra explicitamente
         if (Inside && Native.SetParent(Handle, _parent) == IntPtr.Zero)
@@ -113,12 +110,20 @@ public sealed class TaskbarWidget : Form
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
+        _hwnd = IntPtr.Zero;
         if (_fgHook != IntPtr.Zero) { Native.UnhookWinEvent(_fgHook); _fgHook = IntPtr.Zero; }
         base.OnHandleDestroyed(e);
     }
 
     /// <summary>Ponto de ancoragem para o painel detalhado.</summary>
-    public Point PopupAnchor => ScreenBounds is var r ? new(r.Left + r.Width / 2, r.Top + r.Height / 2) : default;
+    public Point PopupAnchor
+    {
+        get
+        {
+            var r = ScreenBounds;
+            return new(r.Left + r.Width / 2, r.Top + r.Height / 2);
+        }
+    }
 
     float S => (_tb?.Dpi ?? 96) / 96f;
     int P(float v) => (int)Math.Round(v * S);
@@ -194,7 +199,6 @@ public sealed class TaskbarWidget : Form
         if (IsDisposed) return;
         var tb = TaskbarInfo.Get();
         _tb = tb;
-        if (WslService.SessionEnding) return; // desligando: o widget já foi solto da barra
         AttachToTaskbar(tb);
         // por cima da barra, com ela auto-ocultável, o widget precisa acompanhar a animação; dentro dela, desliza junto
         _follow.Interval = tb.AutoHide && !Inside ? 150 : 500;
@@ -240,8 +244,9 @@ public sealed class TaskbarWidget : Form
             Show();
             _dirty = true;
         }
-        // o WinForms "estaciona" a janela filha numa janela interna dele ao mostrá-la: devolve-a à barra
-        if (Inside && Native.GetParent(Handle) != _parent)
+        // o WinForms "estaciona" a janela filha numa janela interna dele ao mostrá-la, e uma janela recriada nasce
+        // oculta (o estilo de filha não tem WS_VISIBLE): devolve-a à barra e a mostra
+        if (Inside && (Native.GetParent(Handle) != _parent || !Native.IsWindowVisible(Handle)))
         {
             Native.SetParent(Handle, _parent);
             Native.ShowWindow(Handle, Native.SW_SHOWNA);

@@ -152,8 +152,8 @@ static class Native
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
 
-    [DllImport("user32.dll")] public static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
-    [DllImport("user32.dll", EntryPoint = "UpdateLayeredWindow")] static extern bool UpdateLayeredWindowKeepPos(IntPtr hwnd, IntPtr hdcDst, IntPtr pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+    // pptDst é um POINT* opcional (IntPtr.Zero = mantém a posição)
+    [DllImport("user32.dll")] static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, IntPtr pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pprSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
     [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
     [DllImport("gdi32.dll")] public static extern IntPtr CreateCompatibleDC(IntPtr hDC);
@@ -166,8 +166,10 @@ static class Native
     public const int WS_EX_LAYERED = 0x80000, WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8, WS_EX_NOACTIVATE = 0x8000000;
     public const int WS_CHILD = 0x40000000, WS_CLIPSIBLINGS = 0x04000000;
 
-    /// <summary>Exibe um bitmap ARGB 32bpp numa janela WS_EX_LAYERED.</summary>
-    /// <summary>Desenha a janela em camadas; <paramref name="position"/> null mantém a posição (janela filha).</summary>
+    /// <summary>
+    /// Exibe um bitmap ARGB 32bpp numa janela WS_EX_LAYERED; <paramref name="position"/> null mantém a posição
+    /// (janela filha, já posicionada).
+    /// </summary>
     public static void SetLayeredBitmap(IntPtr hwnd, Bitmap bmp, Point? position)
     {
         IntPtr screenDc = GetDC(IntPtr.Zero), memDc = CreateCompatibleDC(screenDc);
@@ -179,12 +181,17 @@ static class Native
             var size = new SIZE { cx = bmp.Width, cy = bmp.Height };
             var src = new POINT();
             var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = 255, AlphaFormat = AC_SRC_ALPHA };
-            if (position is { } p)
+            IntPtr dst = IntPtr.Zero;
+            try
             {
-                var dst = new POINT { X = p.X, Y = p.Y };
-                UpdateLayeredWindow(hwnd, screenDc, ref dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
+                if (position is { } p)
+                {
+                    dst = Marshal.AllocHGlobal(Marshal.SizeOf<POINT>());
+                    Marshal.StructureToPtr(new POINT { X = p.X, Y = p.Y }, dst, false);
+                }
+                UpdateLayeredWindow(hwnd, screenDc, dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
             }
-            else UpdateLayeredWindowKeepPos(hwnd, screenDc, IntPtr.Zero, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
+            finally { if (dst != IntPtr.Zero) Marshal.FreeHGlobal(dst); }
         }
         finally
         {

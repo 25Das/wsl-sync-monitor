@@ -10,7 +10,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     readonly IconRenderer _icons = new();
     readonly NotifyIcon _tray;
     readonly DetailPopup _popup;
-    readonly TaskbarWidget _widget;
+    readonly WidgetHost _widget;
     readonly ContextMenuStrip _menu;
     readonly Form _menuOwner;
     readonly System.Windows.Forms.Timer _refreshTimer = new();
@@ -53,7 +53,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         };
         _menuOwner.Show();
         _menuOwner.Hide();
-        _menu.Closed += (_, _) => _widget?.BringAboveTaskbar();
+        // com um menu aberto, o widget (no modo por cima da barra) não se recoloca acima dele
+        _menu.Opened += (_, _) => { if (_widget != null) _widget.MenuOpen = true; };
+        _menu.Closed += (_, _) => { if (_widget == null) return; _widget.MenuOpen = false; _widget.BringAboveTaskbar(); };
         _menu.Closing += KeepMenuOpenIfAsked;
         _popup.VisibleChanged += (_, _) => { if (!_popup.Visible) _widget?.BringAboveTaskbar(); };
 
@@ -72,10 +74,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         if (settingsError != null) WarnInvalidSettings(settingsError, startup: true);
         _tray.MouseDoubleClick += (_, e) => { if (e.Button == MouseButtons.Left && _snap?.St == StState.Running) OpenSyncthing(); };
 
-        _widget = new TaskbarWidget(_settings);
+        _widget = new WidgetHost(_settings);
         _widget.Clicked += () => { CloseMenu(); TogglePinned(_widget.PopupAnchor); };
         _widget.RightClicked += () => ShowMenu(Cursor.Position);
-        _widget.YieldTo = () => _menu.Visible || _itemMenu is { Visible: true };
         _widget.HoverStarted += () =>
         {
             if (!_settings.HoverPopup || _popup.Visible || _menu.Visible) return;
@@ -229,7 +230,6 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     {
         _refreshTimer.Interval = Math.Max(2, _settings.RefreshSeconds) * 1000;
         _refreshTimer.Start();
-        if (!_settings.ShowTaskbarWidget && _widget.Visible) _widget.Hide();
     }
 
     // ------------------------------------------------------------------ hover / clique

@@ -326,6 +326,8 @@ public sealed partial class TrayApp
         if (items == null) return;
         _itemMenu?.Dispose();
         _itemMenu = new ContextMenuStrip();
+        _itemMenu.Opened += (_, _) => _widget.MenuOpen = true;
+        _itemMenu.Closed += (_, _) => _widget.MenuOpen = false;
         _itemMenu.Items.AddRange(items.ToArray());
         _itemMenu.Show(_popup, _popup.PointToClient(screen));
     }
