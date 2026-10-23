@@ -23,19 +23,23 @@ public sealed class ProcessExitWatcher : IDisposable
             foreach (var gone in _watched.Keys.Where(id => !wanted.Contains(id)).ToList()) Forget(gone);
             foreach (var id in wanted.Where(id => !_watched.ContainsKey(id)))
             {
+                Process? p = null;
                 try
                 {
-                    var p = Process.GetProcessById(id);
+                    p = Process.GetProcessById(id);
                     p.EnableRaisingEvents = true;
                     p.Exited += (_, _) => OnExited(id);
                     _watched[id] = p;
-                    if (p.HasExited) { Forget(id); alreadyExited = true; } // terminou antes de começar a observar
+                    p = null; // agora é da lista
+                    if (_watched[id].HasExited) { Forget(id); alreadyExited = true; } // terminou antes de começar a observar
                 }
-                catch (ArgumentException) { } // já terminou: nada a esperar
-                catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+                catch (ArgumentException) { }          // já tinha terminado: nada a esperar
+                catch (InvalidOperationException) { }  // terminou no meio: nada a esperar
+                catch (System.ComponentModel.Win32Exception)
                 {
                     allWatched = false; // sem acesso (ex.: processo de administrador): o fim dele só a leitura periódica vê
                 }
+                finally { p?.Dispose(); }
             }
             AllWatched = allWatched;
         }

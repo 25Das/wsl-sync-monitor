@@ -283,8 +283,9 @@ public sealed class StatusCollector : IDisposable
             .Select(async id => (id, json: await GetAsync(url, key, "/rest/db/completion?device=" + Q(id)))).ToList();
         var tFolders = SyncthingApi.FoldersToCheck(config, myId).Distinct()
             .Select(async id => (id, json: await GetAsync(url, key, "/rest/db/status?folder=" + Q(id)))).ToList();
-        var completions = (await Task.WhenAll(tCompletions)).ToDictionary(r => r.id, r => r.json);
-        var folders = (await Task.WhenAll(tFolders)).ToDictionary(r => r.id, r => r.json);
+        await Task.WhenAll(tCompletions.Cast<Task>().Concat(tFolders)); // espera todos (nenhuma falha fica sem ser vista)
+        var completions = tCompletions.ToDictionary(t => t.Result.id, t => t.Result.json);
+        var folders = tFolders.ToDictionary(t => t.Result.id, t => t.Result.json);
         return SyncthingApi.EvaluateSync(status, config, conns, completions, folders);
     }
 

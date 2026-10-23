@@ -60,11 +60,12 @@ public sealed partial class TrayApp
         if (IsMonitored(d))
         {
             SetBusy("Aguardando o Syncthing…");
-            // confere a cada segundo sem executar nada na distro (antes, uma leitura completa a cada 1,5 s) e lê tudo
-            // assim que ele responder
-            if (_snap?.St != StState.Running)
+            // confere a cada segundo sem executar nada na distro e lê tudo assim que ele responder; uma leitura completa
+            // a cada 5 s (antes, a cada 1,5 s) relê o endereço da GUI no config.xml, caso ainda não fosse conhecido
+            end = DateTime.Now.AddSeconds(45);
+            while (_snap?.St != StState.Running && DateTime.Now < end)
             {
-                try { await new SyncthingEvents(_eventsHttp).WaitUntilUpAsync(_collector.GuiUrl(_settings), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(45), _eventsCts.Token); }
+                try { await new SyncthingEvents(_eventsHttp).WaitUntilUpAsync(_collector.GuiUrl(_settings), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), _eventsCts.Token); }
                 catch (OperationCanceledException) { return; } // saindo
                 await RefreshAsync();
             }

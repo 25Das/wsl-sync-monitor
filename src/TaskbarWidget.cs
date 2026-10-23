@@ -51,7 +51,8 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
             _iconsSoon.Stop();
             Follow();
             // ainda não deu para reler (leitura em andamento ou a última foi há pouco): tenta de novo em seguida
-            if (_windowsChangedAt > _iconsReadAt && IsShown) _iconsSoon.Start();
+            // (só a barra horizontal usa os ícones: na vertical eles nunca são relidos)
+            if (_windowsChangedAt > _iconsReadAt && IsShown && _tb.Horizontal) _iconsSoon.Start();
         };
     }
 
@@ -66,18 +67,20 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     // ------------------------------------------------------------------ avisos do Windows
 
     // Em vez de conferir a barra a cada meio segundo, o widget reage aos avisos do Windows: a barra (ou algo dentro
-    // dela, como a área de notificação) mudou de lugar ou tamanho; uma janela abriu, fechou ou foi para o primeiro
-    // plano (os botões da barra mudam e um app pode ter entrado em tela cheia); o tema ou os monitores mudaram.
+    // dela, como a área de notificação) mudou de lugar ou tamanho; uma janela com botão na barra abriu ou fechou
+    // (ShellHookWindow); outra foi para o primeiro plano (um app pode ter entrado em tela cheia); o tema ou os
+    // monitores mudaram.
     // O timer _follow continua como rede de segurança, bem mais espaçado (WidgetPlacement.FollowIntervalMs).
     Native.WinEventProc? _hookProc;
-    IntPtr _windowsHook, _foregroundHook, _taskbarHook;
+    IntPtr _foregroundHook, _taskbarHook;
     uint _taskbarPid;
+    ShellHookWindow? _shellHook;
 
     void StartHooks()
     {
         _hookProc = OnWinEvent;
         const uint flags = Native.WINEVENT_OUTOFCONTEXT | Native.WINEVENT_SKIPOWNPROCESS;
-        _windowsHook = Native.SetWinEventHook(Native.EVENT_OBJECT_SHOW, Native.EVENT_OBJECT_HIDE, IntPtr.Zero, _hookProc, 0, 0, flags);
+        _shellHook = new ShellHookWindow(OnTaskbarButtonsChanged);
         _foregroundHook = Native.SetWinEventHook(Native.EVENT_SYSTEM_FOREGROUND, Native.EVENT_SYSTEM_FOREGROUND, IntPtr.Zero, _hookProc, 0, 0, flags);
         Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnSystemChange; // tema claro/escuro, barra
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += OnSystemChange; // monitores, resolução, escala
@@ -96,9 +99,11 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
 
     void StopHooks()
     {
-        foreach (var h in new[] { _windowsHook, _foregroundHook, _taskbarHook })
+        foreach (var h in new[] { _foregroundHook, _taskbarHook })
             if (h != IntPtr.Zero) Native.UnhookWinEvent(h);
-        _windowsHook = _foregroundHook = _taskbarHook = IntPtr.Zero;
+        _foregroundHook = _taskbarHook = IntPtr.Zero;
+        _shellHook?.Dispose();
+        _shellHook = null;
         _taskbarPid = 0;
         Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnSystemChange;
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= OnSystemChange;
@@ -116,13 +121,16 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
             if (hwnd != _hwnd && (hwnd == _tb.Hwnd || Native.GetAncestor(hwnd, Native.GA_ROOT) == _tb.Hwnd)) FollowSoon();
             return;
         }
-        if (evt == Native.EVENT_SYSTEM_FOREGROUND) { FollowSoon(); return; } // tela cheia começa ou termina
-        // janela com botão na barra apareceu ou sumiu (ao fechar, ela some antes de ser destruída): os botões da barra
-        // mudam. Relê depois da animação, contando da primeira mudança ainda não lida (WidgetPlacement.IconsReadDue).
-        // (o aviso chega depois: se a janela já foi destruída, não dá para ver o estilo; conta como mudança)
-        bool button = !Native.IsWindow(hwnd) || WidgetPlacement.HasTaskbarButton(topLevel: Native.GetAncestor(hwnd, Native.GA_ROOT) == hwnd,
-            owned: Native.GetWindow(hwnd, Native.GW_OWNER) != IntPtr.Zero, exStyle: Native.GetWindowLong(hwnd, Native.GWL_EXSTYLE));
-        if (!button) return;
+        if (evt == Native.EVENT_SYSTEM_FOREGROUND) FollowSoon(); // tela cheia começa ou termina
+    }
+
+    /// <summary>
+    /// Uma janela com botão na barra abriu ou fechou: os botões mudam. Relê os ícones depois da animação, contando da
+    /// primeira mudança ainda não lida (WidgetPlacement.IconsReadDue).
+    /// </summary>
+    void OnTaskbarButtonsChanged()
+    {
+        if (_disposed) return;
         if (_windowsChangedAt is not { } pending || pending <= _iconsReadAt) _windowsChangedAt = DateTime.Now;
         if (!_iconsSoon.Enabled) _iconsSoon.Start();
     }

@@ -142,15 +142,6 @@ public class WidgetFollowScheduleTests
         Assert.True(WidgetPlacement.IconsReadDue(T0.AddMilliseconds(800), lastRead: T0.AddMilliseconds(-200), changedAt: T0));
     }
 
-    [Theory]
-    [InlineData(true, false, 0, true)]                 // janela comum de app: tem botão na barra
-    [InlineData(false, false, 0, false)]               // janela filha
-    [InlineData(true, true, 0, false)]                 // dona de outra (diálogo, menu)
-    [InlineData(true, false, 0x80, false)]             // WS_EX_TOOLWINDOW: dica, miniatura, paleta
-    [InlineData(true, true, 0x40000, true)]            // WS_EX_APPWINDOW força o botão
-    public void So_janelas_com_botao_na_barra_mudam_os_icones(bool topLevel, bool owned, int exStyle, bool expected) =>
-        Assert.Equal(expected, WidgetPlacement.HasTaskbarButton(topLevel, owned, exStyle));
-
     [Fact]
     public void Icones_relidos_de_tempos_em_tempos_mesmo_sem_aviso()
     {

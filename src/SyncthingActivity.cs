@@ -90,16 +90,23 @@ public sealed class SyncthingActivity
         while (_history.Count > HistorySize) _history.RemoveLast();
     }
 
-    /// <summary>Tira do histórico um "alterado aqui" recente do arquivo que, na verdade, acabou de ser recebido.</summary>
-    void ForgetChangedHere(string folder, string item, DateTime now)
+    /// <summary>
+    /// Tira do histórico o "alterado aqui" do arquivo que, na verdade, acabou de ser recebido (o índice local chegou
+    /// segundos antes do fim do recebimento). Mais antigo que isso, foi mesmo uma alteração daqui (ex.: um conflito).
+    /// </summary>
+    bool ForgetChangedHere(string folder, string item, DateTime now)
     {
-        for (var n = _history.First; n != null && now - n.Value.At < PulledMemory; n = n.Next)
+        for (var n = _history.First; n != null && now - n.Value.At < OutOfOrder; n = n.Next)
             if (n.Value is { Kind: ActivityKind.ChangedHere } e && e.Folder == folder && e.Item == item)
             {
                 _history.Remove(n);
-                return;
+                return true;
             }
+        return false;
     }
+
+    /// <summary>Quanto o índice local pode chegar antes do fim do recebimento do mesmo arquivo.</summary>
+    static readonly TimeSpan OutOfOrder = TimeSpan.FromSeconds(5);
 
     /// <summary>Arquivos recebidos, alterados aqui ou que falharam, do mais novo ao mais antigo (de uma pasta ou de todas).</summary>
     public IReadOnlyList<ActivityEntry> History(string? folder = null)
@@ -132,9 +139,9 @@ public sealed class SyncthingActivity
                 var error = SyncthingApi.NonEmpty(SyncthingApi.Str(d, "error"));
                 Folder(folder).InProgress.Remove(item);
                 Folder(folder).Recent[item] = now;
-                _pulled[(folder, item)] = now;
-                // o índice local pode ter chegado antes (comum ao apagar): então não foi "alterado aqui"
-                ForgetChangedHere(folder, item, now);
+                // o índice local pode ter chegado logo antes (comum ao apagar): então não foi "alterado aqui"; senão,
+                // marca para o índice local que vem depois não contar como "alterado aqui"
+                if (!ForgetChangedHere(folder, item, now)) _pulled[(folder, item)] = now;
                 Remember(new ActivityEntry(now, folder, item,
                     error != null ? ActivityKind.Failed : SyncthingApi.Str(d, "action") == "delete" ? ActivityKind.Deleted : ActivityKind.Received, error));
                 return redraw;

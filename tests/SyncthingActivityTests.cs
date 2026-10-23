@@ -353,6 +353,26 @@ public class SyncthingActivityTests
     }
 
     [Fact]
+    public void Alteracao_aqui_depois_de_receber_e_apagar_o_arquivo_aparece()
+    {
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("LocalIndexUpdated", """{"folder":"claude","filenames":["a.txt"],"items":1,"sequence":9,"version":9}"""),
+                 Event("ItemFinished", """{"folder":"claude","item":"a.txt","error":null,"type":"file","action":"delete"}""")], T0);
+        a.Apply([Event("LocalIndexUpdated", """{"folder":"claude","filenames":["a.txt"],"items":1,"sequence":10,"version":10}""")], T0.AddSeconds(20));
+        Assert.Equal([ActivityKind.ChangedHere, ActivityKind.Deleted], a.History().Select(e => e.Kind));
+    }
+
+    [Fact]
+    public void Alteracao_aqui_seguida_de_versao_recebida_mantem_as_duas()
+    {
+        // conflito: editou aqui e, depois, chegou a versão do outro
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Event("LocalIndexUpdated", """{"folder":"claude","filenames":["notes.md"],"items":1,"sequence":9,"version":9}""")], T0);
+        a.Apply([Event("ItemFinished", """{"folder":"claude","item":"notes.md","error":null,"type":"file","action":"update"}""")], T0.AddSeconds(10));
+        Assert.Equal([ActivityKind.Received, ActivityKind.ChangedHere], a.History().Select(e => e.Kind));
+    }
+
+    [Fact]
     public void Historico_de_outro_dia_mostra_a_data()
     {
         var entries = new[] { new ActivityEntry(T0.AddDays(-2), "claude", "a.txt", ActivityKind.Received, null) };

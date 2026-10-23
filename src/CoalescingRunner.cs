@@ -11,7 +11,7 @@ public sealed class CoalescingRunner(Func<Task> work)
     bool _running;
     TaskCompletionSource? _next;
 
-    public bool Running { get { lock (_lock) return _running; } }
+    internal bool Running { get { lock (_lock) return _running; } }
 
     /// <summary>Executa agora, ou logo depois da execução em andamento (e espera por ela).</summary>
     public Task RunAsync()
