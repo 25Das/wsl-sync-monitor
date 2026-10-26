@@ -103,17 +103,18 @@ public class RenderingTests
         try
         {
             using var bmp = new WidgetPainter { Snapshot = s }.Preview(tb);
-            var busy = Theme.For(Level.Busy);
-            bool found = false;
             // só a linha do contador de pastas (a 96 DPI, centro em 10 + (70 - 20) / 3 ≈ 27 px; pontos em 10 px,
-            // dispositivos em ≈ 43 px)
-            for (int y = 19; y < 36 && !found; y++)
-                for (int x = 0; x < bmp.Width && !found; x++)
+            // dispositivos em ≈ 43 px). Texto pequeno suavizado sobre fundo escuro nunca chega à cor pura: basta o
+            // pixel mais azul ser claramente azul (texto branco tem azul ≈ vermelho; o verde, azul < vermelho + 30)
+            int bluest = 0;
+            for (int y = 15; y < 37; y++)
+                for (int x = 0; x < bmp.Width; x++)
                 {
                     var c = bmp.GetPixel(x, y);
-                    found = Math.Abs(c.R - busy.R) < 40 && Math.Abs(c.G - busy.G) < 40 && Math.Abs(c.B - busy.B) < 40;
+                    if (c.B > c.G) bluest = Math.Max(bluest, c.B - c.R);
                 }
-            Assert.True(found, "contador de pastas do widget vertical não está azul");
+            bool found = bluest > 50;
+            Assert.True(found, $"contador de pastas do widget vertical não está azul (azul - vermelho: {bluest})");
         }
         finally { Theme.ForceLight = null; }
     }
