@@ -89,4 +89,32 @@ public class RenderingTests
         using var bmp = new Bitmap(popup.Width, popup.Height);
         popup.DrawToBitmap(bmp, new Rectangle(Point.Empty, popup.Size));
     }
+
+    [Fact]
+    public void Barra_vertical_pinta_os_contadores_com_a_cor_do_estado()
+    {
+        // sem espaço para os ícones, os números levam a cor: pasta sincronizando fica azul como na barra horizontal
+        var s = new Snapshot { Target = new DistroInfo("Ubuntu", true, 2, true), St = StState.Running };
+        s.Distros.Add(s.Target);
+        s.Folders.Add(new FolderInfo { State = "syncing", GlobalBytes = 10, InSyncBytes = 5 });
+        s.AllFolders.AddRange(s.Folders);
+        var tb = new TaskbarInfo { Edge = TaskbarEdge.Left, Rect = new Rectangle(0, 0, 48, 1040) };
+        Theme.ForceLight = false;
+        try
+        {
+            using var bmp = new WidgetPainter { Snapshot = s }.Preview(tb);
+            var busy = Theme.For(Level.Busy);
+            bool found = false;
+            // só a linha do contador de pastas (a 96 DPI, centro em 10 + (70 - 20) / 3 ≈ 27 px; pontos em 10 px,
+            // dispositivos em ≈ 43 px)
+            for (int y = 19; y < 36 && !found; y++)
+                for (int x = 0; x < bmp.Width && !found; x++)
+                {
+                    var c = bmp.GetPixel(x, y);
+                    found = Math.Abs(c.R - busy.R) < 40 && Math.Abs(c.G - busy.G) < 40 && Math.Abs(c.B - busy.B) < 40;
+                }
+            Assert.True(found, "contador de pastas do widget vertical não está azul");
+        }
+        finally { Theme.ForceLight = null; }
+    }
 }

@@ -49,7 +49,7 @@ public class DeviceLevelTests
         var s = Triangle(true);
         s.Folders.Add(new FolderInfo { State = "idle", NeedBytes = 5 });
         var h = PanelHeader.For(s, null, new Version(1, 0, 0), UpdateState.NotChecked);
-        Assert.Equal(("1 de 2 pastas atualizadas", Level.Warn), (h.Status, h.StatusLevel));
+        Assert.Equal(("1 pasta precisa de atenção", Level.Warn), (h.Status, h.StatusLevel));
     }
 
     [Fact]

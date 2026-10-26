@@ -52,7 +52,7 @@ public sealed record PanelHeader(
     {
         if (s == null) return ("Carregando…", Level.Off);
         if (!s.WslInstalled) return ("WSL não encontrado", Level.Error);
-        if (s.Target == null && s.WslError != null) return (s.WslError, Level.Error); // sem distro, distro inexistente…
+        if (s.WslFailed) return (s.WslError ?? "WSL com erro", Level.Error); // sem distro, distro inexistente…
         if (!s.WslRunning) return ("WSL parado", Level.Off);
         if (s.St != StState.Running) return ("Syncthing: " + Lower(s.StStatusText), Level.Error);
         return s.Overall switch
@@ -60,8 +60,15 @@ public sealed record PanelHeader(
             Level.Error => ("Há erros em pastas ou dispositivos", Level.Error),
             Level.Busy => ("Sincronizando…", Level.Busy),
             Level.Warn when s.DevicesLevel == Level.Warn && !s.Folders.Any(f => f.Status.Level == Level.Warn) => ("Nenhum dispositivo conectado", Level.Warn),
-            Level.Warn => ($"{s.FoldersOk} de {s.Folders.Count} pastas atualizadas", Level.Warn),
-            _ => ("Tudo sincronizado", Level.Ok),
+            Level.Warn => (s.Folders.Count(f => f.Status.Level == Level.Warn) is var n && n == 1
+                ? "1 pasta precisa de atenção" : $"{n} pastas precisam de atenção", Level.Warn),
+            // "tudo" não vale com pasta pausada: ela não sincroniza
+            _ => s.FoldersPaused switch
+            {
+                0 => ("Tudo sincronizado", Level.Ok),
+                1 => ("Sincronizado · 1 pasta pausada", Level.Ok),
+                var n => ($"Sincronizado · {n} pastas pausadas", Level.Ok),
+            },
         };
     }
 

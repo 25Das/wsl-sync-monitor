@@ -44,14 +44,16 @@ Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo co
 | ⟳ azul | sincronizando ou verificando |
 | ✓ verde | tudo atualizado |
 | ! amarelo | atenção (pasta fora de sincronia, nenhum dispositivo conectado) |
-| ✕ vermelho | erro (Syncthing parado, chave recusada, WSL ausente) |
+| ✕ vermelho | erro (Syncthing parado, chave recusada, WSL ausente, distro do Syncthing não encontrada) |
 
 Marcas nos cantos: **azul em cima** = nova versão disponível; **clara embaixo** = distro mantida ligada pelo app.
-Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 atualizadas*, *Dispositivos: 2 de 3 conectados*,
+Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 sem problemas*, *Dispositivos: 2 de 3 conectados*,
 *Nova versão* (quando houver) e, por último, até quando a distro fica ligada.
 
-**Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas atualizadas / dispositivos
-conectados). Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
+**Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas sem problemas / dispositivos
+conectados). Os números são os mesmos da dica do ícone e do painel, e a cor do símbolo diz o que está acontecendo:
+uma pasta sincronizando continua na conta (`3/3` azul, não `2/3`); só saem dela as fora de sincronia, com erro ou
+pausadas. Na barra vertical, sem espaço para os símbolos, a cor vai nos números. Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
 junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado, sem ocupar o canto
 do botão Widgets (clima) do Windows 11. O widget fica **dentro** da barra (é uma janela filha dela): continua
 visível com o menu Iniciar aberto e, com a barra que se oculta sozinha, desliza junto com ela. Se der problema no
@@ -249,6 +251,9 @@ Ideias para o futuro (ainda não implementadas):
 - **Mapear outras regras muito específicas de um usuário:** identificar comportamentos que hoje supõem o
   ambiente do autor e torná-los opcionais ou configuráveis, com a mesma intenção acima.
 - **Idiomas:** a interface é só em português; adaptar para outros idiomas.
+- **Renomear o app:** "WSL Sync Monitor" remete só ao WSL, e o app não vai monitorar só ele (veja os itens acima).
+  Escolher um nome que descreva a proteção da sincronização em geral e planejar a troca: executável, pasta de
+  dados, chave de inicialização com o Windows, repositório e atualização automática de quem já usa a versão atual.
 
 ## Compilar
 

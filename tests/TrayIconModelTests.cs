@@ -66,7 +66,7 @@ public class TrayIconModelTests
         var tip = TrayIconModel.Tooltip(s, keptAlive: "até 16:00", update: new Version(1, 9, 0));
 
         Assert.Equal(
-            "Ubuntu\nPastas: 1 de 1 atualizadas\nDispositivos: 1 de 2 conectados\nNova versão: 1.9.0\nMantida ligada até 16:00",
+            "Ubuntu\nPastas: 1 de 1 sem problemas\nDispositivos: 1 de 2 conectados\nNova versão: 1.9.0\nMantida ligada até 16:00",
             tip);
     }
 

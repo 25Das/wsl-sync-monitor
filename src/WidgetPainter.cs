@@ -75,19 +75,12 @@ public sealed class WidgetPainter
     /// <summary>Desenha (draw = true) ou só mede o conteúdo. Retorna a largura necessária.</summary>
     float Paint(Graphics g, int w, int h, bool draw)
     {
-        var s = Snapshot;
-        bool running = s is { St: StState.Running };
         var fg = Theme.TaskbarLight ? Color.FromArgb(20, 20, 20) : Color.FromArgb(245, 245, 245);
         using var font = new Font("Segoe UI", P(11.5f), FontStyle.Regular, GraphicsUnit.Pixel);
         using var icons = new Font("Segoe MDL2 Assets", P(11f), FontStyle.Regular, GraphicsUnit.Pixel);
         using var fb = new SolidBrush(fg);
 
-        var wsl = Busy ? Level.Busy : s?.WslLevel ?? Level.Off;
-        var st = s?.StLevel ?? Level.Off;
-        var folders = running ? $"{s!.FoldersOk}/{s.Folders.Count}" : "–";
-        var devices = running ? $"{s!.DevicesOnline}/{s.Devices.Count}" : "–";
-        var fLevel = running ? Levels.Worst(s!.Folders.Select(f => f.Status.Level)) : Level.Off;
-        var dLevel = running ? s!.DevicesLevel : Level.Off;
+        var (wsl, st, folders, fLevel, devices, dLevel) = WidgetModel.From(Snapshot, Busy);
 
         int dot = P(7);
         float x0 = P(8);
@@ -113,16 +106,17 @@ public sealed class WidgetPainter
             DotAt(x, cy, l);
             return Text(label, font, x + dot + P(4), cy);
         }
+        Color CountColor(Level l) => l == Level.Off ? fg : Theme.For(l);
         float Count(float x, float cy, string glyph, Level l, string value)
         {
-            using var gb = new SolidBrush(l == Level.Off ? fg : Theme.For(l));
+            using var gb = new SolidBrush(CountColor(l));
             x = Text(glyph, icons, x, cy, gb) + P(3);
             return Text(value, font, x, cy);
         }
 
         if (!_tb.Horizontal)
         {
-            // barra vertical: pontos em cima, contagens empilhadas
+            // barra vertical: pontos em cima, contagens empilhadas (sem espaço para os ícones: o número leva a cor)
             if (!draw) return w;
             float lineH = font.GetHeight(g);
             float cy = P(10), step = (h - P(20)) / 3f;
@@ -130,8 +124,10 @@ public sealed class WidgetPainter
             DotAt(w / 2f + P(2), cy, st);
             using var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
             using var small = new Font("Segoe UI", P(10f), GraphicsUnit.Pixel);
-            g.DrawString(folders, small, fb, new RectangleF(0, cy + step - lineH / 2, w, lineH), sf);
-            g.DrawString(devices, small, fb, new RectangleF(0, cy + 2 * step - lineH / 2, w, lineH), sf);
+            using var fBrush = new SolidBrush(CountColor(fLevel));
+            using var dBrush = new SolidBrush(CountColor(dLevel));
+            g.DrawString(folders, small, fBrush, new RectangleF(0, cy + step - lineH / 2, w, lineH), sf);
+            g.DrawString(devices, small, dBrush, new RectangleF(0, cy + 2 * step - lineH / 2, w, lineH), sf);
         }
         else if (_tb.Thickness >= P(38))
         {

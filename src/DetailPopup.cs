@@ -340,7 +340,8 @@ public sealed class DetailPopup : Form
 
             // ---- Pastas ----
             int hidden = s.AllFolders.Count - s.Folders.Count;
-            Section($"Pastas · {s.FoldersOk}/{s.Folders.Count} atualizadas" + (hidden > 0 ? $" · {hidden} oculta(s)" : ""));
+            Section($"Pastas · {s.FoldersHealthy}/{s.Folders.Count} sem problemas"
+                + (s.FoldersPaused > 0 ? $" · {s.FoldersPaused} pausada(s)" : "") + (hidden > 0 ? $" · {hidden} oculta(s)" : ""));
             if (s.Folders.Count == 0) Sub(hidden > 0 ? "Todas as pastas estão ocultas" : "Nenhuma pasta configurada");
             foreach (var f in s.Folders.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
             {

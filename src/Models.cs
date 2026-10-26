@@ -117,10 +117,21 @@ public sealed class Snapshot
 
     public bool WslRunning => Target?.Running == true;
 
-    public int FoldersOk => Folders.Count(f => f.Status.Level == Level.Ok);
+    /// <summary>
+    /// Pastas sem problema: atualizadas ou sincronizando (a cor mostra a atividade). Fora de sincronia, com erro ou
+    /// pausadas ficam de fora.
+    /// </summary>
+    public int FoldersHealthy => Folders.Count(f => f.Status.Level is Level.Ok or Level.Busy);
+    public int FoldersPaused => Folders.Count(f => f.Paused);
+
+    /// <summary>Estado das pastas visíveis como um todo (a cor do contador de pastas do widget).</summary>
+    public Level FoldersLevel => Levels.Worst(Folders.Select(f => f.Status.Level));
     public int DevicesOnline => Devices.Count(d => d.Connected);
 
-    public Level WslLevel => !WslInstalled ? Level.Error : WslRunning ? Level.Ok : Level.Off;
+    /// <summary>Sem a distro do Syncthing (nenhuma instalada, a configurada não existe…) é erro, não "parado".</summary>
+    public bool WslFailed => !WslInstalled || (Target == null && WslError != null);
+
+    public Level WslLevel => WslFailed ? Level.Error : WslRunning ? Level.Ok : Level.Off;
 
     public Level StLevel => St switch
     {
@@ -149,10 +160,10 @@ public sealed class Snapshot
     {
         get
         {
-            if (!WslInstalled) return Level.Error;
+            if (WslFailed) return Level.Error;
             if (!WslRunning) return Level.Off;
             if (St != StState.Running) return Level.Error;
-            var worst = Levels.Worst(Folders.Select(f => f.Status.Level).Append(DevicesLevel));
+            var worst = Levels.Worst([FoldersLevel, DevicesLevel]);
             return worst == Level.Off ? Level.Ok : worst; // nada pendente nem desligado conta: tudo ok
         }
     }

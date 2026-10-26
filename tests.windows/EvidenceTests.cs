@@ -143,13 +143,17 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
             ("carregando", "carregando", null),
         };
         foreach (var light in new[] { false, true })
-            foreach (var (barName, thickness) in new[] { ("barra-alta", 48), ("barra-baixa", 32) })
+            foreach (var (barName, edge, thickness) in new[] { ("barra-alta", TaskbarEdge.Bottom, 48), ("barra-baixa", TaskbarEdge.Bottom, 32), ("barra-vertical", TaskbarEdge.Left, 48) })
                 foreach (var (name, caption, snap) in cases)
                 {
                     Theme.ForceLight = light;
                     try
                     {
-                        var tb = new TaskbarInfo { Edge = TaskbarEdge.Bottom, Rect = new Rectangle(0, 1032, 1920, thickness) };
+                        var tb = new TaskbarInfo
+                        {
+                            Edge = edge,
+                            Rect = edge == TaskbarEdge.Left ? new Rectangle(0, 0, thickness, 1040) : new Rectangle(0, 1032, 1920, thickness),
+                        };
                         using var bmp = new WidgetPainter { Snapshot = snap }.Preview(tb);
                         var theme = light ? "claro" : "escuro";
                         _index.Save(Zoom(bmp, 2), $"widget-{barName}-{name}-{theme}", $"Widget · {caption} · {barName} ({thickness}px) · tema {theme} (ampliado 2×)");
