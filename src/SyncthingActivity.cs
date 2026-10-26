@@ -257,6 +257,7 @@ public sealed class SyncthingActivity
             var all = shared.Select(id => d.Completion[id]).ToList();
             di.Completion = all.Min(c => c.Completion);
             di.NeedBytes = (long)all.Sum(c => c.NeedBytes);
+            di.CompletionUnknown = false; // os eventos trouxeram o andamento de todas as pastas
             return;
         }
         var newer = d.Completion.Values.Where(c => c.At >= basisTime).ToList();

@@ -400,6 +400,18 @@ public class SyncthingActivityTests
             ActivityEntry.Format(entries, labels, now: T0));
     }
 
+    [Fact]
+    public void Andamento_desconhecido_vira_conhecido_com_os_eventos_de_todas_as_pastas()
+    {
+        var s = TwoFolders(T0.AddSeconds(-10), 100, 0);
+        ReadFailures.Device(s.Devices[0]);
+        var a = new SyncthingActivity(Linger);
+        a.Apply([Completion("a", 100, 0)], T0);
+        Assert.Equal(Level.Unknown, a.Overlay(s, T0).Devices[0].Status.Level); // só uma pasta: ainda não se sabe
+        a.Apply([Completion("b", 100, 0)], T0);
+        Assert.Equal(("Atualizado", Level.Ok), a.Overlay(s, T0).Devices[0].Status);
+    }
+
     /// <summary>Duas pastas compartilhadas com a "trabalho", que na leitura completa estava com <paramref name="completion"/>.</summary>
     static Snapshot TwoFolders(DateTime at, double completion, long needBytes)
     {

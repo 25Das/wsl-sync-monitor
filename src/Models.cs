@@ -136,7 +136,7 @@ public sealed class Snapshot
         Target = string.IsNullOrWhiteSpace(configured)
             ? Distros.FirstOrDefault(d => d.IsDefault) ?? Distros.FirstOrDefault()
             : Distros.FirstOrDefault(d => d.Name.Equals(configured, StringComparison.OrdinalIgnoreCase));
-        if (WslReadFailed) { St = StState.Unknown; return; }
+        if (WslReadFailed) return; // ReadFailures.DistroList já marcou tudo como desconhecido
         if (Distros.Count == 0) WslError ??= "Nenhuma distro instalada";
         else if (Target == null && !string.IsNullOrWhiteSpace(configured)) WslError = $"Distro \"{configured}\" não encontrada";
         if (Target is not { Running: true }) St = StState.DistroStopped;
@@ -156,13 +156,12 @@ public sealed class Snapshot
     /// <summary>Recalcula as pastas visíveis pelo filtro já aplicado (com o estado mais novo).</summary>
     public void ShowHiddenProblems()
     {
-        if (AllFolders.Count == 0) return; // lista visível montada à mão (testes)
         Folders = AllFolders.Where(f => !f.Hidden || f.Status.Level is Level.Warn or Level.Error).ToList();
     }
 
     /// <summary>
-    /// Pastas sem problema: atualizadas ou sincronizando (a cor mostra a atividade). Fora de sincronia, com erro ou
-    /// pausadas ficam de fora.
+    /// Pastas sem problema: atualizadas ou sincronizando (a cor mostra a atividade). Fora de sincronia, com erro,
+    /// pausadas ou de estado desconhecido (não se pode afirmar que estão sem problema) ficam de fora.
     /// </summary>
     public int FoldersHealthy => Folders.Count(f => f.Status.Level is Level.Ok or Level.Busy);
     public int FoldersPaused => Folders.Count(f => f.Paused);

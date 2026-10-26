@@ -93,4 +93,16 @@ public class HealthCheckTests
         var issues = Enumerable.Range(1, 5).Select(i => new HealthIssue(Level.Warn, $"aviso {i}")).ToList();
         Assert.Equal("aviso 1\naviso 2\naviso 3\ne mais 2", HealthCheck.Summary(issues));
     }
+
+    [Fact]
+    public void Estado_desconhecido_tambem_avisa()
+    {
+        var s = Snap();
+        var f = new FolderInfo { Label = "Fotos" }; ReadFailures.Folder(f, "HTTP 500");
+        AddFolder(s, f);
+        var d = new DeviceInfo { Name = "vm", Connected = true }; ReadFailures.Device(d);
+        AddDevice(s, d);
+        Assert.Equal(new[] { "pasta Fotos: estado desconhecido (HTTP 500)", "vm: andamento desconhecido" },
+            HealthCheck.Find(s, Now, 7).Select(i => i.Text));
+    }
 }

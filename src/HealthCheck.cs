@@ -4,7 +4,8 @@ public sealed record HealthIssue(Level Level, string Text);
 
 /// <summary>
 /// Verificação de pastas e dispositivos (ao iniciar e pelo menu): só o que merece atenção. Considera o que está
-/// visível no painel (o que o usuário ocultou foi escolha dele). Desligado há pouco é normal.
+/// visível no painel: o que o usuário ocultou foi escolha dele, a não ser pasta oculta com problema, que volta a
+/// aparecer (e a ser avisada). Desligado há pouco é normal; estado desconhecido também é avisado.
 /// </summary>
 public static class HealthCheck
 {
@@ -25,9 +26,11 @@ public static class HealthCheck
             var (text, level) = f.Status;
             if (level == Level.Error) issues.Add(new(Level.Error, $"pasta {f.Label}: {text}"));
             else if (level == Level.Warn) issues.Add(new(Level.Warn, $"pasta {f.Label} fora de sincronia"));
+            else if (level == Level.Unknown) issues.Add(new(Level.Warn, $"pasta {f.Label}: {PanelHeader.Lower(text)}"));
         }
 
         var active = s.Devices.Where(d => !d.Paused).ToList();
+        foreach (var d in active.Where(d => d.Status.Level == Level.Unknown)) issues.Add(new(Level.Warn, $"{d.Name}: andamento desconhecido"));
         foreach (var d in active.Where(d => !d.Connected))
         {
             if (d.LastSeen is not { Year: > 1970 } seen) issues.Add(new(Level.Warn, $"{d.Name} nunca conectou"));

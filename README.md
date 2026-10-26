@@ -53,8 +53,8 @@ Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 sem problemas*, *Dispo
 
 **Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas sem problemas / dispositivos
 conectados). Os números são os mesmos da dica do ícone e do painel, e a cor do símbolo diz o que está acontecendo:
-uma pasta sincronizando continua na conta (`3/3` azul, não `2/3`); só saem dela as fora de sincronia, com erro ou
-pausadas. Na barra vertical, sem espaço para os símbolos, a cor vai nos números.
+uma pasta sincronizando continua na conta (`3/3` azul, não `2/3`); só saem dela as fora de sincronia, com erro,
+pausadas ou de estado desconhecido. Na barra vertical, sem espaço para os símbolos, a cor vai nos números.
 
 **Estado desconhecido:** quando não dá para saber o estado real, o app não chuta "parado", "erro" ou "atualizado":
 mostra o ponto só com o contorno (painel, menus e widget), `?` no ícone e o motivo no painel. Com algo
