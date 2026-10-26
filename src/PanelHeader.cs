@@ -53,12 +53,14 @@ public sealed record PanelHeader(
         if (s == null) return ("Carregando…", Level.Off);
         if (!s.WslInstalled) return ("WSL não encontrado", Level.Error);
         if (s.WslFailed) return (s.WslError ?? "WSL com erro", Level.Error); // sem distro, distro inexistente…
+        if (s.WslReadFailed) return ("Estado do WSL desconhecido: " + s.WslError, Level.Unknown);
         if (!s.WslRunning) return ("WSL parado", Level.Off);
-        if (s.St != StState.Running) return ("Syncthing: " + Lower(s.StStatusText), Level.Error);
+        if (s.St != StState.Running) return ("Syncthing: " + Lower(s.StStatusText), s.StLevel);
         return s.Overall switch
         {
             Level.Error => ("Há erros em pastas ou dispositivos", Level.Error),
             Level.Busy => ("Sincronizando…", Level.Busy),
+            Level.Unknown => (UnknownText(s), Level.Unknown),
             Level.Warn when s.DevicesLevel == Level.Warn && !s.Folders.Any(f => f.Status.Level == Level.Warn) => ("Nenhum dispositivo conectado", Level.Warn),
             Level.Warn => (s.Folders.Count(f => f.Status.Level == Level.Warn) is var n && n == 1
                 ? "1 pasta precisa de atenção" : $"{n} pastas precisam de atenção", Level.Warn),
@@ -70,6 +72,16 @@ public sealed record PanelHeader(
                 var n => ($"Sincronizado · {n} pastas pausadas", Level.Ok),
             },
         };
+    }
+
+    static string UnknownText(Snapshot s)
+    {
+        int folders = s.Folders.Count(f => f.Status.Level == Level.Unknown);
+        int devices = s.Devices.Count(d => d.Status.Level == Level.Unknown);
+        var parts = new List<string>();
+        if (folders > 0) parts.Add(folders == 1 ? "1 pasta" : $"{folders} pastas");
+        if (devices > 0) parts.Add(devices == 1 ? "1 dispositivo" : $"{devices} dispositivos");
+        return parts.Count == 0 ? "Estado desconhecido" : "Estado desconhecido de " + string.Join(" e ", parts);
     }
 
     internal static string Lower(string t) => t.Length == 0 ? t : char.ToLowerInvariant(t[0]) + t[1..];

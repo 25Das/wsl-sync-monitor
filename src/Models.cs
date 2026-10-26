@@ -1,6 +1,7 @@
 namespace WslSyncMonitor;
 
-public enum Level { Off, Ok, Busy, Warn, Error }
+/// <summary>Estado de um item. Unknown: não foi possível saber (leitura que falhou, estado que o app não conhece).</summary>
+public enum Level { Off, Ok, Busy, Warn, Error, Unknown }
 
 public sealed record DistroInfo(string Name, bool Running, int Version, bool IsDefault);
 
@@ -16,6 +17,8 @@ public sealed class FolderInfo
     public string? Error;
     public string? CurrentItem;  // arquivo sendo sincronizado agora (eventos do Syncthing)
     public int RecentFiles;      // arquivos sincronizados há pouco (eventos): mostrados por alguns segundos
+    public string? ReadError;    // por que o estado não pôde ser lido (State fica "unknown")
+    public bool Hidden;          // oculta pelos filtros do usuário (só aparece se tiver problema)
 
     public FolderInfo Clone() => (FolderInfo)MemberwiseClone();
 
@@ -35,7 +38,8 @@ public sealed class FolderInfo
         "sync-waiting" => ("Aguardando sincronização", Level.Busy),
         "cleaning" or "clean-waiting" => ("Limpando", Level.Busy),
         "error" => ("Erro" + (Error != null ? ": " + Error : ""), Level.Error),
-        _ => (State, Level.Warn),
+        "unknown" => ("Estado desconhecido" + (ReadError != null ? $" ({ReadError})" : ""), Level.Unknown),
+        _ => (State, Level.Unknown), // estado que o app não conhece (Syncthing mais novo): não dá para dizer se é bom
     };
 }
 
@@ -49,6 +53,7 @@ public sealed class DeviceInfo
     public DateTime? LastSeen;
     public double InRate, OutRate;
     public bool RecentActivity; // trocou índices ou dados há pouco (eventos): mostrado por alguns segundos
+    public bool CompletionUnknown; // o andamento não pôde ser lido: não se sabe se está em dia
 
     public DeviceInfo Clone() => (DeviceInfo)MemberwiseClone();
 
@@ -73,6 +78,7 @@ public sealed class DeviceInfo
                 return (LastSeen is { Year: > 1970 } ls ? $"Desconectado · visto {Fmt.Ago(ls)}" : "Desconectado", Level.Off);
             if (Completion < 100 || NeedBytes > 0)
                 return ($"Sincronizando {Math.Floor(Completion):0}% ({Fmt.Bytes(NeedBytes)})", Level.Busy);
+            if (CompletionUnknown) return ("Conectado · andamento desconhecido", Level.Unknown);
             if (RecentActivity) return ("Sincronizado agora", Level.Busy);
             return ("Atualizado", Level.Ok);
         }
@@ -117,6 +123,43 @@ public sealed class Snapshot
 
     public bool WslRunning => Target?.Running == true;
 
+    /// <summary>A lista de distros não pôde ser lida: não se sabe se a distro existe nem se está ligada.</summary>
+    public bool WslReadFailed;
+
+    /// <summary>
+    /// Escolhe a distro do Syncthing (a configurada ou a padrão) a partir da lista lida. Os erros "nenhuma distro"
+    /// e "não encontrada" só valem com a lista lida; sem ela, o estado é desconhecido. Sem distro ligada, o
+    /// Syncthing certamente não roda nela.
+    /// </summary>
+    public void ResolveTarget(string? configured)
+    {
+        Target = string.IsNullOrWhiteSpace(configured)
+            ? Distros.FirstOrDefault(d => d.IsDefault) ?? Distros.FirstOrDefault()
+            : Distros.FirstOrDefault(d => d.Name.Equals(configured, StringComparison.OrdinalIgnoreCase));
+        if (WslReadFailed) { St = StState.Unknown; return; }
+        if (Distros.Count == 0) WslError ??= "Nenhuma distro instalada";
+        else if (Target == null && !string.IsNullOrWhiteSpace(configured)) WslError = $"Distro \"{configured}\" não encontrada";
+        if (Target is not { Running: true }) St = StState.DistroStopped;
+    }
+
+    /// <summary>
+    /// Separa o que aparece no painel e nos contadores: o que o usuário ocultou fica de fora, a não ser pasta com
+    /// problema (fora de sincronia ou com erro), que volta a aparecer. Chamado de novo depois dos eventos.
+    /// </summary>
+    public void ApplyFilters(Func<FolderInfo, bool> folderHidden, Func<DeviceInfo, bool> deviceHidden)
+    {
+        foreach (var f in AllFolders) f.Hidden = folderHidden(f);
+        ShowHiddenProblems();
+        Devices = AllDevices.Where(d => !deviceHidden(d)).ToList();
+    }
+
+    /// <summary>Recalcula as pastas visíveis pelo filtro já aplicado (com o estado mais novo).</summary>
+    public void ShowHiddenProblems()
+    {
+        if (AllFolders.Count == 0) return; // lista visível montada à mão (testes)
+        Folders = AllFolders.Where(f => !f.Hidden || f.Status.Level is Level.Warn or Level.Error).ToList();
+    }
+
     /// <summary>
     /// Pastas sem problema: atualizadas ou sincronizando (a cor mostra a atividade). Fora de sincronia, com erro ou
     /// pausadas ficam de fora.
@@ -129,14 +172,15 @@ public sealed class Snapshot
     public int DevicesOnline => Devices.Count(d => d.Connected);
 
     /// <summary>Sem a distro do Syncthing (nenhuma instalada, a configurada não existe…) é erro, não "parado".</summary>
-    public bool WslFailed => !WslInstalled || (Target == null && WslError != null);
+    public bool WslFailed => !WslInstalled || (!WslReadFailed && Target == null && WslError != null);
 
-    public Level WslLevel => WslFailed ? Level.Error : WslRunning ? Level.Ok : Level.Off;
+    public Level WslLevel => WslFailed ? Level.Error : WslReadFailed ? Level.Unknown : WslRunning ? Level.Ok : Level.Off;
 
     public Level StLevel => St switch
     {
         StState.Running => Level.Ok,
-        StState.DistroStopped or StState.Unknown => Level.Off,
+        StState.DistroStopped => Level.Off,
+        StState.Unknown => Level.Unknown,
         _ => Level.Error,
     };
 
@@ -148,11 +192,12 @@ public sealed class Snapshot
     {
         get
         {
-            // todos os dispositivos, inclusive os ocultos do painel: um conectado oculto também sincroniza
+            // "nenhum conectado" olha todos, inclusive os ocultos: um conectado oculto também sincroniza, e todos
+            // desligados é problema. Fora isso, oculto não conta (não deixa o widget azul nem verde).
             var active = AllDevices.Where(d => !d.Paused).ToList();
             if (active.Count == 0) return Level.Off;
-            if (active.Any(d => d.Status.Level == Level.Busy)) return Level.Busy;
-            return active.Any(d => d.Connected) ? Level.Ok : Level.Warn;
+            if (!active.Any(d => d.Connected)) return Level.Warn;
+            return Levels.Worst(Devices.Where(d => !d.Paused).Select(d => d.Status.Level));
         }
     }
 
@@ -161,7 +206,9 @@ public sealed class Snapshot
         get
         {
             if (WslFailed) return Level.Error;
+            if (WslReadFailed) return Level.Unknown;
             if (!WslRunning) return Level.Off;
+            if (St == StState.Unknown) return Level.Unknown;
             if (St != StState.Running) return Level.Error;
             var worst = Levels.Worst([FoldersLevel, DevicesLevel]);
             return worst == Level.Off ? Level.Ok : worst; // nada pendente nem desligado conta: tudo ok
@@ -175,14 +222,17 @@ public sealed class Snapshot
         StState.NotRunning => "Não está em execução",
         StState.Unreachable => "Sem resposta da API",
         StState.AuthError => "Chave da API inválida",
-        _ => "Desconhecido",
+        _ => "Estado desconhecido",
     };
 }
 
-/// <summary>Precedência dos estados: erro, depois ocupado (sincronizando), atenção e ok.</summary>
+/// <summary>
+/// Precedência dos estados: erro, depois ocupado (sincronizando), atenção, desconhecido e ok (com algo
+/// desconhecido não dá para dizer que está tudo certo).
+/// </summary>
 public static class Levels
 {
-    static readonly Level[] Precedence = [Level.Error, Level.Busy, Level.Warn, Level.Ok];
+    static readonly Level[] Precedence = [Level.Error, Level.Busy, Level.Warn, Level.Unknown, Level.Ok];
 
     /// <summary>O estado mais importante da lista (sem nenhum: desligado).</summary>
     public static Level Worst(IEnumerable<Level> levels)
@@ -219,4 +269,38 @@ public static class Fmt
     public static string Duration(TimeSpan t) =>
         t.TotalDays >= 1 ? $"{(int)t.TotalDays}d {t.Hours}h" :
         t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes}m" : $"{t.Minutes}m {t.Seconds}s";
+}
+
+/// <summary>
+/// O que fazer quando uma leitura falha: marcar como desconhecido o que não se sabe, sem afirmar parado, erro ou
+/// atualizado. O motivo vai junto para o painel.
+/// </summary>
+public static class ReadFailures
+{
+    /// <summary>A lista de distros (wsl.exe) não pôde ser lida.</summary>
+    public static void DistroList(Snapshot s, string error)
+    {
+        s.WslReadFailed = true;
+        s.WslError = error;
+        s.St = StState.Unknown;
+    }
+
+    /// <summary>
+    /// A API não respondeu. Com o processo conhecido: parado ou sem resposta (erro). Sem saber se ele roda (o
+    /// app não pode executar comandos na distro, ou a consulta falhou): desconhecido.
+    /// </summary>
+    public static (StState State, string Text) ApiUnreachable(bool? processRunning, string url, string error) => processRunning switch
+    {
+        false => (StState.NotRunning, "Processo syncthing não encontrado na distro."),
+        true => (StState.Unreachable, $"Syncthing roda, mas {url} não responde ({error})."),
+        null => (StState.Unknown, $"{url} não responde ({error}); não foi possível saber se o Syncthing está rodando."),
+    };
+
+    public static void Folder(FolderInfo f, string error)
+    {
+        f.State = "unknown";
+        f.ReadError = error;
+    }
+
+    public static void Device(DeviceInfo d) => d.CompletionUnknown = true;
 }

@@ -1,6 +1,6 @@
 namespace WslSyncMonitor;
 
-public enum IconGlyph { Loading, Off, Sync, Ok, Warn, Error }
+public enum IconGlyph { Loading, Off, Sync, Ok, Warn, Error, Unknown }
 
 /// <summary>O que o ícone da bandeja mostra: símbolo, cor e marcas.</summary>
 public sealed record TrayIconModel(IconGlyph Glyph, Level Level, bool KeptAlive, bool UpdatePending)
@@ -8,8 +8,6 @@ public sealed record TrayIconModel(IconGlyph Glyph, Level Level, bool KeptAlive,
     public static TrayIconModel From(Snapshot? s, bool keptAlive, bool updatePending)
     {
         if (s == null) return new(IconGlyph.Loading, Level.Off, keptAlive, updatePending);
-        if (s.WslFailed) return new(IconGlyph.Error, Level.Error, keptAlive, updatePending);
-        if (!s.WslRunning) return new(IconGlyph.Off, Level.Off, keptAlive, updatePending);
         var level = s.Overall;
         var glyph = level switch
         {
@@ -17,6 +15,7 @@ public sealed record TrayIconModel(IconGlyph Glyph, Level Level, bool KeptAlive,
             Level.Busy => IconGlyph.Sync,
             Level.Warn => IconGlyph.Warn,
             Level.Ok => IconGlyph.Ok,
+            Level.Unknown => IconGlyph.Unknown,
             _ => IconGlyph.Off,
         };
         return new(glyph, level, keptAlive, updatePending);
@@ -32,6 +31,7 @@ public sealed record TrayIconModel(IconGlyph Glyph, Level Level, bool KeptAlive,
         var lines = new List<string> { s?.Target?.Name ?? "WSL Sync Monitor" };
         if (s == null) lines.Add("Carregando…");
         else if (s.WslFailed) lines.Add("WSL: " + PanelHeader.Lower(FirstLine(s.WslError ?? "não encontrado")));
+        else if (s.WslReadFailed) lines.Add($"WSL: estado desconhecido ({FirstLine(s.WslError ?? "")})");
         else if (!s.WslRunning) lines.Add("WSL: parado");
         else if (s.St != StState.Running) lines.Add("Syncthing: " + PanelHeader.Lower(s.StStatusText));
         else

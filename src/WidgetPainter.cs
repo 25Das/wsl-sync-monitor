@@ -90,9 +90,7 @@ public sealed class WidgetPainter
         void DotAt(float x, float cy, Level l)
         {
             maxX = Math.Max(maxX, x + dot);
-            if (!draw) return;
-            using var b = new SolidBrush(Theme.For(l));
-            g.FillEllipse(b, x, cy - dot / 2f, dot, dot);
+            if (draw) Theme.Dot(g, x, cy - dot / 2f, dot, l);
         }
         float Text(string t, Font f, float x, float cy, Brush? br = null)
         {

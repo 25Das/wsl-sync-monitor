@@ -387,6 +387,25 @@ public static class Theme
         _ => Color.FromArgb(0x8B, 0x94, 0x9E),
     };
 
+    /// <summary>Ponto de estado (painel, menus, widget): cheio; só o contorno quando o estado é desconhecido.</summary>
+    public static void Dot(Graphics g, float x, float y, float d, Level l)
+    {
+        var old = g.SmoothingMode;
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        if (l == Level.Unknown)
+        {
+            using var pen = new Pen(For(l), Math.Max(1.5f, d / 5f));
+            float w = pen.Width;
+            g.DrawEllipse(pen, x + w / 2, y + w / 2, d - w, d - w);
+        }
+        else
+        {
+            using var b = new SolidBrush(For(l));
+            g.FillEllipse(b, x, y, d, d);
+        }
+        g.SmoothingMode = old;
+    }
+
     public sealed record Palette(Color Bg, Color Card, Color Border, Color Text, Color Dim, Color Accent, Color Hover);
 
     public static Palette Current => AppsLight

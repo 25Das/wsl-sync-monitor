@@ -39,7 +39,7 @@ public static class RefreshRules
     /// </summary>
     public static bool ShouldProbe(Snapshot? before, Snapshot after)
     {
-        if (after.Target is not { Running: true } || after.St is not (StState.NotRunning or StState.Unreachable)) return false;
+        if (after.Target is not { Running: true } || after.St is not (StState.NotRunning or StState.Unreachable or StState.Unknown)) return false;
         return before == null || before.Target is not { Running: true } || before.St == StState.Running;
     }
 }

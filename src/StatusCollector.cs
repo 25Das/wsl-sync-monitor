@@ -34,27 +34,18 @@ public sealed class StatusCollector : IDisposable
     {
         var snap = new Snapshot();
 
-        if (!WslService.IsInstalled) { snap.WslInstalled = false; snap.WslError = "wsl.exe não encontrado"; return snap; }
+        if (!WslService.IsInstalled) { snap.WslInstalled = false; snap.WslError = "wsl.exe não encontrado"; snap.St = StState.DistroStopped; return snap; }
 
         try { snap.Distros = await WslService.GetDistrosAsync(); }
         catch (Exception ex)
         {
-            snap.WslError = ex.Message;
             if (ex is WslService.SessionEndingException) throw; // nada a mostrar: o app está para fechar
+            ReadFailures.DistroList(snap, ex.Message);
         }
 
-        if (snap.Distros.Count == 0 && snap.WslError == null) snap.WslError = "Nenhuma distro instalada";
-
-        snap.Target = string.IsNullOrWhiteSpace(s.Distro)
-            ? snap.Distros.FirstOrDefault(d => d.IsDefault) ?? snap.Distros.FirstOrDefault()
-            : snap.Distros.FirstOrDefault(d => d.Name.Equals(s.Distro, StringComparison.OrdinalIgnoreCase));
-
-        if (snap.Target == null && !string.IsNullOrWhiteSpace(s.Distro))
-            snap.WslError = $"Distro \"{s.Distro}\" não encontrada";
-
+        snap.ResolveTarget(s.Distro);
         if (snap.Target is not { Running: true })
         {
-            snap.St = StState.DistroStopped;
             snap.Url = GuiUrl(s);
             return snap;
         }
@@ -84,35 +75,24 @@ public sealed class StatusCollector : IDisposable
         }
         catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException or TimeoutException) && !allowDistroCommands)
         {
-            snap.St = StState.Unreachable;
-            snap.StError = $"{GuiUrl(s)} não responde ({ex.Message}).";
+            // sem poder executar comandos na distro, não dá para saber se o processo roda
+            (snap.St, snap.StError) = ReadFailures.ApiUnreachable(null, GuiUrl(s), ex.Message);
             LastApiError = ex.Message;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or TimeoutException)
         {
             LastApiError = ex.Message;
-            bool running = false;
+            bool? running = null;
             try { running = await WslService.IsProcessRunningAsync(distro, "syncthing"); }
             catch (Exception pex) { Log.Failure("syncthing", "pgrep", "não foi possível saber se o Syncthing roda: " + pex.Message); }
 
-            if (!running)
-            {
-                snap.St = StState.NotRunning;
-                snap.StError = "Processo syncthing não encontrado na distro.";
-            }
-            else if (await TryWslIpFallbackAsync(snap, s, distro))
-            {
-                // ok, conseguimos pelo IP da VM
-            }
-            else
-            {
-                snap.St = StState.Unreachable;
-                snap.StError = $"Syncthing roda, mas {GuiUrl(s)} não responde ({ex.Message}).";
-            }
+            if (running != true || !await TryWslIpFallbackAsync(snap, s, distro))
+                (snap.St, snap.StError) = ReadFailures.ApiUnreachable(running, GuiUrl(s), ex.Message);
         }
         catch (Exception ex)
         {
-            snap.St = StState.Unreachable;
+            // resposta que o app não entendeu: não se sabe o estado
+            snap.St = StState.Unknown;
             snap.StError = ex.Message + SeeTechInfo;
             LastApiError = ex.ToString();
         }
@@ -309,19 +289,22 @@ public sealed class StatusCollector : IDisposable
         var folderTasks = snap.Folders.Where(f => !f.Paused).Select(async f =>
         {
             try { SyncthingApi.ApplyFolderStatus(f, await GetAsync(url, key, "/rest/db/status?folder=" + Q(f.Id))); }
-            catch (Exception ex) { f.State = "error"; f.Error = ex.Message; }
+            catch (Exception ex) { ReadFailures.Folder(f, ex.Message); }
         });
         var devTasks = snap.Devices.Where(d => d.Connected).Select(async d =>
         {
             try { SyncthingApi.ApplyCompletion(d, await GetAsync(url, key, "/rest/db/completion?device=" + Q(d.Id))); }
-            catch (Exception ex) { Log.Failure("syncthing", "completion " + d.Id, $"andamento de {d.Name}: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                ReadFailures.Device(d);
+                Log.Failure("syncthing", "completion " + d.Id, $"andamento de {d.Name}: {ex.Message}");
+            }
         });
         await Task.WhenAll(folderTasks.Concat(devTasks));
 
         snap.AllFolders = snap.Folders;
-        snap.Folders = snap.AllFolders.Where(f => !s.IsFolderHidden(f)).ToList();
         snap.AllDevices = snap.Devices;
-        snap.Devices = snap.AllDevices.Where(d => !s.IsDeviceHidden(d)).ToList();
+        snap.ApplyFilters(s.IsFolderHidden, s.IsDeviceHidden);
     }
 
     static string? Str(JsonElement e, string p) => SyncthingApi.Str(e, p);

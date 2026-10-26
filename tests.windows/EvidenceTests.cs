@@ -62,6 +62,24 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
         return s;
     }
 
+    /// <summary>Uma pasta cuja leitura falhou e o WSL que não respondeu: estado desconhecido.</summary>
+    static Snapshot Unknown()
+    {
+        var s = Snap();
+        var f = new FolderInfo { Id = "u", Label = "Fotos", Path = "~/fotos" };
+        ReadFailures.Folder(f, "HTTP 500 em /rest/db/status");
+        s.Folders.Add(f);
+        return s;
+    }
+
+    static Snapshot WslUnknown()
+    {
+        var s = new Snapshot { Time = At };
+        ReadFailures.DistroList(s, "wsl.exe não respondeu a tempo");
+        s.ResolveTarget(null);
+        return s;
+    }
+
     static Snapshot Stopped() => new() { Time = At, St = StState.DistroStopped, Target = new DistroInfo("Ubuntu-26.04", false, 2, true) };
 
     static Snapshot AuthError() { var s = Snap(); s.St = StState.AuthError; s.Folders.Clear(); s.Devices.Clear(); return s; }
@@ -88,6 +106,8 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
         { "parado", "WSL parado" },
         { "erro", "Syncthing com chave da API recusada" },
         { "carregando", "Carregando (sem dados ainda)" },
+        { "desconhecido", "Pasta cuja leitura falhou: estado desconhecido (ponto vazado)" },
+        { "wsl-desconhecido", "wsl.exe não respondeu: estado do WSL desconhecido" },
     };
 
     [Theory]
@@ -123,6 +143,8 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
                     case "parado": popup.SetSnapshot(Stopped()); break;
                     case "erro": popup.SetSnapshot(AuthError()); break;
                     case "carregando": popup.SetUpdate(UpdateState.NotChecked); break;
+                    case "desconhecido": popup.SetSnapshot(Unknown()); break;
+                    case "wsl-desconhecido": popup.SetSnapshot(WslUnknown()); break;
                 }
                 using var bmp = popup.RenderPreview();
                 var theme = light ? "claro" : "escuro";
@@ -141,6 +163,8 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
             ("sincronizando", "sincronizando", Syncing()),
             ("parado", "WSL parado", Stopped()),
             ("carregando", "carregando", null),
+            ("desconhecido", "pasta com estado desconhecido", Unknown()),
+            ("wsl-desconhecido", "WSL sem resposta", WslUnknown()),
         };
         foreach (var light in new[] { false, true })
             foreach (var (barName, edge, thickness) in new[] { ("barra-alta", TaskbarEdge.Bottom, 48), ("barra-baixa", TaskbarEdge.Bottom, 32), ("barra-vertical", TaskbarEdge.Left, 48) })

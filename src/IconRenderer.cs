@@ -4,7 +4,7 @@ namespace WslSyncMonitor;
 
 /// <summary>
 /// Desenha o ícone da bandeja: círculo na cor do estado com um símbolo (energia, sincronizar, ok, atenção,
-/// erro) e marcas nos cantos (mantida ligada, atualização pendente). O que mostrar vem de <see cref="TrayIconModel"/>.
+/// erro, desconhecido) e marcas nos cantos (mantida ligada, atualização pendente). O que mostrar vem de <see cref="TrayIconModel"/>.
 /// </summary>
 public sealed class IconRenderer : IDisposable
 {
@@ -19,6 +19,7 @@ public sealed class IconRenderer : IDisposable
         IconGlyph.Ok => ("", "Segoe MDL2 Assets"),    // CheckMark
         IconGlyph.Error => ("", "Segoe MDL2 Assets"), // Cancel
         IconGlyph.Warn => ("!", "Segoe UI"),
+        IconGlyph.Unknown => ("?", "Segoe UI"),
         _ => ("…", "Segoe UI"),
     };
 

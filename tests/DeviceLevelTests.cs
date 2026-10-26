@@ -71,11 +71,11 @@ public class DeviceLevelTests
     }
 
     [Fact]
-    public void Dispositivo_conectado_oculto_do_painel_tambem_conta()
+    public void Dispositivo_conectado_oculto_evita_o_falso_aviso_sem_pintar_de_verde()
     {
         var s = Triangle(true, false);
         s.Devices.RemoveAt(0); // o conectado está oculto: só o desligado aparece no painel
-        Assert.Equal(Level.Ok, s.DevicesLevel);
+        Assert.Equal(Level.Off, s.DevicesLevel); // não é "nenhum conectado", mas oculto não conta como ok
         Assert.Equal(Level.Ok, s.Overall);
     }
 

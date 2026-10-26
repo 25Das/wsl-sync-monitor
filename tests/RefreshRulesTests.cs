@@ -76,6 +76,11 @@ public class ProbeRulesTests
         Assert.True(RefreshRules.ShouldProbe(null, Snap(true, StState.NotRunning)));
 
     [Fact]
+    public void Sem_resposta_e_sem_saber_se_o_processo_roda_tambem_sonda() =>
+        // distro liberada para desligar: o app não executa comandos nela e o estado fica desconhecido
+        Assert.True(RefreshRules.ShouldProbe(Snap(true, StState.Running), Snap(true, StState.Unknown)));
+
+    [Fact]
     public void Continua_sem_Syncthing_nao_sonda_de_novo() =>
         Assert.False(RefreshRules.ShouldProbe(Snap(true, StState.NotRunning), Snap(true, StState.NotRunning))); // ele não usa o Syncthing nesta distro
 

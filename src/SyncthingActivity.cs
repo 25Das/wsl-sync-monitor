@@ -239,6 +239,7 @@ public sealed class SyncthingActivity
                 di.RecentActivity = now - d.LastActivity < _linger;
             }
         }
+        s.ShowHiddenProblems(); // pasta oculta que um evento deixou com problema volta a aparecer
         return s;
     }
 

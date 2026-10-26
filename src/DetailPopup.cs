@@ -315,7 +315,7 @@ public sealed class DetailPopup : Form
                 Clickable(new(PanelItemKind.Distro, d.Name));
                 Row(d.Running ? Level.Ok : Level.Off, name, (d.Running ? "Em execução" : "Parada") + Menu, target ? bold : null);
             }
-            if (s.WslError != null) Wrap(s.WslError, Theme.For(Level.Error));
+            if (s.WslError != null) Wrap(s.WslError, Theme.For(s.WslLevel)); // erro ou desconhecido (leitura falhou)
 
             // ---- Proteção (seção própria: o texto começa pelo nome da distro) ----
             if (_guard != null)
@@ -334,7 +334,7 @@ public sealed class DetailPopup : Form
                 Sub($"Ativo há {Fmt.Duration(s.StUptime)} · ID {s.MyId?[..Math.Min(7, s.MyId.Length)]} · ↓ {Fmt.Rate(s.InRate)}  ↑ {Fmt.Rate(s.OutRate)}");
                 Sub(s.Url ?? "");
             }
-            if (s.StError != null) Wrap(s.StError, Theme.For(Level.Error));
+            if (s.StError != null) Wrap(s.StError, Theme.For(s.StLevel));
 
             if (s.St != StState.Running) return y + P(10);
 
@@ -347,7 +347,7 @@ public sealed class DetailPopup : Form
             {
                 var (txt, lvl) = f.Status;
                 Clickable(new(PanelItemKind.Folder, f.Id));
-                Row(lvl, f.Label, txt + Menu);
+                Row(lvl, f.Label + (f.Hidden ? " (oculta, com problema)" : ""), txt + Menu);
                 var type = f.Type switch { "sendonly" => " · somente envio", "receiveonly" => " · somente recebimento", "receiveencrypted" => " · criptografada", _ => "" };
                 Sub($"{Fmt.Bytes(f.GlobalBytes)} · {f.SharedWith} dispositivo(s){type} · {f.Path}");
                 if (lvl == Level.Busy && f.State == "syncing") Bar(f.Percent, lvl);
@@ -565,13 +565,7 @@ public sealed class DetailPopup : Form
 
     // ------------------------------------------------------------------ helpers
 
-    static void Dot(Graphics g, int cx, int cy, int d, Level l)
-    {
-        var old = g.SmoothingMode; g.SmoothingMode = SmoothingMode.AntiAlias;
-        using var b = new SolidBrush(Theme.For(l));
-        g.FillEllipse(b, cx - d / 2f, cy - d / 2f, d, d);
-        g.SmoothingMode = old;
-    }
+    static void Dot(Graphics g, int cx, int cy, int d, Level l) => Theme.Dot(g, cx - d / 2f, cy - d / 2f, d, l);
 
     static GraphicsPath RoundPath(Rectangle r, int rad)
     {

@@ -45,6 +45,7 @@ Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo co
 | ✓ verde | tudo atualizado |
 | ! amarelo | atenção (pasta fora de sincronia, nenhum dispositivo conectado) |
 | ✕ vermelho | erro (Syncthing parado, chave recusada, WSL ausente, distro do Syncthing não encontrada) |
+| ? cinza | estado desconhecido: uma leitura falhou (o `wsl.exe` não respondeu, a API não respondeu e não dá para saber se o Syncthing roda, o andamento de uma pasta ou dispositivo não pôde ser lido) ou o Syncthing informou um estado que o app não conhece |
 
 Marcas nos cantos: **azul em cima** = nova versão disponível; **clara embaixo** = distro mantida ligada pelo app.
 Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 sem problemas*, *Dispositivos: 2 de 3 conectados*,
@@ -53,7 +54,17 @@ Passar o mouse mostra a distro e, abaixo, *Pastas: 1 de 1 sem problemas*, *Dispo
 **Widget sobre a barra de tarefas:** `● WSL ● Sync` / `📁 3/3  💻 2/3` (pastas sem problemas / dispositivos
 conectados). Os números são os mesmos da dica do ícone e do painel, e a cor do símbolo diz o que está acontecendo:
 uma pasta sincronizando continua na conta (`3/3` azul, não `2/3`); só saem dela as fora de sincronia, com erro ou
-pausadas. Na barra vertical, sem espaço para os símbolos, a cor vai nos números. Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
+pausadas. Na barra vertical, sem espaço para os símbolos, a cor vai nos números.
+
+**Estado desconhecido:** quando não dá para saber o estado real, o app não chuta "parado", "erro" ou "atualizado":
+mostra o ponto só com o contorno (painel, menus e widget), `?` no ícone e o motivo no painel. Com algo
+desconhecido, o cabeçalho não diz "Tudo sincronizado".
+
+**Ocultos só contam com problema:** uma pasta oculta (pelo menu ou pelos filtros) volta a aparecer, marcada
+*(oculta, com problema)*, se ficar fora de sincronia ou com erro. Um dispositivo oculto não deixa o widget azul nem
+verde, mas evita o falso aviso *nenhum dispositivo conectado* quando é ele que está conectado.
+
+Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
 junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado, sem ocupar o canto
 do botão Widgets (clima) do Windows 11. O widget fica **dentro** da barra (é uma janela filha dela): continua
 visível com o menu Iniciar aberto e, com a barra que se oculta sozinha, desliza junto com ela. Se der problema no

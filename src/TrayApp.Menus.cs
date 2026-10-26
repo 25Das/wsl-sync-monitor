@@ -41,12 +41,7 @@ public sealed partial class TrayApp
     {
         if (_dots.TryGetValue(level, out var b)) return b;
         b = new Bitmap(16, 16);
-        using (var g = Graphics.FromImage(b))
-        using (var brush = new SolidBrush(Theme.For(level)))
-        {
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            g.FillEllipse(brush, 4, 4, 8, 8);
-        }
+        using (var g = Graphics.FromImage(b)) Theme.Dot(g, 4, 4, 8, level);
         return _dots[level] = b;
     }
 
