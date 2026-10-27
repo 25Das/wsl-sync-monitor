@@ -42,7 +42,15 @@ public sealed partial class TrayApp
     /// <summary>Todos os dispositivos estão pausados? (decide entre "Pausar tudo" e "Retomar tudo")</summary>
     bool AllDevicesPaused => _snap?.AllDevices is { Count: > 0 } all && all.All(d => d.Paused);
 
-    Task SetAllPausedAsync(bool paused) => SyncthingCommandAsync(() => _collector.SetAllPausedAsync(_settings, paused));
+    /// <summary>
+    /// Pausa ou retoma todos os dispositivos. Com algum ignorado, um a um só os monitorados (o comando do Syncthing
+    /// pegaria também os ignorados, e nada se faz com eles sem antes deixar de ignorar).
+    /// </summary>
+    Task SetAllPausedAsync(bool paused) => SyncthingCommandAsync(async () =>
+    {
+        if (_settings.IgnoredDevices.Count == 0) { await _collector.SetAllPausedAsync(_settings, paused); return; }
+        foreach (var d in _snap?.AllDevices ?? []) await _collector.SetDevicePausedAsync(_settings, d.Id, paused);
+    });
 
     Task ScanAllNowAsync() => SyncthingCommandAsync(() => _collector.ScanAllAsync(_settings));
 
@@ -55,7 +63,8 @@ public sealed partial class TrayApp
     /// <summary>Arquivos recebidos, alterados aqui ou que falharam desde que o app abriu (de uma pasta ou de todas).</summary>
     void ShowActivity(FolderInfo? f = null) => ShowText(f == null ? "atividade recente" : $"atividade recente em {f.Label}", () =>
     {
-        var history = _activity.History(f?.Id).Where(e => !_settings.IgnoredFolders.Contains(e.Folder)).ToList();
+        var ignored = _activity.Ignored.Folders; // o que entrou antes de a pasta ser ignorada
+        var history = _activity.History(f?.Id).Where(e => !ignored.Contains(e.Folder)).ToList();
         var labels = (_snap?.AllFolders ?? []).ToDictionary(x => x.Id, x => x.Label);
         return Task.FromResult(history.Count == 0
             ? "Nenhum arquivo sincronizado desde que o app abriu (ou desde que o Syncthing ligou)."

@@ -135,4 +135,93 @@ public class IgnoredItemsTests
         // os demais continuam valendo
         Assert.NotEqual(ActivityChange.None, a.Apply([Event("StateChanged", """{"folder":"ok","from":"idle","to":"syncing"}""")], now));
     }
+
+    // ---- andamento dos dispositivos sem as pastas ignoradas ----
+
+    [Fact]
+    public void Andamento_por_pasta_so_quando_o_dispositivo_compartilha_pasta_ignorada()
+    {
+        Assert.Null(SyncthingApi.CompletionFolders(Json("config"), Vm, Me, IgnoredItems.None)); // total do Syncthing serve
+        Assert.Null(SyncthingApi.CompletionFolders(Json("config"), Vm, Me, Ignore(["default"])));  // "default" não é dela
+        // ignorando a "izdab-dr9wa", sobra só a "fotos", que está pausada: nada a esperar
+        Assert.Equal([], SyncthingApi.CompletionFolders(Json("config"), Vm, Me, Ignore(["izdab-dr9wa"])));
+    }
+
+    static JsonElement J(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    [Fact]
+    public void Andamento_combinado_das_pastas_monitoradas()
+    {
+        var c = SyncthingApi.CombineCompletion([
+            J("""{"completion":50,"globalBytes":100,"needBytes":50,"needItems":1,"needDeletes":0}"""),
+            J("""{"completion":100,"globalBytes":300,"needBytes":0,"needItems":0,"needDeletes":0}"""),
+        ]);
+        Assert.Equal((87.5, 50.0, 1.0), (SyncthingApi.Num(c, "completion"), SyncthingApi.Num(c, "needBytes"), SyncthingApi.Num(c, "needItems")));
+        Assert.Equal(100, SyncthingApi.Num(SyncthingApi.CombineCompletion([]), "completion", -1));
+        // só exclusões pendentes: não está em dia (o Syncthing também não diz 100%)
+        var deletes = SyncthingApi.CombineCompletion([J("""{"globalBytes":100,"needBytes":0,"needItems":0,"needDeletes":2}""")]);
+        Assert.True(SyncthingApi.Num(deletes, "completion") < 100);
+    }
+
+    // ---- eventos ----
+
+    [Fact]
+    public void Pasta_ignorada_pausada_ou_retomada_pela_interface_do_Syncthing_tambem_e_descartada()
+    {
+        var a = new SyncthingActivity(TimeSpan.FromSeconds(5)) { Ignored = Ignore(["ig"]) };
+        Assert.Equal(ActivityChange.None, a.Apply([Event("FolderPaused", """{"id":"ig","label":"Ignorada"}""")], DateTime.Now));
+        // um dispositivo com o mesmo texto de id não é confundido com a pasta
+        var b = new SyncthingActivity(TimeSpan.FromSeconds(5)) { Ignored = Ignore(devices: ["x"]) };
+        Assert.NotEqual(ActivityChange.None, b.Apply([Event("FolderPaused", """{"id":"x","label":"X"}""")], DateTime.Now));
+    }
+
+    [Fact]
+    public void Ao_ignorar_o_que_se_sabia_do_item_e_esquecido()
+    {
+        // senão, ao deixar de ignorar, voltaria um arquivo "em andamento" de muito tempo atrás
+        var a = new SyncthingActivity(TimeSpan.FromSeconds(5));
+        a.Apply([Event("ItemStarted", """{"folder":"ig","item":"a.txt","action":"update","type":"file"}""")], DateTime.Now);
+        Assert.Equal(1, a.TrackedFiles);
+        a.Ignored = Ignore(["ig"]);
+        Assert.Equal(0, a.TrackedFiles);
+    }
+
+    // ---- velocidades, compartilhamento e itens que sumiram do Syncthing ----
+
+    static JsonElement Conns(long totalIn, long vmIn, long oldIn) => J(
+        "{\"total\":{\"inBytesTotal\":" + totalIn + ",\"outBytesTotal\":0},\"connections\":{" +
+        "\"vm\":{\"inBytesTotal\":" + vmIn + ",\"outBytesTotal\":0},\"old\":{\"inBytesTotal\":" + oldIn + ",\"outBytesTotal\":0}}}");
+
+    [Fact]
+    public void Velocidade_total_nao_inclui_dispositivo_ignorado()
+    {
+        var rates = new TransferRates();
+        var t0 = new DateTime(2026, 10, 27, 10, 0, 0);
+        var s = Running(); s.ApplyIgnored(Ignore(devices: ["old"]));
+        rates.Apply(s, Conns(0, 0, 0), t0);
+        s = Running(); s.ApplyIgnored(Ignore(devices: ["old"]));
+        rates.Apply(s, Conns(3000, 1000, 2000), t0.AddSeconds(1));
+        Assert.Equal((1000.0, 1000.0), (s.InRate, s.Devices.Single(d => d.Id == "vm").InRate));
+    }
+
+    [Fact]
+    public void Pasta_compartilhada_so_com_dispositivo_ignorado_conta_como_nao_compartilhada()
+    {
+        var s = Running();
+        s.Folders[0].DeviceIds = ["vm", "old"]; s.Folders[0].SharedWith = 2;
+        s.ApplyIgnored(Ignore(devices: ["old"]));
+        Assert.Equal(["vm"], s.Folders[0].DeviceIds);
+        Assert.Equal(1, s.Folders[0].SharedWith);
+        Assert.False(SyncthingApi.FoldersToCheck(Json("config"), Me, Ignore(devices: [Vm, Casa])).Any());
+    }
+
+    [Fact]
+    public void Ignorado_que_saiu_do_Syncthing_continua_listado_para_poder_deixar_de_ignorar()
+    {
+        var s = Running();
+        s.ApplyIgnored(Ignore(["sumiu"], ["sumiu-dev"]));
+        var f = Assert.Single(s.IgnoredFolders);
+        Assert.Equal(("sumiu", "Ignorada · não está mais no Syncthing"), (f.Label, f.Status.Text));
+        Assert.Equal("Ignorado · não está mais no Syncthing", Assert.Single(s.IgnoredDevices).Status.Text);
+    }
 }

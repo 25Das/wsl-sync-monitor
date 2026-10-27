@@ -117,15 +117,40 @@ public sealed class SyncthingActivity
     /// <summary>Quantos arquivos estão sendo lembrados (em andamento ou recentes).</summary>
     internal int TrackedFiles { get { lock (_lock) return _folders.Values.Sum(f => f.InProgress.Count + f.Recent.Count); } }
 
-    /// <summary>Pastas e dispositivos ignorados pelo usuário: os eventos deles são descartados (não são monitorados).</summary>
-    public IgnoredItems Ignored { get; set; } = IgnoredItems.None;
+    IgnoredItems _ignored = IgnoredItems.None;
+
+    /// <summary>
+    /// Pastas e dispositivos ignorados pelo usuário: os eventos deles são descartados (não são monitorados), e o que
+    /// já se sabia deles é esquecido (ao deixar de ignorar, nada antigo volta como se fosse atual).
+    /// </summary>
+    public IgnoredItems Ignored
+    {
+        get { lock (_lock) return _ignored; }
+        set
+        {
+            lock (_lock)
+            {
+                _ignored = value;
+                foreach (var id in value.Folders) _folders.Remove(id);
+                foreach (var id in value.Devices) _devices.Remove(id);
+                foreach (var key in _pulled.Keys.Where(k => value.Folders.Contains(k.Folder)).ToList()) _pulled.Remove(key);
+            }
+        }
+    }
+
+    /// <summary>O evento é de algo ignorado? A pasta vem em "folder" (ou "id" nos de pasta); o dispositivo, em "device" (ou "id" nos de dispositivo).</summary>
+    bool IsIgnored(string type, JsonElement d)
+    {
+        var folder = SyncthingApi.Str(d, "folder") ?? (type.StartsWith("Folder", StringComparison.Ordinal) ? SyncthingApi.Str(d, "id") : null);
+        var device = SyncthingApi.Str(d, "device") ?? (type.StartsWith("Device", StringComparison.Ordinal) ? SyncthingApi.Str(d, "id") : null);
+        return (folder != null && _ignored.Folders.Contains(folder)) || (device != null && _ignored.Devices.Contains(device));
+    }
 
     ActivityChange ApplyOne(string type, JsonElement d, DateTime now)
     {
         const ActivityChange redraw = ActivityChange.Redraw;
+        if (IsIgnored(type, d)) return ActivityChange.None;
         string folder = SyncthingApi.Str(d, "folder") ?? "";
-        var device = SyncthingApi.Str(d, "device") ?? SyncthingApi.Str(d, "id");
-        if (Ignored.Folders.Contains(folder) || (device != null && Ignored.Devices.Contains(device))) return ActivityChange.None;
         long seq = ++_seq;
         switch (type)
         {

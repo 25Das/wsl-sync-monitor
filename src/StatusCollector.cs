@@ -216,12 +216,15 @@ public sealed class StatusCollector : IDisposable
     public Task ScanFolderAsync(Settings s, string folderId) =>
         SendAsync(s, HttpMethod.Post, $"/rest/db/scan?folder={Q(folderId)}");
 
-    /// <summary>Pede ao Syncthing para verificar já todas as pastas não pausadas (sem esperar o atraso do monitoramento).</summary>
+    /// <summary>
+    /// Pede ao Syncthing para verificar já todas as pastas não pausadas (sem esperar o atraso do monitoramento),
+    /// menos as ignoradas: nada se faz com elas sem antes deixar de ignorar.
+    /// </summary>
     public async Task ScanAllAsync(Settings s)
     {
         var config = await GetAsync(GuiUrl(s), ApiKey(s), "/rest/config");
         foreach (var f in config.GetProperty("folders").EnumerateArray())
-            if (!Bool(f, "paused")) await ScanFolderAsync(s, Str(f, "id") ?? "");
+            if (!Bool(f, "paused") && Str(f, "id") is { } id && !s.IgnoredFolders.Contains(id)) await ScanFolderAsync(s, id);
     }
 
     /// <summary>Erros recentes do Syncthing (GET /rest/system/error).</summary>
@@ -246,13 +249,25 @@ public sealed class StatusCollector : IDisposable
 
         // em paralelo, como na leitura completa: no desligamento cada segundo conta
         var tCompletions = SyncthingApi.DevicesToCheck(config, conns, myId, ignored).Distinct()
-            .Select(async id => (id, json: await GetAsync(url, key, "/rest/db/completion?device=" + Q(id)))).ToList();
+            .Select(async id => (id, json: await CompletionAsync(url, key, config, id, myId, ignored))).ToList();
         var tFolders = SyncthingApi.FoldersToCheck(config, myId, ignored).Distinct()
             .Select(async id => (id, json: await GetAsync(url, key, "/rest/db/status?folder=" + Q(id)))).ToList();
         await Task.WhenAll(tCompletions.Cast<Task>().Concat(tFolders)); // espera todos (nenhuma falha fica sem ser vista)
         var completions = tCompletions.ToDictionary(t => t.Result.id, t => t.Result.json);
         var folders = tFolders.ToDictionary(t => t.Result.id, t => t.Result.json);
         return SyncthingApi.EvaluateSync(status, config, conns, completions, folders, ignored);
+    }
+
+    /// <summary>
+    /// Andamento do dispositivo. O total do Syncthing inclui todas as pastas; se ele compartilha alguma ignorada, o
+    /// andamento é lido pasta a pasta (só as monitoradas) e somado.
+    /// </summary>
+    async Task<JsonElement> CompletionAsync(string url, string key, JsonElement config, string deviceId, string? myId, IgnoredItems ignored)
+    {
+        var folders = SyncthingApi.CompletionFolders(config, deviceId, myId, ignored);
+        if (folders == null) return await GetAsync(url, key, "/rest/db/completion?device=" + Q(deviceId));
+        var parts = await Task.WhenAll(folders.Select(f => GetAsync(url, key, $"/rest/db/completion?device={Q(deviceId)}&folder={Q(f)}")));
+        return SyncthingApi.CombineCompletion(parts);
     }
 
     async Task<JsonElement> GetAsync(string baseUrl, string key, string path)
@@ -284,7 +299,8 @@ public sealed class StatusCollector : IDisposable
         var conns = tConn.Result.TryGetProperty("connections", out var c) ? c : default;
         snap.Devices = SyncthingApi.Devices(tConfig.Result, conns, tStats.Result, snap.MyId);
         snap.Folders = SyncthingApi.Folders(tConfig.Result, snap.MyId);
-        snap.ApplyIgnored(s.Ignored()); // antes de qualquer leitura: o que foi ignorado não é consultado
+        var ignored = s.Ignored();
+        snap.ApplyIgnored(ignored); // antes de qualquer leitura: o que foi ignorado não é consultado
         _rates.Apply(snap, tConn.Result, DateTime.UtcNow);
 
         // detalhes em paralelo; uma pasta ou dispositivo que falha não derruba o resto
@@ -295,7 +311,7 @@ public sealed class StatusCollector : IDisposable
         });
         var devTasks = snap.Devices.Where(d => d.Connected).Select(async d =>
         {
-            try { SyncthingApi.ApplyCompletion(d, await GetAsync(url, key, "/rest/db/completion?device=" + Q(d.Id))); }
+            try { SyncthingApi.ApplyCompletion(d, await CompletionAsync(url, key, tConfig.Result, d.Id, snap.MyId, ignored)); }
             catch (Exception ex)
             {
                 ReadFailures.Device(d);

@@ -20,12 +20,13 @@ public sealed class FolderInfo
     public string? ReadError;    // por que o estado não pôde ser lido (State fica "unknown")
     public bool Hidden;          // oculta pelos filtros do usuário (só aparece se tiver problema)
     public bool Ignored;         // ignorada: não monitorada (só Id, Label, Path e Type são conhecidos)
+    public bool Missing;         // ignorada que não está mais na configuração do Syncthing
 
     public FolderInfo Clone() => (FolderInfo)MemberwiseClone();
 
     public double Percent => GlobalBytes <= 0 ? 100 : Math.Clamp(100.0 * InSyncBytes / GlobalBytes, 0, 100);
 
-    public (string Text, Level Level) Status => Ignored ? ("Ignorada", Level.Off) : Paused ? ("Pausada", Level.Off) : State switch
+    public (string Text, Level Level) Status => Ignored ? (Missing ? "Ignorada · não está mais no Syncthing" : "Ignorada", Level.Off) : Paused ? ("Pausada", Level.Off) : State switch
     {
         "idle" when Errors > 0 || Error != null => ($"{Errors} erro(s)", Level.Error),
         "idle" when NeedBytes > 0 || NeedItems > 0 => ($"Fora de sincronia ({Fmt.Bytes(NeedBytes)})", Level.Warn),
@@ -56,6 +57,7 @@ public sealed class DeviceInfo
     public bool RecentActivity; // trocou índices ou dados há pouco (eventos): mostrado por alguns segundos
     public bool CompletionUnknown; // o andamento não pôde ser lido: não se sabe se está em dia
     public bool Ignored;           // ignorado: não monitorado (só Id e Name são conhecidos)
+    public bool Missing;           // ignorado que não está mais na configuração do Syncthing
 
     public DeviceInfo Clone() => (DeviceInfo)MemberwiseClone();
 
@@ -74,7 +76,7 @@ public sealed class DeviceInfo
     {
         get
         {
-            if (Ignored) return ("Ignorado", Level.Off);
+            if (Ignored) return (Missing ? "Ignorado · não está mais no Syncthing" : "Ignorado", Level.Off);
             if (Paused) return ("Pausado", Level.Off);
             if (!Connected)
                 // desligado é normal (ex.: o outro PC); quem avisa é o estado geral quando nenhum está conectado
@@ -157,16 +159,28 @@ public sealed class Snapshot
 
     /// <summary>
     /// Tira das listas o que o usuário ignorou, antes de qualquer leitura de estado: fica só o que identifica o item
-    /// (a presença na configuração do Syncthing), para listá-lo à parte.
+    /// (a presença na configuração do Syncthing), para listá-lo à parte. Ignorado que saiu do Syncthing continua
+    /// listado (só pelo ID), para poder deixar de ignorar. Dispositivo ignorado não conta no compartilhamento.
     /// </summary>
     public void ApplyIgnored(IgnoredItems ignored)
     {
         IgnoredFolders = Folders.Where(f => ignored.Folders.Contains(f.Id))
-            .Select(f => new FolderInfo { Id = f.Id, Label = f.Label, Path = f.Path, Type = f.Type, Ignored = true }).ToList();
+            .Select(f => new FolderInfo { Id = f.Id, Label = f.Label, Path = f.Path, Type = f.Type, Ignored = true })
+            .Concat(ignored.Folders.Where(id => Folders.All(f => f.Id != id))
+                .Select(id => new FolderInfo { Id = id, Label = id, Ignored = true, Missing = true }))
+            .ToList();
         Folders = Folders.Where(f => !ignored.Folders.Contains(f.Id)).ToList();
         IgnoredDevices = Devices.Where(d => ignored.Devices.Contains(d.Id))
-            .Select(d => new DeviceInfo { Id = d.Id, Name = d.Name, Ignored = true }).ToList();
+            .Select(d => new DeviceInfo { Id = d.Id, Name = d.Name, Ignored = true })
+            .Concat(ignored.Devices.Where(id => Devices.All(d => d.Id != id))
+                .Select(id => new DeviceInfo { Id = id, Name = id[..Math.Min(15, id.Length)], Ignored = true, Missing = true }))
+            .ToList();
         Devices = Devices.Where(d => !ignored.Devices.Contains(d.Id)).ToList();
+        foreach (var f in Folders.Where(f => f.DeviceIds.Any(ignored.Devices.Contains)))
+        {
+            f.DeviceIds = f.DeviceIds.Where(id => !ignored.Devices.Contains(id)).ToList();
+            f.SharedWith = f.DeviceIds.Count;
+        }
     }
 
     /// <summary>

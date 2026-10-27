@@ -376,12 +376,12 @@ public sealed class DetailPopup : Form
                 foreach (var f in s.IgnoredFolders.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
                 {
                     Clickable(new(PanelItemKind.IgnoredFolder, f.Id));
-                    Row(Level.Off, f.Label, "Pasta ignorada" + Menu, statusColor: _pal.Dim);
+                    Row(Level.Off, f.Label, (f.Missing ? f.Status.Text : "Pasta ignorada") + Menu, statusColor: _pal.Dim);
                 }
                 foreach (var d in s.IgnoredDevices.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
                 {
                     Clickable(new(PanelItemKind.IgnoredDevice, d.Id));
-                    Row(Level.Off, d.Name, "Dispositivo ignorado" + Menu, statusColor: _pal.Dim);
+                    Row(Level.Off, d.Name, (d.Missing ? d.Status.Text : "Dispositivo ignorado") + Menu, statusColor: _pal.Dim);
                 }
             }
             return y + P(10);

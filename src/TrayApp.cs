@@ -192,8 +192,11 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         bool accessChanged = fresh.ApiKey != _settings.ApiKey || fresh.SyncthingUrl != _settings.SyncthingUrl ||
                              fresh.SyncthingConfigPath != _settings.SyncthingConfigPath;
         // copia para a instância compartilhada com o widget
+        bool ignoredChanged = !fresh.IgnoredFolders.ToHashSet().SetEquals(_settings.IgnoredFolders)
+                              || !fresh.IgnoredDevices.ToHashSet().SetEquals(_settings.IgnoredDevices);
         foreach (var p in typeof(Settings).GetProperties().Where(p => p.CanWrite)) p.SetValue(_settings, p.GetValue(fresh));
         _activity.Ignored = _settings.Ignored();
+        if (ignoredChanged) RequestRefresh(); // tira (ou devolve) já das listas, sem esperar o próximo ciclo
         if (accessChanged) { _collector.InvalidateCredentials(); RestartEvents(); }
         ApplySettings();
     }

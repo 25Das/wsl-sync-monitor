@@ -163,9 +163,12 @@ public sealed partial class TrayApp
         if (all.Count == 0) yield return Info(_snap?.St == StState.Running ? "Nenhuma pasta" : "O Syncthing não está em execução");
         foreach (var f in all.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
             yield return Sub(f.Label, FolderMenu(f), Dot(f.Status.Level));
-        if (_snap?.IgnoredFolders is { Count: > 0 } ignored)
+        if (Display?.IgnoredFolders is { Count: > 0 } ignored)
+        {
+            yield return Sep();
             yield return Sub($"Ignoradas ({ignored.Count})", ignored.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase)
                 .Select(f => (ToolStripItem)Sub(f.Label, IgnoredMenu(new(PanelItemKind.IgnoredFolder, f.Id)))));
+        }
         yield return Sep();
         yield return Item("Ocultar pastas não compartilhadas", () =>
         {
@@ -208,6 +211,7 @@ public sealed partial class TrayApp
     IEnumerable<ToolStripItem> IgnoredMenu(PanelItem item)
     {
         yield return Info(item.Kind == PanelItemKind.IgnoredFolder ? "Ignorada: não monitorada" : "Ignorado: não monitorado");
+        yield return Info("Para qualquer outra ação, deixe de ignorar antes");
         yield return Sep();
         yield return Item("Deixar de ignorar", () =>
         {
@@ -224,7 +228,7 @@ public sealed partial class TrayApp
         if (all.Count == 0) yield return Info(_snap?.St == StState.Running ? "Nenhum dispositivo remoto" : "O Syncthing não está em execução");
         foreach (var d in all.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
             yield return Sub(d.Name, DeviceMenu(d), Dot(d.Status.Level));
-        if (_snap?.IgnoredDevices is { Count: > 0 } ignored)
+        if (Display?.IgnoredDevices is { Count: > 0 } ignored)
         {
             yield return Sep();
             yield return Sub($"Ignorados ({ignored.Count})", ignored.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)

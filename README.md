@@ -71,8 +71,11 @@ verde, mas evita o falso aviso *nenhum dispositivo conectado* quando é ele que 
   pasta ou do dispositivo, descarta os eventos dele e o tira dos contadores, das cores, dos avisos e da proteção da
   sincronização (não espera por ele ao liberar o WSL, sair ou desligar). Só a presença na configuração do Syncthing
   continua conhecida: o item fica na seção *Ignorados* do painel e no submenu *Ignoradas*/*Ignorados*, sem estado
-  nem ações; para qualquer outra coisa é preciso antes *Deixar de ignorar*. O Syncthing em si continua
-  sincronizando normalmente.
+  nem ações; para qualquer outra coisa é preciso antes *Deixar de ignorar* (as ações gerais, como *Verificar
+  todas as pastas agora* e *Pausar tudo*, também deixam os ignorados de fora). O andamento dos dispositivos e a
+  velocidade total passam a contar só as pastas e os dispositivos monitorados, e um ignorado que sumiu do
+  Syncthing continua listado (pelo ID) até você deixar de ignorá-lo. O Syncthing em si continua sincronizando
+  normalmente.
 
 Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
 junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado, sem ocupar o canto

@@ -97,6 +97,39 @@ public static class SyncthingApi
     public static IReadOnlyList<string> DevicesToCheck(JsonElement config, JsonElement connections, string? myId, IgnoredItems? ignored = null) =>
         ActiveDevices(config, myId, ignored).Where(d => IsConnected(connections, d.Id)).Select(d => d.Id).ToList();
 
+    /// <summary>
+    /// Pastas pelas quais consultar o andamento do dispositivo quando ele compartilha alguma pasta ignorada (o total
+    /// do Syncthing a incluiria). null: o total serve. Pausadas ficam de fora, como no total.
+    /// </summary>
+    public static IReadOnlyList<string>? CompletionFolders(JsonElement config, string deviceId, string? myId, IgnoredItems ignored)
+    {
+        if (!config.TryGetProperty("folders", out var folders)) return null;
+        var shared = folders.EnumerateArray().Where(f => SharedWith(f, myId).Contains(deviceId)).ToList();
+        if (!shared.Any(f => ignored.Folders.Contains(Str(f, "id") ?? ""))) return null;
+        return shared.Where(f => !Bool(f, "paused") && !ignored.Folders.Contains(Str(f, "id") ?? ""))
+            .Select(f => Str(f, "id") ?? "").ToList();
+    }
+
+    /// <summary>
+    /// Junta o andamento de várias pastas num só, no formato de /rest/db/completion: bytes e itens somados; só
+    /// exclusões pendentes não chegam a 100% (como no Syncthing).
+    /// </summary>
+    public static JsonElement CombineCompletion(IEnumerable<JsonElement> parts)
+    {
+        double global = 0, need = 0, items = 0, deletes = 0;
+        foreach (var p in parts)
+        {
+            global += Num(p, "globalBytes"); need += Num(p, "needBytes");
+            items += Num(p, "needItems"); deletes += Num(p, "needDeletes");
+        }
+        double completion = global <= 0 ? 100 : 100 * (global - need) / global;
+        if (need == 0 && (items > 0 || deletes > 0)) completion = Math.Min(completion, 95);
+        var json = string.Create(CultureInfo.InvariantCulture,
+            $$"""{"completion":{{completion}},"globalBytes":{{global}},"needBytes":{{need}},"needItems":{{items}},"needDeletes":{{deletes}}}""");
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
     /// <summary>Pastas cujo estado é preciso consultar: as ativas e compartilhadas com alguém.</summary>
     public static IReadOnlyList<string> FoldersToCheck(JsonElement config, string? myId, IgnoredItems? ignored = null) =>
         SharedActiveFolders(config, myId, ignored).Select(f => Str(f, "id") ?? "").ToList();
@@ -154,7 +187,9 @@ public static class SyncthingApi
         ignored ??= IgnoredItems.None;
         if (!config.TryGetProperty("folders", out var folders)) yield break;
         foreach (var f in folders.EnumerateArray())
-            if (!Bool(f, "paused") && !ignored.Folders.Contains(Str(f, "id") ?? "") && SharedWith(f, myId).Any()) yield return f;
+            if (!Bool(f, "paused") && !ignored.Folders.Contains(Str(f, "id") ?? "")
+                && SharedWith(f, myId).Any(id => !ignored.Devices.Contains(id))) // compartilhada com algum monitorado
+                yield return f;
     }
 
     static IEnumerable<string> SharedWith(JsonElement folder, string? myId) =>
@@ -216,6 +251,12 @@ public sealed class TransferRates
                 dev.OutRate = Math.Max(0, (dout - prev.Out) / dt);
             }
             _lastDev[dev.Id] = (din, dout);
+        }
+        if (hasBase && snap.IgnoredDevices.Count > 0)
+        {
+            // o total do Syncthing inclui o tráfego dos ignorados: soma só os monitorados
+            snap.InRate = snap.Devices.Sum(d => d.InRate);
+            snap.OutRate = snap.Devices.Sum(d => d.OutRate);
         }
         _lastAt = now;
     }
