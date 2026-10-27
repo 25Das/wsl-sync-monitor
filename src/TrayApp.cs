@@ -165,7 +165,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     void UpdateTrayIcon(Snapshot? shown)
     {
         var kept = shown?.Target is { } t && IsKeptAlive(t.Name);
-        _tray.Icon = _icons.Render(TrayIconModel.From(shown, kept, _updater.Available != null));
+        _tray.Icon = _icons.Render(TrayIconModel.From(shown, kept, _updater.Available != null, busy: _busyText != null));
         _tray.Text = _busyText != null
             ? Trim($"{AppName} · {_busyText}", 127)
             : TrayIconModel.Tooltip(shown, kept ? KeepAliveText : null, _updater.Available?.Version);
@@ -459,7 +459,19 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         try
         {
             Log.Info("atualização do app", $"instalando a versão {u.Version.ToString(3)}");
-            await _updater.InstallAsync(u);
+            using var started = Updater.CreateStartedSignal();
+            var next = await _updater.InstallAsync(u);
+            SetBusy($"Abrindo a versão {u.Version.ToString(3)}…");
+            // só fecha depois de a nova versão avisar que abriu: sem ela, a proteção ficaria sem app nenhum
+            if (!await Updater.WaitStarted(started, Updater.StartTimeout))
+            {
+                try { next?.Kill(); } catch { /* já saiu */ }
+                next?.Dispose();
+                bool back = Updater.Rollback(Environment.ProcessPath!);
+                throw new InvalidOperationException("a versão nova não abriu" +
+                    (back ? "; a atual foi mantida." : " e não foi possível voltar o executável anterior."));
+            }
+            next?.Dispose();
             // a nova versão assume a distro (AdoptKeepAlives): não solta nada ao sair
             _handingOver = true;
             ExitThread();

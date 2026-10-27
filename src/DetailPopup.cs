@@ -303,7 +303,7 @@ public sealed class DetailPopup : Form
             var s = _snap;
             if (!measureOnly) _itemRows.Clear();
             void Clickable(PanelItem item) { if (!measureOnly) _itemRows.Add((new Rectangle(0, y, W, rowH), item)); }
-            if (s == null) { Section("Estado"); Row(Level.Off, "Consultando…", ""); return y + P(10); }
+            if (s == null) { Section("Estado"); Row(Level.Unknown, "Consultando…", ""); return y + P(10); }
 
             // ---- WSL ----
             Section("WSL");
@@ -411,7 +411,7 @@ public sealed class DetailPopup : Form
     {
         var h = Header;
         int left = P(32);
-        Dot(g, P(18), Line1 / 2 + P(2), P(10), _snap?.Overall ?? Level.Off);
+        Dot(g, P(18), Line1 / 2 + P(2), P(10), _snap?.Overall ?? Level.Unknown);
         using (var bold = new Font("Segoe UI Semibold", 11f))
             TextRenderer.DrawText(g, PanelHeader.Title, bold, new Rectangle(left, P(4), HeaderRect(HeaderButton.Version).Left - left, Line1 - P(4)),
                 _pal.Text, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis);

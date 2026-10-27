@@ -211,6 +211,14 @@ public sealed class Snapshot
     public Level FoldersLevel => Levels.Worst(Folders.Select(f => f.Status.Level));
     public int DevicesOnline => Devices.Count(d => d.Connected);
 
+    /// <summary>
+    /// Há sincronização acontecendo agora (pasta não parada, dispositivo com pendências)? false quando o azul vem só
+    /// da atividade recente ("Sincronizado agora"), que já terminou.
+    /// </summary>
+    public bool SyncInProgress =>
+        Folders.Any(f => f.Status.Level == Level.Busy && f.State != "idle") ||
+        Devices.Any(d => d.Status.Level == Level.Busy && (d.Completion < 100 || d.NeedBytes > 0));
+
     /// <summary>Sem a distro do Syncthing (nenhuma instalada, a configurada não existe…) é erro, não "parado".</summary>
     public bool WslFailed => !WslInstalled || (!WslReadFailed && Target == null && WslError != null);
 

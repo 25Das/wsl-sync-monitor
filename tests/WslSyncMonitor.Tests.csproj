@@ -50,6 +50,7 @@
     <Compile Include="../src/HoverTracker.cs" Link="src/HoverTracker.cs" />
     <Compile Include="../src/CoalescingRunner.cs" Link="src/CoalescingRunner.cs" />
     <Compile Include="../src/WidgetModel.cs" Link="src/WidgetModel.cs" />
+    <Compile Include="../src/Updater.cs" Link="src/Updater.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures/**" CopyToOutputDirectory="PreserveNewest" />

@@ -26,21 +26,54 @@ static class Program
         bool isInstalledCopy = installer.Paths.IsInstalledExe(ExePath);
         if (!handover && !isInstalledCopy && OfferInstall(installer, mutex)) return;
 
-        if (!AppInstance.TryAcquire(mutex, handover ? TimeSpan.FromSeconds(30) : TimeSpan.Zero))
+        bool afterUpdate = args.Contains(Updater.AfterUpdateArg);
+        // avisa a versão anterior que esta abriu: só então ela fecha (senão ela volta atrás e continua)
+        if (afterUpdate)
+            try { if (!Updater.SignalStarted()) Log.Warn("atualização do app", "a versão anterior não esperava o aviso de que esta abriu"); }
+            catch (Exception ex) { Log.Warn("atualização do app", "avisar a versão anterior", ex); }
+
+        if (!AppInstance.TryAcquire(mutex, handover ? TimeSpan.FromMinutes(2) : TimeSpan.Zero))
         {
-            if (!isInstalledCopy)
+            if (handover) Log.Warn("app", "a instância anterior não fechou em 2 min; esta não continua");
+            else if (!isInstalledCopy)
                 MessageBox.Show("O WSL Sync Monitor já está em execução.", InstallPaths.AppName,
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
+        TrayApp app;
         try
         {
-            Updater.CleanupOld();
             // a cópia instalada pode ter sido atualizada pelo próprio app: mantém "Aplicativos instalados" em dia
             if (isInstalledCopy) try { installer.RefreshRegistration(Updater.Current); } catch (Exception ex) { Log.Warn("instalação", "atualizar o registro em Aplicativos instalados", ex); }
-            Application.Run(new TrayApp());
+            app = new TrayApp();
+        }
+        catch (Exception ex) when (afterUpdate)
+        {
+            // a versão nova não consegue abrir: volta para a anterior, que assume a proteção
+            Log.Error("atualização do app", $"a versão {Updater.Current.ToString(3)} não abriu; voltando para a anterior", ex);
+            mutex.ReleaseMutex();
+            RollbackAndRestart();
+            return;
+        }
+        catch { mutex.ReleaseMutex(); throw; }
+        try
+        {
+            Updater.CleanupOld(); // só agora: até aqui, o .old era o caminho de volta
+            Application.Run(app);
         }
         finally { mutex.ReleaseMutex(); }
+    }
+
+    /// <summary>Volta o executável anterior e o inicia (ele espera esta fechar, como numa atualização).</summary>
+    static void RollbackAndRestart()
+    {
+        try
+        {
+            if (!Updater.Rollback(ExePath)) { Log.Warn("atualização do app", "não há versão anterior para voltar"); return; }
+            Process.Start(new ProcessStartInfo(ExePath, Updater.AfterUpdateArg) { UseShellExecute = true });
+            Log.Info("atualização do app", "versão anterior restaurada e iniciada");
+        }
+        catch (Exception ex) { Log.Error("atualização do app", "voltar para a versão anterior", ex); }
     }
 
     /// <summary>

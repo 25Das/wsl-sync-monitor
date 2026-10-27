@@ -26,7 +26,15 @@ public sealed class AppSession : IDisposable
     /// <summary>Versão que o servidor falso anuncia como a mais recente.</summary>
     public volatile string LatestVersion = "0.0.1";
 
-    public AppSession(string settingsJson)
+    /// <summary>O que o servidor falso entrega como o .exe da versão nova (null: nada para baixar).</summary>
+    public volatile byte[]? Download;
+
+    /// <summary>Executável que o app usa (uma cópia, quando o teste vai atualizá-lo: a saída dos testes não muda).</summary>
+    public readonly string Exe;
+
+    /// <param name="copy">Roda uma cópia do app numa pasta temporária (para a atualização trocar o .exe dela).</param>
+    /// <param name="env">Variáveis de ambiente extras para o app.</param>
+    public AppSession(string settingsJson, bool copy = false, IReadOnlyDictionary<string, string>? env = null)
     {
         Directory.CreateDirectory(Home);
         Directory.CreateDirectory(_evidence);
@@ -37,13 +45,23 @@ public sealed class AppSession : IDisposable
         _server.Start();
         _ = ServeAsync();
 
-        var psi = new ProcessStartInfo(AppExe()) { UseShellExecute = false };
+        Exe = AppExe();
+        if (copy)
+        {
+            Directory.CreateDirectory(Path.Combine(Home, "app"));
+            File.Copy(Exe, Exe = Path.Combine(Home, "app", "WslSyncMonitor.exe"));
+        }
+        _port = port;
+        var psi = new ProcessStartInfo(Exe) { UseShellExecute = false };
         psi.Environment["WSLSYNCMONITOR_HOME"] = Home;
         psi.Environment["WSLSYNCMONITOR_UPDATE_URL"] = $"http://127.0.0.1:{port}/latest";
+        foreach (var (k, v) in env ?? new Dictionary<string, string>()) psi.Environment[k] = v;
         Process = Process.Start(psi)!;
     }
 
-    static string AppExe()
+    readonly int _port;
+
+    public static string AppExe()
     {
         var exe = Path.Combine(AppContext.BaseDirectory, "WslSyncMonitor.exe");
         if (!File.Exists(exe)) throw new FileNotFoundException("WslSyncMonitor.exe não está na saída dos testes", exe);
@@ -65,9 +83,18 @@ public sealed class AppSession : IDisposable
         {
             HttpListenerContext ctx;
             try { ctx = await _server.GetContextAsync(); } catch { return; }
+            var download = Download;
+            if (ctx.Request.Url?.AbsolutePath == "/download" && download != null)
+            {
+                ctx.Response.ContentType = "application/octet-stream";
+                await ctx.Response.OutputStream.WriteAsync(download);
+                ctx.Response.Close();
+                continue;
+            }
+            var url = download != null ? $"http://127.0.0.1:{_port}/download" : "http://127.0.0.1/nao-baixar";
             var json = $$"""
                 {"draft":false,"prerelease":false,"tag_name":"v{{LatestVersion}}","html_url":"http://127.0.0.1/release",
-                 "assets":[{"name":"WslSyncMonitor.exe","browser_download_url":"http://127.0.0.1/nao-baixar","size":1}]}
+                 "assets":[{"name":"WslSyncMonitor.exe","browser_download_url":"{{url}}","size":{{download?.Length ?? 1}}}]}
                 """;
             var body = Encoding.UTF8.GetBytes(json);
             ctx.Response.ContentType = "application/json";
@@ -139,9 +166,17 @@ public sealed class AppSession : IDisposable
             ? string.Join("\n", Directory.GetFiles(Path.Combine(Home, "logs")).Select(File.ReadAllText))
             : "";
 
+    /// <summary>Instâncias do app rodando a partir de <see cref="Exe"/> (a versão nova, depois de uma atualização).</summary>
+    public List<Process> Running() => Process.GetProcessesByName("WslSyncMonitor").Where(p =>
+    {
+        try { return string.Equals(p.MainModule?.FileName, Exe, StringComparison.OrdinalIgnoreCase); }
+        catch { return false; }
+    }).ToList();
+
     public void Dispose()
     {
         try { if (!Process.HasExited) Process.Kill(true); } catch { }
+        foreach (var p in Running()) using (p) try { p.Kill(true); p.WaitForExit(5000); } catch { }
         try { File.WriteAllText(Path.Combine(_evidence, $"e2e-log-{Guid.NewGuid().ToString("N")[..6]}.txt"), LogText()); } catch { }
         _server.Close();
         Automation.Dispose();

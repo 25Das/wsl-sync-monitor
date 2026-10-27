@@ -29,7 +29,11 @@ fechados. Também dá para buscar à mão, e o resultado aparece onde você busc
 - **pelo menu** (*Preferências → Verificar atualizações*): o menu continua aberto, o item mostra
   *Verificando atualizações…* e, havendo versão nova, vira *Atualizar para a versão X*.
 
-Com um clique, baixa, troca o `.exe` e reinicia, sem soltar a distro que estiver segurando. O arquivo baixado pelo próprio app não passa pelo SmartScreen. A pasta
+Com um clique, baixa, troca o `.exe` e reinicia, sem soltar a distro que estiver segurando (a versão nova assume
+a proteção de onde a anterior parou). A anterior só fecha depois de a nova avisar que abriu; se ela não abrir em
+60 s (ou o arquivo não for um executável válido), o `.exe` anterior volta para o lugar e o app continua como
+estava. Se a nova abrir mas falhar ao iniciar, ela mesma volta para a anterior e a inicia. O `.exe` anterior só é
+apagado depois de a nova versão iniciar. O arquivo baixado pelo próprio app não passa pelo SmartScreen. A pasta
 do `.exe` precisa permitir escrita (não use `Arquivos de Programas`).
 
 Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo como serviço do systemd do usuário).
@@ -307,7 +311,8 @@ a cada push; sem testes passando não há build nem release. Para publicar uma v
   [`ci-evidencias`](../../tree/ci-evidencias), numa pasta com o nome do branch (`index.md` com as imagens e
   `cobertura.md`). Dá para conferir o visual sem um Windows.
 - **Testes de ponta a ponta** (`tests.windows/E2E`, FlaUI): no Windows do CI, o app de verdade é aberto e usado
-  com mouse e teclado (oferta de instalação, widget, menu, busca de atualização pelo menu, painel, Sair), com um
+  com mouse e teclado (oferta de instalação, widget, menu, busca de atualização pelo menu, painel, Sair, e a
+  atualização em si: a que dá certo e as que voltam para a versão anterior), com um
   servidor falso de atualizações e uma pasta de dados temporária (`WSLSYNCMONITOR_UPDATE_URL`,
   `WSLSYNCMONITOR_HOME`). Cada passo deixa uma captura da tela real (`e2e-*.png` em `ci-evidencias`). Só rodam
   com `WSM_E2E=1`, para não atrapalhar quem roda os testes no próprio PC.

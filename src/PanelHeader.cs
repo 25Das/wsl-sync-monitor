@@ -59,7 +59,7 @@ public sealed record PanelHeader(
         return s.Overall switch
         {
             Level.Error => ("Há erros em pastas ou dispositivos", Level.Error),
-            Level.Busy => ("Sincronizando…", Level.Busy),
+            Level.Busy => (s.SyncInProgress ? "Sincronizando…" : "Sincronizado agora", Level.Busy),
             Level.Unknown => (UnknownText(s), Level.Unknown),
             Level.Warn when s.DevicesLevel == Level.Warn && !s.Folders.Any(f => f.Status.Level == Level.Warn) => (NoDeviceText(s), Level.Warn),
             Level.Warn => (s.Folders.Count(f => f.Status.Level == Level.Warn) is var n && n == 1

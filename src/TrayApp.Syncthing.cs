@@ -6,8 +6,9 @@ namespace WslSyncMonitor;
 /// <summary>Ações do Syncthing, das pastas e dos dispositivos (menus e linhas do painel).</summary>
 public sealed partial class TrayApp
 {
-    FolderInfo? Folder(string id) => _snap?.AllFolders.FirstOrDefault(f => f.Id == id);
-    DeviceInfo? Device(string id) => _snap?.AllDevices.FirstOrDefault(d => d.Id == id);
+    // com o que os eventos trouxeram desde a última leitura, como o painel e o widget
+    FolderInfo? Folder(string id) => Display?.AllFolders.FirstOrDefault(f => f.Id == id);
+    DeviceInfo? Device(string id) => Display?.AllDevices.FirstOrDefault(d => d.Id == id);
 
     /// <summary>
     /// Executa um comando na API do Syncthing; erros viram aviso. Os eventos mostram o efeito na hora; a leitura

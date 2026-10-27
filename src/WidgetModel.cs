@@ -12,8 +12,9 @@ public sealed record WidgetModel(Level Wsl, Level Syncthing, string Folders, Lev
     /// <param name="busy">Operação em andamento (iniciar/encerrar WSL): o ponto do WSL fica azul.</param>
     public static WidgetModel From(Snapshot? s, bool busy)
     {
-        var wsl = busy ? Level.Busy : s?.WslLevel ?? Level.Off;
-        var st = s?.StLevel ?? Level.Off;
+        // sem dados ainda (o app acabou de abrir): desconhecido, não desligado
+        var wsl = busy ? Level.Busy : s?.WslLevel ?? Level.Unknown;
+        var st = s?.StLevel ?? Level.Unknown;
         if (s is not { St: StState.Running }) return new(wsl, st, None, Level.Off, None, Level.Off);
         return new(wsl, st,
             $"{s.FoldersHealthy}/{s.Folders.Count}", s.FoldersLevel,

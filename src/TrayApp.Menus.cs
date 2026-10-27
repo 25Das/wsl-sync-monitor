@@ -224,7 +224,7 @@ public sealed partial class TrayApp
 
     IEnumerable<ToolStripItem> DevicesMenu()
     {
-        var all = _snap?.AllDevices ?? [];
+        var all = Display?.AllDevices ?? []; // com o que os eventos trouxeram, como o painel
         if (all.Count == 0) yield return Info(_snap?.St == StState.Running ? "Nenhum dispositivo remoto" : "O Syncthing não está em execução");
         foreach (var d in all.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
             yield return Sub(d.Name, DeviceMenu(d), Dot(d.Status.Level));

@@ -73,7 +73,7 @@ public class WidgetModelTests
     {
         Assert.Equal(Level.Busy, WidgetModel.From(Running(), busy: true).Wsl);
         Assert.Equal(Level.Busy, WidgetModel.From(null, busy: true).Wsl);
-        Assert.Equal(Level.Off, WidgetModel.From(null, busy: false).Wsl);
+        Assert.Equal(Level.Unknown, WidgetModel.From(null, busy: false).Wsl);
     }
 
     [Fact]
