@@ -1,0 +1,14 @@
+2026-10-27 01:26:35.710 INFO  [app] iniciado · versão 1.20.0 · Microsoft Windows NT 10.0.26100.0 · C:\Users\runneradmin\AppData\Local\Temp\wsm-e2e-25aacdda\app\WslSyncMonitor.exe
+2026-10-27 01:26:36.397 INFO  [widget] criado dentro da barra de tarefas
+2026-10-27 01:26:36.424 INFO  [widget] exibido 0.8 s após o início do app
+2026-10-27 01:26:36.518 INFO  [widget] ícones da barra: 287–332 334–554 556–600 600–644 644–688 688–732 0–200
+2026-10-27 01:26:36.544 AVISO [wsl] wsl.exe --list --verbose → código -1
+2026-10-27 01:26:36.547 INFO  [atualização] primeira leitura do estado em 0.9 s (WSL: Nenhuma distro instalada, Syncthing: WSL parado)
+2026-10-27 01:26:38.907 INFO  [atualização do app] versão 9.9.9 disponível
+2026-10-27 01:26:39.435 INFO  [atualização do app] instalando a versão 9.9.9
+2026-10-27 01:26:39.747 ERRO  [atualização do app] instalar a versão 9.9.9
+    System.ComponentModel.Win32Exception (216): An error occurred trying to start process 'C:\Users\runneradmin\AppData\Local\Temp\wsm-e2e-25aacdda\app\WslSyncMonitor.exe' with working directory 'D:\a\wsl-sync-monitor\wsl-sync-monitor\tests.windows\bin\Release\net8.0-windows'. The specified executable is not a valid application for this OS platform.
+       at System.Diagnostics.Process.StartWithShellExecuteEx(ProcessStartInfo startInfo)
+       at System.Diagnostics.Process.Start(ProcessStartInfo startInfo)
+       at WslSyncMonitor.Updater.InstallAsync(UpdateInfo u) in D:\a\wsl-sync-monitor\wsl-sync-monitor\src\Updater.cs:line 50
+       at WslSyncMonitor.TrayApp.InstallUpdate() in D:\a\wsl-sync-monitor\wsl-sync-monitor\src\TrayApp.cs:line 489
