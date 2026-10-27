@@ -52,8 +52,8 @@ static class Program
             Log.Error("atualização do app", $"a versão {Updater.Current.ToString(3)} não abriu", ex);
             owner.Release();
             // a anterior está esperando: ela vê esta fechar, volta o executável e continua. Versão anterior que
-            // não espera (até a 1.19) já fechou: esta mesma volta para ela e a inicia.
-            if (PreviousPid == null) RollbackAndRestart();
+            // não espera (até a 1.19), ou que morreu enquanto esperava: esta mesma volta para ela e a inicia.
+            if (PreviousPid is not { } pid || !IsRunning(pid)) RollbackAndRestart();
             return;
         }
         catch { owner.Release(); throw; }
@@ -72,6 +72,12 @@ static class Program
 
     /// <summary>Esta instância foi aberta por uma atualização.</summary>
     public static bool AfterUpdate { get; private set; }
+
+    static bool IsRunning(int pid)
+    {
+        try { using var p = Process.GetProcessById(pid); return !p.HasExited; }
+        catch { return false; }
+    }
 
     /// <summary>Volta o executável anterior e o inicia (ele espera esta fechar, como numa atualização).</summary>
     static void RollbackAndRestart()

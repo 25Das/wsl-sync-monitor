@@ -31,6 +31,9 @@ public sealed class AppUpdateE2ETests
             .FirstOrDefault(w => w.FindAllDescendants().Any(e => e.Name?.Contains(text, StringComparison.Ordinal) == true))?.AsWindow(),
         timeout, $"aviso \"{text}\"");
 
+    /// <summary>Botão "Não" da caixa de mensagem (IDNO: o texto muda com o idioma do Windows).</summary>
+    const string IdNo = "7";
+
     static void Run(AppSession app, Action test)
     {
         try { test(); }
@@ -75,7 +78,7 @@ public sealed class AppUpdateE2ETests
             app.Screenshot("atualizacao-invalida-2-aviso");
             Assert.False(app.Process.HasExited, "o app fechou mesmo sem a versão nova");
             Assert.Equal(original, File.ReadAllBytes(app.Exe));
-            box.FindFirstDescendant(cf => cf.ByName("Não")).AsButton().Invoke();
+            box.FindFirstDescendant(cf => cf.ByAutomationId(IdNo)).AsButton().Invoke();
         });
     }
 
@@ -96,7 +99,7 @@ public sealed class AppUpdateE2ETests
             Assert.False(app.Process.HasExited, "o app fechou mesmo sem a versão nova avisar");
             Assert.Equal(original, File.ReadAllBytes(app.Exe));
             Assert.True(File.Exists(app.Exe + ".failed"));
-            box.FindFirstDescendant(cf => cf.ByName("Não")).AsButton().Invoke();
+            box.FindFirstDescendant(cf => cf.ByAutomationId(IdNo)).AsButton().Invoke();
             app.Widget(TimeSpan.FromSeconds(30)); // voltou a agir: o widget reaparece
             app.Screenshot("atualizacao-sem-aviso-3-de-volta");
             Assert.Contains("a versão atual voltou a agir", app.LogText());

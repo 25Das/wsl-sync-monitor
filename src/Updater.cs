@@ -119,13 +119,23 @@ public sealed class Updater : IDisposable
     /// </summary>
     public static async Task<bool> WaitReady(EventWaitHandle ready, Process next, TimeSpan timeout)
     {
-        using var cts = new CancellationTokenSource(timeout);
-        var signaled = Task.Run(() => WaitHandle.WaitAny([ready, cts.Token.WaitHandle]) == 0);
-        var exited = next.WaitForExitAsync(cts.Token);
-        await Task.WhenAny(signaled, exited);
-        if (exited.IsCompletedSuccessfully) return false;
-        bool ok = await signaled;
-        return ok && !next.HasExited;
+        // espera registrada no pool (sem prender uma thread) e cancelada ao terminar, qualquer que seja o resultado
+        var signaled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var wait = ThreadPool.RegisterWaitForSingleObject(ready, (_, timedOut) => signaled.TrySetResult(!timedOut),
+            null, timeout, executeOnlyOnce: true);
+        using var stop = new CancellationTokenSource();
+        try
+        {
+            var exited = next.WaitForExitAsync(stop.Token);
+            await Task.WhenAny(signaled.Task, exited);
+            if (exited.IsCompletedSuccessfully) return false; // fechou antes de ficar pronta
+            return await signaled.Task && !next.HasExited;
+        }
+        finally
+        {
+            wait.Unregister(null);
+            stop.Cancel();
+        }
     }
 
     /// <summary>
@@ -149,10 +159,11 @@ public sealed class Updater : IDisposable
                 using (var p = Process.GetProcessById(pid)) await p.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(5));
         }
         catch { /* já fechou (ou não deu para esperar): limpa mesmo assim */ }
-        for (int i = 0; i < 20 && File.Exists(ExePath + ".old"); i++)
+        static bool Leftovers() => new[] { ".old", ".new", ".failed" }.Any(ext => File.Exists(ExePath + ext));
+        for (int i = 0; i < 20 && Leftovers(); i++)
         {
             CleanupOld();
-            if (File.Exists(ExePath + ".old")) await Task.Delay(3000);
+            if (Leftovers()) await Task.Delay(3000); // a anterior ainda está fechando (o .old é o .exe dela)
         }
     });
 
