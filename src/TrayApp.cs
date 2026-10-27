@@ -35,6 +35,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _refresher = new CoalescingRunner(RefreshCoreAsync);
         _settings = Settings.LoadOrDefault(out var settingsError);
         _settingsMtime = SettingsMtime();
+        _activity.Ignored = _settings.Ignored();
 
         _popup = new DetailPopup(this); // cria o SynchronizationContext do WinForms
         _menu = BuildMenu();
@@ -192,6 +193,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
                              fresh.SyncthingConfigPath != _settings.SyncthingConfigPath;
         // copia para a instância compartilhada com o widget
         foreach (var p in typeof(Settings).GetProperties().Where(p => p.CanWrite)) p.SetValue(_settings, p.GetValue(fresh));
+        _activity.Ignored = _settings.Ignored();
         if (accessChanged) { _collector.InvalidateCredentials(); RestartEvents(); }
         ApplySettings();
     }
@@ -247,6 +249,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     {
         _settings.Save();
         _settingsMtime = SettingsMtime();
+        _activity.Ignored = _settings.Ignored(); // eventos de quem passou a ser ignorado deixam de contar já
     }
 
     void ApplySettings()

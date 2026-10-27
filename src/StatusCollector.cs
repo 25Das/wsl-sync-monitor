@@ -242,16 +242,17 @@ public sealed class StatusCollector : IDisposable
         await Task.WhenAll(tStatus, tConfig, tConns);
         var (status, config, conns) = (tStatus.Result, tConfig.Result, tConns.Result.GetProperty("connections"));
         var myId = Str(status, "myID");
+        var ignored = s.Ignored();
 
         // em paralelo, como na leitura completa: no desligamento cada segundo conta
-        var tCompletions = SyncthingApi.DevicesToCheck(config, conns, myId).Distinct()
+        var tCompletions = SyncthingApi.DevicesToCheck(config, conns, myId, ignored).Distinct()
             .Select(async id => (id, json: await GetAsync(url, key, "/rest/db/completion?device=" + Q(id)))).ToList();
-        var tFolders = SyncthingApi.FoldersToCheck(config, myId).Distinct()
+        var tFolders = SyncthingApi.FoldersToCheck(config, myId, ignored).Distinct()
             .Select(async id => (id, json: await GetAsync(url, key, "/rest/db/status?folder=" + Q(id)))).ToList();
         await Task.WhenAll(tCompletions.Cast<Task>().Concat(tFolders)); // espera todos (nenhuma falha fica sem ser vista)
         var completions = tCompletions.ToDictionary(t => t.Result.id, t => t.Result.json);
         var folders = tFolders.ToDictionary(t => t.Result.id, t => t.Result.json);
-        return SyncthingApi.EvaluateSync(status, config, conns, completions, folders);
+        return SyncthingApi.EvaluateSync(status, config, conns, completions, folders, ignored);
     }
 
     async Task<JsonElement> GetAsync(string baseUrl, string key, string path)
@@ -282,8 +283,9 @@ public sealed class StatusCollector : IDisposable
         SyncthingApi.ApplySystem(snap, tStatus.Result, tVersion.Result);
         var conns = tConn.Result.TryGetProperty("connections", out var c) ? c : default;
         snap.Devices = SyncthingApi.Devices(tConfig.Result, conns, tStats.Result, snap.MyId);
-        _rates.Apply(snap, tConn.Result, DateTime.UtcNow);
         snap.Folders = SyncthingApi.Folders(tConfig.Result, snap.MyId);
+        snap.ApplyIgnored(s.Ignored()); // antes de qualquer leitura: o que foi ignorado não é consultado
+        _rates.Apply(snap, tConn.Result, DateTime.UtcNow);
 
         // detalhes em paralelo; uma pasta ou dispositivo que falha não derruba o resto
         var folderTasks = snap.Folders.Where(f => !f.Paused).Select(async f =>

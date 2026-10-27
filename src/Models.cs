@@ -19,12 +19,13 @@ public sealed class FolderInfo
     public int RecentFiles;      // arquivos sincronizados há pouco (eventos): mostrados por alguns segundos
     public string? ReadError;    // por que o estado não pôde ser lido (State fica "unknown")
     public bool Hidden;          // oculta pelos filtros do usuário (só aparece se tiver problema)
+    public bool Ignored;         // ignorada: não monitorada (só Id, Label, Path e Type são conhecidos)
 
     public FolderInfo Clone() => (FolderInfo)MemberwiseClone();
 
     public double Percent => GlobalBytes <= 0 ? 100 : Math.Clamp(100.0 * InSyncBytes / GlobalBytes, 0, 100);
 
-    public (string Text, Level Level) Status => Paused ? ("Pausada", Level.Off) : State switch
+    public (string Text, Level Level) Status => Ignored ? ("Ignorada", Level.Off) : Paused ? ("Pausada", Level.Off) : State switch
     {
         "idle" when Errors > 0 || Error != null => ($"{Errors} erro(s)", Level.Error),
         "idle" when NeedBytes > 0 || NeedItems > 0 => ($"Fora de sincronia ({Fmt.Bytes(NeedBytes)})", Level.Warn),
@@ -54,6 +55,7 @@ public sealed class DeviceInfo
     public double InRate, OutRate;
     public bool RecentActivity; // trocou índices ou dados há pouco (eventos): mostrado por alguns segundos
     public bool CompletionUnknown; // o andamento não pôde ser lido: não se sabe se está em dia
+    public bool Ignored;           // ignorado: não monitorado (só Id e Name são conhecidos)
 
     public DeviceInfo Clone() => (DeviceInfo)MemberwiseClone();
 
@@ -72,6 +74,7 @@ public sealed class DeviceInfo
     {
         get
         {
+            if (Ignored) return ("Ignorado", Level.Off);
             if (Paused) return ("Pausado", Level.Off);
             if (!Connected)
                 // desligado é normal (ex.: o outro PC); quem avisa é o estado geral quando nenhum está conectado
@@ -83,6 +86,12 @@ public sealed class DeviceInfo
             return ("Atualizado", Level.Ok);
         }
     }
+}
+
+/// <summary>IDs de pastas e dispositivos ignorados (não monitorados).</summary>
+public sealed record IgnoredItems(IReadOnlySet<string> Folders, IReadOnlySet<string> Devices)
+{
+    public static readonly IgnoredItems None = new(new HashSet<string>(), new HashSet<string>());
 }
 
 public enum StState { Unknown, DistroStopped, NotRunning, Unreachable, AuthError, Running }
@@ -102,6 +111,8 @@ public sealed class Snapshot
         c.Folders = Folders.Select(f => folders.TryGetValue(f, out var x) ? x : f.Clone()).ToList();
         c.AllDevices = AllDevices.Select(d => devices[d]).ToList();
         c.Devices = Devices.Select(d => devices.TryGetValue(d, out var x) ? x : d.Clone()).ToList();
+        c.IgnoredFolders = IgnoredFolders.Select(f => f.Clone()).ToList();
+        c.IgnoredDevices = IgnoredDevices.Select(d => d.Clone()).ToList();
         return c;
     }
 
@@ -120,6 +131,8 @@ public sealed class Snapshot
     public List<FolderInfo> AllFolders = new();
     public List<DeviceInfo> Devices = new();     // dispositivos visíveis (após filtros)
     public List<DeviceInfo> AllDevices = new();
+    public List<FolderInfo> IgnoredFolders = new(); // ignoradas: fora de tudo, listadas à parte
+    public List<DeviceInfo> IgnoredDevices = new();
 
     public bool WslRunning => Target?.Running == true;
 
@@ -140,6 +153,20 @@ public sealed class Snapshot
         if (Distros.Count == 0) WslError ??= "Nenhuma distro instalada";
         else if (Target == null && !string.IsNullOrWhiteSpace(configured)) WslError = $"Distro \"{configured}\" não encontrada";
         if (Target is not { Running: true }) St = StState.DistroStopped;
+    }
+
+    /// <summary>
+    /// Tira das listas o que o usuário ignorou, antes de qualquer leitura de estado: fica só o que identifica o item
+    /// (a presença na configuração do Syncthing), para listá-lo à parte.
+    /// </summary>
+    public void ApplyIgnored(IgnoredItems ignored)
+    {
+        IgnoredFolders = Folders.Where(f => ignored.Folders.Contains(f.Id))
+            .Select(f => new FolderInfo { Id = f.Id, Label = f.Label, Path = f.Path, Type = f.Type, Ignored = true }).ToList();
+        Folders = Folders.Where(f => !ignored.Folders.Contains(f.Id)).ToList();
+        IgnoredDevices = Devices.Where(d => ignored.Devices.Contains(d.Id))
+            .Select(d => new DeviceInfo { Id = d.Id, Name = d.Name, Ignored = true }).ToList();
+        Devices = Devices.Where(d => !ignored.Devices.Contains(d.Id)).ToList();
     }
 
     /// <summary>

@@ -61,7 +61,7 @@ public sealed record PanelHeader(
             Level.Error => ("Há erros em pastas ou dispositivos", Level.Error),
             Level.Busy => ("Sincronizando…", Level.Busy),
             Level.Unknown => (UnknownText(s), Level.Unknown),
-            Level.Warn when s.DevicesLevel == Level.Warn && !s.Folders.Any(f => f.Status.Level == Level.Warn) => ("Nenhum dispositivo conectado", Level.Warn),
+            Level.Warn when s.DevicesLevel == Level.Warn && !s.Folders.Any(f => f.Status.Level == Level.Warn) => (NoDeviceText(s), Level.Warn),
             Level.Warn => (s.Folders.Count(f => f.Status.Level == Level.Warn) is var n && n == 1
                 ? "1 pasta precisa de atenção" : $"{n} pastas precisam de atenção", Level.Warn),
             // "tudo" não vale com pasta pausada: ela não sincroniza
@@ -73,6 +73,10 @@ public sealed record PanelHeader(
             },
         };
     }
+
+    /// <summary>Com dispositivos ignorados, o aviso fala só dos monitorados (um ignorado pode estar conectado).</summary>
+    internal static string NoDeviceText(Snapshot s) =>
+        s.IgnoredDevices.Count > 0 ? "Nenhum dispositivo monitorado conectado" : "Nenhum dispositivo conectado";
 
     static string UnknownText(Snapshot s)
     {

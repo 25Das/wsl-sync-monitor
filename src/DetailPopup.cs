@@ -368,6 +368,22 @@ public sealed class DetailPopup : Form
                 }
                 else Sub("ID " + d.Id[..Math.Min(15, d.Id.Length)] + "…");
             }
+
+            // ---- Ignorados: fora de tudo, sem estado; o clique só oferece "Deixar de ignorar" ----
+            if (s.IgnoredFolders.Count + s.IgnoredDevices.Count > 0)
+            {
+                Section($"Ignorados · {s.IgnoredFolders.Count + s.IgnoredDevices.Count} (não monitorados)");
+                foreach (var f in s.IgnoredFolders.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    Clickable(new(PanelItemKind.IgnoredFolder, f.Id));
+                    Row(Level.Off, f.Label, "Pasta ignorada" + Menu, statusColor: _pal.Dim);
+                }
+                foreach (var d in s.IgnoredDevices.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
+                {
+                    Clickable(new(PanelItemKind.IgnoredDevice, d.Id));
+                    Row(Level.Off, d.Name, "Dispositivo ignorado" + Menu, statusColor: _pal.Dim);
+                }
+            }
             return y + P(10);
         }
         finally { small.Dispose(); bold.Dispose(); }

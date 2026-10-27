@@ -94,25 +94,27 @@ public static class SyncthingApi
     }
 
     /// <summary>Dispositivos cujo andamento é preciso consultar para saber se tudo sincronizou: os conectados e ativos.</summary>
-    public static IReadOnlyList<string> DevicesToCheck(JsonElement config, JsonElement connections, string? myId) =>
-        ActiveDevices(config, myId).Where(d => IsConnected(connections, d.Id)).Select(d => d.Id).ToList();
+    public static IReadOnlyList<string> DevicesToCheck(JsonElement config, JsonElement connections, string? myId, IgnoredItems? ignored = null) =>
+        ActiveDevices(config, myId, ignored).Where(d => IsConnected(connections, d.Id)).Select(d => d.Id).ToList();
 
     /// <summary>Pastas cujo estado é preciso consultar: as ativas e compartilhadas com alguém.</summary>
-    public static IReadOnlyList<string> FoldersToCheck(JsonElement config, string? myId) =>
-        SharedActiveFolders(config, myId).Select(f => Str(f, "id") ?? "").ToList();
+    public static IReadOnlyList<string> FoldersToCheck(JsonElement config, string? myId, IgnoredItems? ignored = null) =>
+        SharedActiveFolders(config, myId, ignored).Select(f => Str(f, "id") ?? "").ToList();
 
     /// <summary>
     /// Tudo sincronizado? Dispositivos conectados a 100% e pastas compartilhadas paradas e sem pendências.
-    /// Dispositivos desconectados não são esperados. Uma resposta que faltou conta como "ainda não".
+    /// Dispositivos desconectados não são esperados. Uma resposta que faltou conta como "ainda não". Pastas e
+    /// dispositivos ignorados ficam de fora (o usuário pediu para não monitorá-los).
     /// </summary>
     public static SyncCheck EvaluateSync(JsonElement status, JsonElement config, JsonElement connections,
-        IReadOnlyDictionary<string, JsonElement> completions, IReadOnlyDictionary<string, JsonElement> folderStatuses)
+        IReadOnlyDictionary<string, JsonElement> completions, IReadOnlyDictionary<string, JsonElement> folderStatuses,
+        IgnoredItems? ignored = null)
     {
         var myId = Str(status, "myID");
         var uptime = TimeSpan.FromSeconds(Num(status, "uptime"));
         bool allConnected = true;
 
-        foreach (var (id, name) in ActiveDevices(config, myId))
+        foreach (var (id, name) in ActiveDevices(config, myId, ignored))
         {
             if (!IsConnected(connections, id)) { allConnected = false; continue; }
             if (!completions.TryGetValue(id, out var comp))
@@ -122,7 +124,7 @@ public static class SyncthingApi
                 return new(false, string.Create(CultureInfo.InvariantCulture, $"enviando para {name} ({pct:0}%)"), uptime, allConnected);
         }
 
-        foreach (var f in SharedActiveFolders(config, myId))
+        foreach (var f in SharedActiveFolders(config, myId, ignored))
         {
             var label = NonEmpty(Str(f, "label")) ?? Str(f, "id") ?? "";
             if (!folderStatuses.TryGetValue(Str(f, "id") ?? "", out var db))
@@ -135,22 +137,24 @@ public static class SyncthingApi
         return new(true, "sincronizado", uptime, allConnected);
     }
 
-    static IEnumerable<(string Id, string Name)> ActiveDevices(JsonElement config, string? myId)
+    static IEnumerable<(string Id, string Name)> ActiveDevices(JsonElement config, string? myId, IgnoredItems? ignored)
     {
+        ignored ??= IgnoredItems.None;
         if (!config.TryGetProperty("devices", out var devs)) yield break;
         foreach (var d in devs.EnumerateArray())
         {
             var id = Str(d, "deviceID") ?? "";
-            if (id == myId || Bool(d, "paused")) continue;
+            if (id == myId || Bool(d, "paused") || ignored.Devices.Contains(id)) continue;
             yield return (id, NonEmpty(Str(d, "name")) ?? ShortId(id));
         }
     }
 
-    static IEnumerable<JsonElement> SharedActiveFolders(JsonElement config, string? myId)
+    static IEnumerable<JsonElement> SharedActiveFolders(JsonElement config, string? myId, IgnoredItems? ignored)
     {
+        ignored ??= IgnoredItems.None;
         if (!config.TryGetProperty("folders", out var folders)) yield break;
         foreach (var f in folders.EnumerateArray())
-            if (!Bool(f, "paused") && SharedWith(f, myId).Any()) yield return f;
+            if (!Bool(f, "paused") && !ignored.Folders.Contains(Str(f, "id") ?? "") && SharedWith(f, myId).Any()) yield return f;
     }
 
     static IEnumerable<string> SharedWith(JsonElement folder, string? myId) =>

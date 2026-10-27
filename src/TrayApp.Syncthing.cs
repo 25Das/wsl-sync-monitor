@@ -55,7 +55,7 @@ public sealed partial class TrayApp
     /// <summary>Arquivos recebidos, alterados aqui ou que falharam desde que o app abriu (de uma pasta ou de todas).</summary>
     void ShowActivity(FolderInfo? f = null) => ShowText(f == null ? "atividade recente" : $"atividade recente em {f.Label}", () =>
     {
-        var history = _activity.History(f?.Id);
+        var history = _activity.History(f?.Id).Where(e => !_settings.IgnoredFolders.Contains(e.Folder)).ToList();
         var labels = (_snap?.AllFolders ?? []).ToDictionary(x => x.Id, x => x.Label);
         return Task.FromResult(history.Count == 0
             ? "Nenhum arquivo sincronizado desde que o app abriu (ou desde que o Syncthing ligou)."
@@ -117,6 +117,18 @@ public sealed partial class TrayApp
             : $"{files.Length} arquivo(s) em conflito (o Syncthing guarda as duas versões; apague a que não quiser):\n\n" + string.Join("\n", files);
     });
 
+    void IgnoreFolder(FolderInfo f)
+    {
+        if (!Confirm($"Ignorar a pasta {f.Label}?\n\nO app deixa de monitorá-la: ela sai do painel, dos contadores e dos avisos, " +
+                     "e a proteção da sincronização não espera por ela ao liberar o WSL, sair ou desligar o Windows.\n\n" +
+                     "O Syncthing continua sincronizando normalmente. Para voltar: Pastas → Ignoradas → Deixar de ignorar.")) return;
+        _settings.HiddenFolders.Remove(f.Id); // ignorar substitui ocultar: ao deixar de ignorar, volta ao normal
+        if (!_settings.IgnoredFolders.Contains(f.Id)) _settings.IgnoredFolders.Add(f.Id);
+        SaveSettings(); RefreshNow();
+    }
+
+    void UnignoreFolder(string id) { _settings.IgnoredFolders.Remove(id); SaveSettings(); RefreshNow(); }
+
     void ToggleFolderInPanel(FolderInfo f)
     {
         if (!_settings.HiddenFolders.Remove(f.Id)) _settings.HiddenFolders.Add(f.Id);
@@ -135,6 +147,18 @@ public sealed partial class TrayApp
             ? $"Nenhuma pasta compartilhada com {dev.Name}."
             : string.Join("\n", folders.Select(f => $"{f.Label}  ({f.Path}) · {f.Status.Text}")));
     });
+
+    void IgnoreDevice(DeviceInfo dev)
+    {
+        if (!Confirm($"Ignorar o dispositivo {dev.Name}?\n\nO app deixa de monitorá-lo: ele sai do painel, dos contadores e dos avisos, " +
+                     "e a proteção da sincronização não espera o envio para ele ao liberar o WSL, sair ou desligar o Windows.\n\n" +
+                     "O Syncthing continua sincronizando normalmente. Para voltar: Dispositivos → Ignorados → Deixar de ignorar.")) return;
+        _settings.HiddenDevices.Remove(dev.Id);
+        if (!_settings.IgnoredDevices.Contains(dev.Id)) _settings.IgnoredDevices.Add(dev.Id);
+        SaveSettings(); RefreshNow();
+    }
+
+    void UnignoreDevice(string id) { _settings.IgnoredDevices.Remove(id); SaveSettings(); RefreshNow(); }
 
     void ToggleDeviceInPanel(DeviceInfo dev)
     {

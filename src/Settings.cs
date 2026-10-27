@@ -32,6 +32,17 @@ public sealed class Settings
     /// <summary>IDs de dispositivos ocultados do painel (menu do dispositivo → Mostrar no painel).</summary>
     public List<string> HiddenDevices { get; set; } = new();
 
+    /// <summary>
+    /// IDs de pastas ignoradas: diferente de ocultar, o app não as monitora (nem conta, nem avisa, nem espera ao
+    /// desligar); ficam numa lista à parte, só com "Deixar de ignorar".
+    /// </summary>
+    public List<string> IgnoredFolders { get; set; } = new();
+
+    /// <summary>IDs de dispositivos ignorados (como <see cref="IgnoredFolders"/>).</summary>
+    public List<string> IgnoredDevices { get; set; } = new();
+
+    public IgnoredItems Ignored() => new(IgnoredFolders.ToHashSet(), IgnoredDevices.ToHashSet());
+
     public bool IsDeviceHidden(DeviceInfo d) => HiddenDevices.Contains(d.Id);
 
     public bool IsFolderHidden(FolderInfo f) =>

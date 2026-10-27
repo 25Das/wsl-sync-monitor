@@ -117,10 +117,15 @@ public sealed class SyncthingActivity
     /// <summary>Quantos arquivos estão sendo lembrados (em andamento ou recentes).</summary>
     internal int TrackedFiles { get { lock (_lock) return _folders.Values.Sum(f => f.InProgress.Count + f.Recent.Count); } }
 
+    /// <summary>Pastas e dispositivos ignorados pelo usuário: os eventos deles são descartados (não são monitorados).</summary>
+    public IgnoredItems Ignored { get; set; } = IgnoredItems.None;
+
     ActivityChange ApplyOne(string type, JsonElement d, DateTime now)
     {
         const ActivityChange redraw = ActivityChange.Redraw;
         string folder = SyncthingApi.Str(d, "folder") ?? "";
+        var device = SyncthingApi.Str(d, "device") ?? SyncthingApi.Str(d, "id");
+        if (Ignored.Folders.Contains(folder) || (device != null && Ignored.Devices.Contains(device))) return ActivityChange.None;
         long seq = ++_seq;
         switch (type)
         {

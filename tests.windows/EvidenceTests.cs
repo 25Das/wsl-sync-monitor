@@ -108,6 +108,7 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
         { "carregando", "Carregando (sem dados ainda)" },
         { "desconhecido", "Pasta cuja leitura falhou: estado desconhecido (ponto vazado)" },
         { "wsl-desconhecido", "wsl.exe não respondeu: estado do WSL desconhecido" },
+        { "ignorados", "Pasta e dispositivo ignorados: seção à parte, sem estado" },
     };
 
     [Theory]
@@ -145,6 +146,12 @@ public sealed class EvidenceTests : IClassFixture<EvidenceTests.Index>
                     case "carregando": popup.SetUpdate(UpdateState.NotChecked); break;
                     case "desconhecido": popup.SetSnapshot(Unknown()); break;
                     case "wsl-desconhecido": popup.SetSnapshot(WslUnknown()); break;
+                    case "ignorados":
+                        var ignoring = Snap();
+                        ignoring.IgnoredFolders.Add(new FolderInfo { Id = "tmp", Label = "Temporários", Path = "~/tmp", Ignored = true });
+                        ignoring.IgnoredDevices.Add(new DeviceInfo { Id = "OLD1234", Name = "Notebook antigo", Ignored = true });
+                        popup.SetSnapshot(ignoring);
+                        break;
                 }
                 using var bmp = popup.RenderPreview();
                 var theme = light ? "claro" : "escuro";

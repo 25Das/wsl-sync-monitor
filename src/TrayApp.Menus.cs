@@ -163,6 +163,9 @@ public sealed partial class TrayApp
         if (all.Count == 0) yield return Info(_snap?.St == StState.Running ? "Nenhuma pasta" : "O Syncthing não está em execução");
         foreach (var f in all.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
             yield return Sub(f.Label, FolderMenu(f), Dot(f.Status.Level));
+        if (_snap?.IgnoredFolders is { Count: > 0 } ignored)
+            yield return Sub($"Ignoradas ({ignored.Count})", ignored.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase)
+                .Select(f => (ToolStripItem)Sub(f.Label, IgnoredMenu(new(PanelItemKind.IgnoredFolder, f.Id)))));
         yield return Sep();
         yield return Item("Ocultar pastas não compartilhadas", () =>
         {
@@ -198,6 +201,19 @@ public sealed partial class TrayApp
         bool hiddenByRule = !_settings.HiddenFolders.Contains(f.Id) && _settings.IsFolderHidden(f);
         yield return Item(hiddenByRule ? "Mostrar no painel (oculta pelas regras de Pastas)" : "Mostrar no painel",
             () => ToggleFolderInPanel(f), enabled: !hiddenByRule, check: !_settings.IsFolderHidden(f));
+        yield return Item("Ignorar (não monitorar)…", () => IgnoreFolder(f));
+    }
+
+    /// <summary>Item ignorado: sem ações nem estado; só dá para deixar de ignorar.</summary>
+    IEnumerable<ToolStripItem> IgnoredMenu(PanelItem item)
+    {
+        yield return Info(item.Kind == PanelItemKind.IgnoredFolder ? "Ignorada: não monitorada" : "Ignorado: não monitorado");
+        yield return Sep();
+        yield return Item("Deixar de ignorar", () =>
+        {
+            if (item.Kind == PanelItemKind.IgnoredFolder) UnignoreFolder(item.Id);
+            else UnignoreDevice(item.Id);
+        });
     }
 
     // ------------------------------------------------------------------ dispositivos
@@ -208,6 +224,12 @@ public sealed partial class TrayApp
         if (all.Count == 0) yield return Info(_snap?.St == StState.Running ? "Nenhum dispositivo remoto" : "O Syncthing não está em execução");
         foreach (var d in all.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
             yield return Sub(d.Name, DeviceMenu(d), Dot(d.Status.Level));
+        if (_snap?.IgnoredDevices is { Count: > 0 } ignored)
+        {
+            yield return Sep();
+            yield return Sub($"Ignorados ({ignored.Count})", ignored.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)
+                .Select(d => (ToolStripItem)Sub(d.Name, IgnoredMenu(new(PanelItemKind.IgnoredDevice, d.Id)))));
+        }
     }
 
     IEnumerable<ToolStripItem> DeviceMenu(DeviceInfo dev)
@@ -222,6 +244,7 @@ public sealed partial class TrayApp
         yield return Item("Pastas compartilhadas…", () => ShowSharedFolders(dev));
         yield return Sep();
         yield return Item("Mostrar no painel", () => ToggleDeviceInPanel(dev), check: !_settings.IsDeviceHidden(dev));
+        yield return Item("Ignorar (não monitorar)…", () => IgnoreDevice(dev));
     }
 
     // ------------------------------------------------------------------ preferências
@@ -318,6 +341,7 @@ public sealed partial class TrayApp
             PanelItemKind.Syncthing => SyncthingMenu(),
             PanelItemKind.Folder when Folder(item.Id) is { } f => FolderMenu(f),
             PanelItemKind.Device when Device(item.Id) is { } dev => DeviceMenu(dev),
+            PanelItemKind.IgnoredFolder or PanelItemKind.IgnoredDevice => IgnoredMenu(item),
             _ => null,
         };
         if (items == null) return;

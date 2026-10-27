@@ -37,7 +37,7 @@ public static class HealthCheck
             else if ((now - seen).TotalDays >= staleDays) issues.Add(new(Level.Warn, $"{d.Name} não conecta há {(int)(now - seen).TotalDays} dias"));
         }
         foreach (var d in s.Devices.Where(d => d.Paused)) issues.Add(new(Level.Warn, $"dispositivo {d.Name} pausado"));
-        if (s.DevicesLevel == Level.Warn) issues.Add(new(Level.Warn, "nenhum dispositivo conectado"));
+        if (s.DevicesLevel == Level.Warn) issues.Add(new(Level.Warn, PanelHeader.Lower(PanelHeader.NoDeviceText(s))));
         return issues;
     }
 

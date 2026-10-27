@@ -64,6 +64,16 @@ desconhecido, o cabeçalho não diz "Tudo sincronizado".
 *(oculta, com problema)*, se ficar fora de sincronia ou com erro. Um dispositivo oculto não deixa o widget azul nem
 verde, mas evita o falso aviso *nenhum dispositivo conectado* quando é ele que está conectado.
 
+**Ocultar × ignorar:**
+- **Ocultar** (*Mostrar no painel*) só tira da tela: o app continua monitorando, e o item volta a aparecer se tiver
+  problema.
+- **Ignorar** (*Ignorar (não monitorar)…*, com confirmação) desliga o monitoramento: o app não lê mais o estado da
+  pasta ou do dispositivo, descarta os eventos dele e o tira dos contadores, das cores, dos avisos e da proteção da
+  sincronização (não espera por ele ao liberar o WSL, sair ou desligar). Só a presença na configuração do Syncthing
+  continua conhecida: o item fica na seção *Ignorados* do painel e no submenu *Ignoradas*/*Ignorados*, sem estado
+  nem ações; para qualquer outra coisa é preciso antes *Deixar de ignorar*. O Syncthing em si continua
+  sincronizando normalmente.
+
 Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver espaço
 junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado, sem ocupar o canto
 do botão Widgets (clima) do Windows 11. O widget fica **dentro** da barra (é uma janela filha dela): continua
@@ -109,9 +119,12 @@ Syncthing ▸     Pausar tudo / Retomar tudo · Verificar todas as pastas agora 
                 Esperar a sincronização antes de desligar · Ligar o WSL a cada 60 min para sincronizar
 Pastas ▸        cada pasta ▸  Abrir no Explorer · Abrir terminal aqui · Verificar agora · Pausar/Retomar
                               Atividade recente… · Arquivos em conflito… · Versões antigas · Copiar caminho
-                              Mostrar no painel
+                              Mostrar no painel · Ignorar (não monitorar)…
+                Ignoradas ▸  cada pasta ignorada ▸  Deixar de ignorar
                 Ocultar pastas não compartilhadas · Ocultar pastas pausadas
 Dispositivos ▸  cada dispositivo ▸  Pausar/Retomar · Copiar ID · Pastas compartilhadas… · Mostrar no painel
+                                    Ignorar (não monitorar)…
+                Ignorados ▸  cada dispositivo ignorado ▸  Deixar de ignorar
 Diagnóstico ▸   informações rápidas (versão, proteção, chave da API, memória, espaço livre real, último erro)
                 Ficha técnica completa… · Copiar ficha técnica
 Preferências ▸  Mostrar widget · Restaurar posição do widget · Abrir o painel ao passar o mouse no widget
@@ -192,6 +205,8 @@ Botão direito → *Editar configurações…* abre `%APPDATA%\WslSyncMonitor\se
 | `DeviceStaleDays` | `7` | Verificação de pastas e dispositivos: avisa de dispositivo que não conecta há tantos dias. |
 | `KeepAliveDistro` | `""` | Distro mantida ligada "até eu desligar". |
 | `HiddenDevices` | `[]` | IDs dos dispositivos ocultados do painel. |
+| `IgnoredFolders` | `[]` | IDs das pastas ignoradas (não monitoradas; veja *Ocultar × ignorar*). |
+| `IgnoredDevices` | `[]` | IDs dos dispositivos ignorados. |
 | `HoverDelayMs` | `450` | Atraso do hover. |
 
 ## Problemas comuns
