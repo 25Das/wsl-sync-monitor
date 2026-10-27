@@ -51,4 +51,24 @@ public sealed class UpdateFilesTests : IDisposable
         Updater.CleanupOld(Exe);
         Assert.Equal(["WslSyncMonitor.exe"], Directory.GetFiles(_dir).Select(Path.GetFileName));
     }
+
+    [Fact]
+    public void Versao_anterior_que_nao_e_arquivo_nao_e_usada()
+    {
+        File.WriteAllText(Exe, "v2");
+        Directory.CreateDirectory(Exe + ".old");
+        Assert.False(Updater.Rollback(Exe));
+        Assert.Equal("v2", File.ReadAllText(Exe));
+    }
+
+    [Theory]
+    [InlineData(new[] { "--after-update", "--from=1234" }, 1234)]
+    [InlineData(new[] { "--after-update" }, null)]          // versão anterior que não espera o aviso
+    [InlineData(new[] { "--from=abc" }, null)]
+    public void Processo_da_versao_anterior_vem_nos_argumentos(string[] args, int? pid) =>
+        Assert.Equal(pid, Updater.PreviousPid(args));
+
+    [Fact]
+    public void Nova_versao_recebe_quem_esperar() =>
+        Assert.Equal("--after-update --from=42", Updater.StartArguments(42));
 }

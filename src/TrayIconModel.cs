@@ -5,11 +5,14 @@ public enum IconGlyph { Loading, Off, Sync, Ok, Warn, Error, Unknown }
 /// <summary>O que o ícone da bandeja mostra: símbolo, cor e marcas.</summary>
 public sealed record TrayIconModel(IconGlyph Glyph, Level Level, bool KeptAlive, bool UpdatePending)
 {
-    /// <param name="busy">Operação em andamento (iniciar/encerrar WSL, atualizar…): sincronizando, como o ponto do WSL no widget e o status do painel; erro continua aparecendo.</param>
+    /// <param name="busy">
+    /// Operação em andamento (iniciar/encerrar WSL, atualizar…): sincronizando, como o ponto do WSL no widget e o status
+    /// do painel. Erro e atenção continuam aparecendo (são o que a pessoa precisa ver).
+    /// </param>
     public static TrayIconModel From(Snapshot? s, bool keptAlive, bool updatePending, bool busy = false)
     {
         if (s == null) return new(IconGlyph.Loading, Level.Off, keptAlive, updatePending);
-        var level = busy ? Levels.Worst([s.Overall, Level.Busy]) : s.Overall;
+        var level = busy && s.Overall is Level.Ok or Level.Off or Level.Unknown ? Level.Busy : s.Overall;
         var glyph = level switch
         {
             Level.Error => IconGlyph.Error,
@@ -37,8 +40,10 @@ public sealed record TrayIconModel(IconGlyph Glyph, Level Level, bool KeptAlive,
         else if (s.St != StState.Running) lines.Add("Syncthing: " + PanelHeader.Lower(s.StStatusText));
         else
         {
-            lines.Add(s.Folders.Count == 0 ? "Pastas: nenhuma" : $"Pastas: {s.FoldersHealthy} de {s.Folders.Count} sem problemas" + Paused(s.FoldersPaused));
-            lines.Add(s.Devices.Count == 0 ? "Dispositivos: nenhum" : $"Dispositivos: {s.DevicesOnline} de {s.Devices.Count} conectados");
+            lines.Add(s.Folders.Count > 0 ? $"Pastas: {s.FoldersHealthy} de {s.Folders.Count} sem problemas" + Paused(s.FoldersPaused)
+                : s.AllFolders.Count > 0 ? "Pastas: todas ocultas" : "Pastas: nenhuma");
+            lines.Add(s.Devices.Count > 0 ? $"Dispositivos: {s.DevicesOnline} de {s.Devices.Count} conectados"
+                : s.AllDevices.Count > 0 ? "Dispositivos: todos ocultos" : "Dispositivos: nenhum");
         }
         string? updateLine = update != null ? $"Nova versão: {update.ToString(3)}" : null;
         string? keptLine = keptAlive != null ? $"Mantida ligada {keptAlive}" : null;

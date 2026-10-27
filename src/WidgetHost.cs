@@ -56,6 +56,9 @@ public sealed class WidgetHost : IDisposable
     public void SetSnapshot(Snapshot s) => OnWidget(w => w.SetSnapshot(s));
     public bool Busy { set => OnWidget(w => w.Busy = value); }
 
+    /// <summary>Oculto enquanto a versão nova do app abre (atualização).</summary>
+    public bool Suspended { set => OnWidget(w => w.Suspended = value); }
+
     /// <summary>Algum menu do app está aberto: o widget não se recoloca acima dele (modo por cima da barra).</summary>
     public bool MenuOpen { set => _menuOpen = value; }
 

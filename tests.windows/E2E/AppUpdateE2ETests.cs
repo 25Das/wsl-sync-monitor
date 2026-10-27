@@ -54,6 +54,8 @@ public sealed class AppUpdateE2ETests
             app.Widget(TimeSpan.FromSeconds(30));
             app.Screenshot("atualizacao-2-nova-versao");
             var log = app.LogText();
+            Assert.Contains("de prontidão: a versão nova está abrindo", log);
+            Assert.Contains("pronta", log);
             Assert.Contains("fechado para a nova versão assumir", log);
             Assert.Equal(2, log.Split("[app] iniciado").Length - 1);
             Assert.DoesNotContain("não abriu", log);
@@ -78,9 +80,9 @@ public sealed class AppUpdateE2ETests
     }
 
     [E2EFact]
-    public void Versao_nova_que_nao_avisa_que_abriu_volta_para_a_anterior()
+    public void Versao_nova_que_fecha_sem_ficar_pronta_volta_para_a_anterior()
     {
-        // um .exe de verdade que abre e fecha sem avisar (como uma versão que trava antes de iniciar)
+        // um .exe de verdade que abre e fecha sem avisar (como uma versão que falha ao iniciar)
         var silent = Path.Combine(Environment.SystemDirectory, "hostname.exe");
         using var app = new AppSession("""{ "SettingsVersion": 2, "ShowTaskbarWidget": true }""", copy: true,
             env: new Dictionary<string, string> { ["WSLSYNCMONITOR_UPDATE_WAIT_SECONDS"] = "5" });
@@ -89,12 +91,15 @@ public sealed class AppUpdateE2ETests
         Run(app, () =>
         {
             UpdateFromMenu(app, "atualizacao-sem-aviso-1-menu");
-            var box = MessageWith(app, "a versão nova não abriu", TimeSpan.FromSeconds(40));
+            var box = MessageWith(app, "a versão nova não iniciou", TimeSpan.FromSeconds(40));
             app.Screenshot("atualizacao-sem-aviso-2-aviso");
             Assert.False(app.Process.HasExited, "o app fechou mesmo sem a versão nova avisar");
             Assert.Equal(original, File.ReadAllBytes(app.Exe));
             Assert.True(File.Exists(app.Exe + ".failed"));
             box.FindFirstDescendant(cf => cf.ByName("Não")).AsButton().Invoke();
+            app.Widget(TimeSpan.FromSeconds(30)); // voltou a agir: o widget reaparece
+            app.Screenshot("atualizacao-sem-aviso-3-de-volta");
+            Assert.Contains("a versão atual voltou a agir", app.LogText());
         });
     }
 }

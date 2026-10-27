@@ -29,11 +29,12 @@ fechados. Também dá para buscar à mão, e o resultado aparece onde você busc
 - **pelo menu** (*Preferências → Verificar atualizações*): o menu continua aberto, o item mostra
   *Verificando atualizações…* e, havendo versão nova, vira *Atualizar para a versão X*.
 
-Com um clique, baixa, troca o `.exe` e reinicia, sem soltar a distro que estiver segurando (a versão nova assume
-a proteção de onde a anterior parou). A anterior só fecha depois de a nova avisar que abriu; se ela não abrir em
-60 s (ou o arquivo não for um executável válido), o `.exe` anterior volta para o lugar e o app continua como
-estava. Se a nova abrir mas falhar ao iniciar, ela mesma volta para a anterior e a inicia. O `.exe` anterior só é
-apagado depois de a nova versão iniciar. O arquivo baixado pelo próprio app não passa pelo SmartScreen. A pasta
+Com um clique, baixa, troca o `.exe` e reinicia, sem soltar a distro que estiver segurando: a versão nova assume
+a proteção de onde a anterior parou. A anterior fica de prontidão (fora da tela, sem agir, mas ainda protegendo o
+desligamento do Windows) até a nova abrir **e** concluir a primeira leitura do estado; só então fecha. Se a nova não
+abre, fecha antes de ficar pronta ou não fica pronta em 2 min, a anterior volta o `.exe` dela para o lugar, assume de
+novo as distros seguradas e continua, avisando que não foi possível atualizar. O `.exe` anterior só é apagado
+depois que a nova ficou pronta e a anterior fechou. O arquivo baixado pelo próprio app não passa pelo SmartScreen. A pasta
 do `.exe` precisa permitir escrita (não use `Arquivos de Programas`).
 
 Requisitos: Windows 10/11, WSL 2 e Syncthing instalado na distro (por exemplo como serviço do systemd do usuário).

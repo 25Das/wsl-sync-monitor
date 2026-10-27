@@ -18,6 +18,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     readonly Updater _updater = new();
     readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 24 * 60 * 60 * 1000 };
     bool _handingOver; // fechando para outra instância (atualização ou instalação) assumir: não solta a distro
+    bool _standby;     // atualização em andamento: a versão nova está abrindo e esta não age (ver EnterStandby)
     EventWaitHandle? _exitEvent;
     RegisteredWaitHandle? _exitWait;
     Version? _notifiedVersion;
@@ -130,6 +131,8 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     async Task RefreshCoreAsync()
     {
         if (WslService.SessionEnding) return; // sessão terminando: nada de wsl.exe novos
+        if (_standby) return;                 // a versão nova está assumindo
+        bool first = _snap == null;
         try
         {
             ReloadSettingsIfChanged();
@@ -155,6 +158,21 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             Log.Failure("atualização", "refresh", "falha ao atualizar o estado: " + ex.Message);
             _tray.Text = Trim("Erro: " + ex.Message, 127);
         }
+        if (first) SignalReadyAfterUpdate();
+    }
+
+    /// <summary>
+    /// Depois de uma atualização, com a primeira leitura feita (deu certo ou não: o app funciona): avisa a versão
+    /// anterior, que então fecha, e apaga as sobras quando ela fechar.
+    /// </summary>
+    void SignalReadyAfterUpdate()
+    {
+        if (!Program.AfterUpdate) return;
+        if (Program.PreviousPid is { } pid)
+            try { if (!Updater.SignalReady(pid)) Log.Warn("atualização do app", "a versão anterior não esperava mais o aviso de pronta"); }
+            catch (Exception ex) { Log.Warn("atualização do app", "avisar a versão anterior", ex); }
+        Log.Info("atualização do app", $"versão {Updater.Current.ToString(3)} pronta");
+        _ = Updater.CleanupAfterPreviousExitsAsync(Program.PreviousPid);
     }
 
     static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
@@ -459,25 +477,41 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         try
         {
             Log.Info("atualização do app", $"instalando a versão {u.Version.ToString(3)}");
-            using var started = Updater.CreateStartedSignal();
-            var next = await _updater.InstallAsync(u);
-            SetBusy($"Abrindo a versão {u.Version.ToString(3)}…");
-            // só fecha depois de a nova versão avisar que abriu: sem ela, a proteção ficaria sem app nenhum
-            if (!await Updater.WaitStarted(started, Updater.StartTimeout))
+            using var ready = Updater.CreateReadySignal(Environment.ProcessId);
+            using var next = await _updater.InstallAsync(u); // se nem iniciar, o executável já voltou
+            // de prontidão: a nova assume (mutex, distros seguradas) e esta só fecha quando ela avisar que está pronta
+            EnterStandby();
+            if (await Updater.WaitReady(ready, next, Updater.StartTimeout))
             {
-                try { next?.Kill(); } catch { /* já saiu */ }
-                next?.Dispose();
-                bool back = Updater.Rollback(Environment.ProcessPath!);
-                throw new InvalidOperationException("a versão nova não abriu" +
-                    (back ? "; a atual foi mantida." : " e não foi possível voltar o executável anterior."));
+                // a nova versão assumiu a distro (AdoptKeepAlives): não solta nada ao sair
+                _handingOver = true;
+                ExitThread();
+                return;
             }
-            next?.Dispose();
-            // a nova versão assume a distro (AdoptKeepAlives): não solta nada ao sair
-            _handingOver = true;
-            ExitThread();
+            Log.Warn("atualização do app", $"a versão {u.Version.ToString(3)} não ficou pronta; voltando para a atual");
+            try { if (!next.HasExited) { next.Kill(); next.WaitForExit(5000); } } catch { /* já saiu */ }
+            bool back = Updater.Rollback(Environment.ProcessPath!);
+            if (AppInstance.Current?.Reacquire(TimeSpan.FromSeconds(30)) == false)
+            {
+                // não deu para retomar: outra instância segura o mutex e é ela quem protege
+                Log.Warn("atualização do app", "outra instância assumiu; esta fecha");
+                _handingOver = true;
+                ExitThread();
+                return;
+            }
+            LeaveStandby();
+            throw new InvalidOperationException("a versão nova não iniciou" +
+                (back ? "; a atual continua." : " e não foi possível voltar o executável anterior."));
         }
         catch (Exception ex)
         {
+            if (_standby)
+            {
+                // falha inesperada no meio da troca: volta a agir (com o executável anterior, se ainda estiver ao lado)
+                try { Updater.Rollback(Environment.ProcessPath!); } catch (Exception rex) { Log.Error("atualização do app", "voltar o executável anterior", rex); }
+                AppInstance.Current?.Reacquire(TimeSpan.FromSeconds(30));
+                LeaveStandby();
+            }
             _busy = false;
             SetBusy(null);
             Log.Error("atualização do app", $"instalar a versão {u.Version.ToString(3)}", ex);
@@ -485,6 +519,37 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
                     AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 try { Process.Start(new ProcessStartInfo(u.PageUrl) { UseShellExecute = true }); } catch { }
         }
+    }
+
+    /// <summary>
+    /// De prontidão durante a atualização: a nova versão está abrindo. Esta some da tela e para de agir (leituras,
+    /// proteção, distros seguradas), sem soltar nada, e libera o mutex para a nova assumir. A proteção ao desligar o
+    /// Windows continua até esta fechar (a nova ainda pode não ter começado).
+    /// </summary>
+    void EnterStandby()
+    {
+        _standby = true;
+        CancelVerify();
+        CloseMenu();
+        _popup.HidePopup();
+        _refreshTimer.Stop();
+        _tray.Visible = false;
+        _widget.Suspended = true;
+        AppInstance.Current?.Release();
+        Log.Info("atualização do app", "de prontidão: a versão nova está abrindo");
+    }
+
+    /// <summary>A versão nova não ficou pronta: esta volta a agir como antes.</summary>
+    void LeaveStandby()
+    {
+        _standby = false;
+        _tray.Visible = true;
+        _widget.Suspended = false;
+        // a nova pode ter segurado uma distro antes de falhar: esta assume, como assumiria numa atualização
+        try { WslService.AdoptKeepAlives(); } catch (Exception ex) { Log.Warn("proteção", "assumir as distros da versão que falhou", ex); }
+        _refreshTimer.Start();
+        RequestRefresh();
+        Log.Info("atualização do app", "a versão atual voltou a agir");
     }
 
     protected override void ExitThreadCore()

@@ -148,6 +148,14 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         set { if (_painter.Busy == value) return; _painter.Busy = value; _dirty = true; Follow(); }
     }
 
+    bool _suspended;
+
+    /// <summary>Oculto enquanto a versão nova do app abre (atualização): ela mostra o próprio widget.</summary>
+    public bool Suspended
+    {
+        set { if (_suspended == value) return; _suspended = value; Follow(); }
+    }
+
     /// <summary>Retângulo do widget na tela; vazio sem janela (pode ser lido de outro thread).</summary>
     public Rectangle ScreenBounds =>
         _hwnd != IntPtr.Zero && Native.GetWindowRect(_hwnd, out var r) ? r.ToRectangle() : Rectangle.Empty;
@@ -253,7 +261,7 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
 
         int interval = WidgetPlacement.FollowIntervalMs(tb.AutoHide, Inside, taskbar);
         if (_follow.Interval != interval) _follow.Interval = interval; // trocar reinicia a contagem: só quando muda
-        var (show, reason) = WidgetPlacement.Visibility(_settings.ShowTaskbarWidget, _settings.WidgetInsideTaskbar,
+        var (show, reason) = WidgetPlacement.Visibility(_settings.ShowTaskbarWidget && !_suspended, _settings.WidgetInsideTaskbar,
             taskbar, tb.Thickness, tb.FullyShown, tb.FullscreenApp, tb.NotificationState);
         if (!show)
         {

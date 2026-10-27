@@ -71,4 +71,35 @@ public class AppInstanceTests
         mutex.ReleaseMutex();
         t.Join();
     }
+
+    [Fact]
+    public void Na_atualizacao_a_versao_anterior_libera_o_mutex_e_o_retoma_se_a_nova_falhar()
+    {
+        var name = Unique();
+        using var mutex = new Mutex(false, name);
+        var owner = new AppInstance.Owner(mutex);
+        Assert.True(owner.TryAcquire(TimeSpan.Zero));
+
+        owner.Release(); // a nova versão pode assumir
+        using (var other = new Mutex(false, name))
+        {
+            Assert.True(other.WaitOne(0)); // ... e assume
+            other.ReleaseMutex();
+        }
+        Assert.True(owner.Reacquire(TimeSpan.FromSeconds(1))); // a nova falhou: a anterior volta
+        owner.Release();
+        owner.Release(); // liberar de novo não falha (o fim do Main sempre libera)
+    }
+
+    [Fact]
+    public void Retomar_o_mutex_da_nova_versao_que_morreu_segurando_funciona()
+    {
+        var name = Unique();
+        using var mutex = new Mutex(false, name);
+        var owner = new AppInstance.Owner(mutex);
+        var t = new Thread(() => { var m = new Mutex(false, name); m.WaitOne(); }); // sai sem liberar
+        t.Start(); t.Join();
+        Assert.True(owner.Reacquire(TimeSpan.FromSeconds(1)));
+        owner.Release();
+    }
 }

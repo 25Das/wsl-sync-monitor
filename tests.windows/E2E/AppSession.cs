@@ -48,8 +48,12 @@ public sealed class AppSession : IDisposable
         Exe = AppExe();
         if (copy)
         {
-            Directory.CreateDirectory(Path.Combine(Home, "app"));
-            File.Copy(Exe, Exe = Path.Combine(Home, "app", "WslSyncMonitor.exe"));
+            // o .exe da saída dos testes precisa da .dll e das configurações do .NET ao lado
+            var dir = Directory.CreateDirectory(Path.Combine(Home, "app")).FullName;
+            foreach (var f in Directory.GetFiles(AppContext.BaseDirectory, "WslSyncMonitor.*")
+                         .Where(f => !Path.GetFileName(f).StartsWith("WslSyncMonitor.WindowsTests", StringComparison.OrdinalIgnoreCase)))
+                File.Copy(f, Path.Combine(dir, Path.GetFileName(f)));
+            Exe = Path.Combine(dir, "WslSyncMonitor.exe");
         }
         _port = port;
         var psi = new ProcessStartInfo(Exe) { UseShellExecute = false };

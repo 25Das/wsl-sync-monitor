@@ -61,4 +61,20 @@ public class VisualConsistencyTests
         var tip = TrayIconModel.Tooltip(Running(), null, null);
         Assert.Equal("Ubuntu\nPastas: nenhuma\nDispositivos: nenhum", tip);
     }
+
+    [Fact]
+    public void Atencao_tambem_nao_some_durante_a_operacao()
+    {
+        var s = Running(new FolderInfo { State = "idle", NeedBytes = 5 });
+        Assert.Equal(IconGlyph.Warn, TrayIconModel.From(s, false, false, busy: true).Glyph);
+    }
+
+    [Fact]
+    public void Dica_distingue_nenhum_de_todos_ocultos()
+    {
+        var s = Running();
+        s.AllFolders.Add(new FolderInfo { State = "idle", Hidden = true });
+        s.AllDevices.Add(new DeviceInfo { Connected = false });
+        Assert.Equal("Ubuntu\nPastas: todas ocultas\nDispositivos: todos ocultos", TrayIconModel.Tooltip(s, null, null));
+    }
 }

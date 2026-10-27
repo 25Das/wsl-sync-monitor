@@ -159,11 +159,12 @@ public sealed partial class TrayApp
 
     IEnumerable<ToolStripItem> FoldersMenu()
     {
-        var all = Display?.AllFolders ?? []; // com o que os eventos trouxeram (pausada, erros) desde a última leitura
+        var shown = Display; // com o que os eventos trouxeram (pausada, erros) desde a última leitura; montado uma vez
+        var all = shown?.AllFolders ?? [];
         if (all.Count == 0) yield return Info(_snap?.St == StState.Running ? "Nenhuma pasta" : "O Syncthing não está em execução");
         foreach (var f in all.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase))
             yield return Sub(f.Label, FolderMenu(f), Dot(f.Status.Level));
-        if (Display?.IgnoredFolders is { Count: > 0 } ignored)
+        if (shown?.IgnoredFolders is { Count: > 0 } ignored)
         {
             yield return Sep();
             yield return Sub($"Ignoradas ({ignored.Count})", ignored.OrderBy(f => f.Label, StringComparer.CurrentCultureIgnoreCase)
@@ -224,11 +225,12 @@ public sealed partial class TrayApp
 
     IEnumerable<ToolStripItem> DevicesMenu()
     {
-        var all = Display?.AllDevices ?? []; // com o que os eventos trouxeram, como o painel
+        var shown = Display; // com o que os eventos trouxeram, como o painel; montado uma vez
+        var all = shown?.AllDevices ?? [];
         if (all.Count == 0) yield return Info(_snap?.St == StState.Running ? "Nenhum dispositivo remoto" : "O Syncthing não está em execução");
         foreach (var d in all.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
             yield return Sub(d.Name, DeviceMenu(d), Dot(d.Status.Level));
-        if (Display?.IgnoredDevices is { Count: > 0 } ignored)
+        if (shown?.IgnoredDevices is { Count: > 0 } ignored)
         {
             yield return Sep();
             yield return Sub($"Ignorados ({ignored.Count})", ignored.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)

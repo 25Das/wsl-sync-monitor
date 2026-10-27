@@ -101,7 +101,7 @@ public sealed partial class TrayApp
     void GuardTick()
     {
         var d = _snap?.Target;
-        if (d == null || _exiting || WslService.SessionEnding) return;
+        if (d == null || _exiting || _standby || WslService.SessionEnding) return;
         if (d.Running) _lastRunningAt = DateTime.Now;
 
         // "Manter ligada" por tempo: quando expira, deixa de valer

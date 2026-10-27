@@ -27,12 +27,12 @@ static class Program
         if (!handover && !isInstalledCopy && OfferInstall(installer, mutex)) return;
 
         bool afterUpdate = args.Contains(Updater.AfterUpdateArg);
-        // avisa a versão anterior que esta abriu: só então ela fecha (senão ela volta atrás e continua)
-        if (afterUpdate)
-            try { if (!Updater.SignalStarted()) Log.Warn("atualização do app", "a versão anterior não esperava o aviso de que esta abriu"); }
-            catch (Exception ex) { Log.Warn("atualização do app", "avisar a versão anterior", ex); }
+        // versão anterior que espera esta ficar pronta (ela libera o mutex e fica de prontidão; se esta falhar, ela volta)
+        AfterUpdate = afterUpdate;
+        PreviousPid = afterUpdate ? Updater.PreviousPid(args) : null;
 
-        if (!AppInstance.TryAcquire(mutex, handover ? TimeSpan.FromMinutes(2) : TimeSpan.Zero))
+        var owner = AppInstance.Current = new AppInstance.Owner(mutex);
+        if (!owner.TryAcquire(handover ? TimeSpan.FromMinutes(2) : TimeSpan.Zero))
         {
             if (handover) Log.Warn("app", "a instância anterior não fechou em 2 min; esta não continua");
             else if (!isInstalledCopy)
@@ -49,20 +49,29 @@ static class Program
         }
         catch (Exception ex) when (afterUpdate)
         {
-            // a versão nova não consegue abrir: volta para a anterior, que assume a proteção
-            Log.Error("atualização do app", $"a versão {Updater.Current.ToString(3)} não abriu; voltando para a anterior", ex);
-            mutex.ReleaseMutex();
-            RollbackAndRestart();
+            Log.Error("atualização do app", $"a versão {Updater.Current.ToString(3)} não abriu", ex);
+            owner.Release();
+            // a anterior está esperando: ela vê esta fechar, volta o executável e continua. Versão anterior que
+            // não espera (até a 1.19) já fechou: esta mesma volta para ela e a inicia.
+            if (PreviousPid == null) RollbackAndRestart();
             return;
         }
-        catch { mutex.ReleaseMutex(); throw; }
+        catch { owner.Release(); throw; }
         try
         {
-            Updater.CleanupOld(); // só agora: até aqui, o .old era o caminho de volta
+            // ao abrir normalmente, limpa sobras na hora; depois de uma atualização, o .old é o caminho de volta
+            // até a nova ficar pronta e a anterior fechar (ver TrayApp.SignalReadyAfterUpdate)
+            if (!afterUpdate) Updater.CleanupOld();
             Application.Run(app);
         }
-        finally { mutex.ReleaseMutex(); }
+        finally { owner.Release(); }
     }
+
+    /// <summary>Processo da versão anterior que espera esta ficar pronta, depois de uma atualização (null: nenhuma).</summary>
+    public static int? PreviousPid { get; private set; }
+
+    /// <summary>Esta instância foi aberta por uma atualização.</summary>
+    public static bool AfterUpdate { get; private set; }
 
     /// <summary>Volta o executável anterior e o inicia (ele espera esta fechar, como numa atualização).</summary>
     static void RollbackAndRestart()

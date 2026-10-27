@@ -27,6 +27,30 @@ public static class AppInstance
         catch (AbandonedMutexException) { return true; } // a anterior fechou sem liberar: assume
     }
 
+    /// <summary>
+    /// O mutex desta instância, que só a thread principal libera. Na atualização, a versão anterior o libera para a
+    /// nova assumir e, se a nova falhar, o retoma (ver TrayApp.InstallUpdate).
+    /// </summary>
+    public sealed class Owner(Mutex mutex)
+    {
+        bool _owned;
+
+        public bool TryAcquire(TimeSpan wait) => _owned = AppInstance.TryAcquire(mutex, wait);
+
+        /// <summary>Libera, se ainda tem (chamar de novo não faz nada).</summary>
+        public void Release()
+        {
+            if (!_owned) return;
+            mutex.ReleaseMutex();
+            _owned = false;
+        }
+
+        public bool Reacquire(TimeSpan wait) => _owned || TryAcquire(wait);
+    }
+
+    /// <summary>A instância deste processo (definida pelo Program).</summary>
+    public static Owner? Current { get; set; }
+
     /// <summary>Evento que a instância em execução escuta; ao ser sinalizado, ela fecha com a saída segura.</summary>
     public static EventWaitHandle CreateExitEvent(Names? names = null) =>
         new(false, EventResetMode.AutoReset, (names ?? Default).ExitEvent);
