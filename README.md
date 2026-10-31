@@ -86,7 +86,10 @@ Acompanha a barra que se oculta; arraste para mudar de lugar. Se não houver esp
 junto da bandeja (ícones demais na barra), ele vai para o primeiro espaço livre do outro lado, sem ocupar o canto
 do botão Widgets (clima) do Windows 11. O widget fica **dentro** da barra (é uma janela filha dela): continua
 visível com o menu Iniciar aberto e, com a barra que se oculta sozinha, desliza junto com ela. Se der problema no
-seu Windows, `WidgetInsideTaskbar: false` volta ao modo antigo (uma janela por cima da barra).
+seu Windows, `WidgetInsideTaskbar: false` volta ao modo antigo (uma janela por cima da barra). Se o Windows negar criar o widget dentro
+da barra (erro 5, acesso negado), o app passa sozinho para o modo por cima da barra (e tenta o outro modo de novo a
+cada 10 min); se nem esse der, fica sem widget e tenta de novo a cada 30 s. O widget nunca derruba o app, e o motivo
+da negação (processo da barra, privilégios) vai para o log.
 
 **Atividade em tempo real:** um sync pequeno dura uma fração de segundo. Painel, widget e ícone acompanham o
 fluxo de eventos do Syncthing e mostram na hora *Sincronizando relatorio.md…* e, por alguns segundos depois,

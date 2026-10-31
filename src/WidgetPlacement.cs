@@ -96,3 +96,32 @@ public static class WidgetPlacement
         return !owned && (exStyle & toolWindow) == 0;
     }
 }
+
+/// <summary>
+/// Quando o Windows nega criar o widget (erro 5 ao criar a janela filha da barra, por exemplo): primeiro tenta o modo
+/// por cima da barra; se nem esse der, espera <see cref="RetryAfter"/> antes de tentar de novo. A negação pode ser só
+/// do momento, então o modo preferido é tentado outra vez depois de <see cref="InsideRetryAfter"/> (espaçado: trocar
+/// de modo recria a janela).
+/// </summary>
+public sealed class WidgetFallback
+{
+    public static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan InsideRetryAfter = TimeSpan.FromMinutes(10);
+    DateTime? _insideFailedAt, _overlayFailedAt;
+
+    /// <summary>Modo a criar: o da configuração, a não ser que ele tenha sido negado há pouco.</summary>
+    public bool WantInside(bool setting, DateTime now) =>
+        setting && (_insideFailedAt == null || now - _insideFailedAt >= InsideRetryAfter);
+
+    /// <summary>Pode tentar criar agora? (os dois modos falharam há pouco: espera)</summary>
+    public bool CanCreate(DateTime now) => _overlayFailedAt == null || now - _overlayFailedAt >= RetryAfter;
+
+    public void Failed(bool inside, DateTime now)
+    {
+        if (inside) _insideFailedAt = now;
+        else _overlayFailedAt = now;
+    }
+
+    public void Created() => _overlayFailedAt = null;
+}
+
