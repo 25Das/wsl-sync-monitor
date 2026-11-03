@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace WslSyncMonitor;
 
 /// <summary>
@@ -98,30 +100,52 @@ public static class WidgetPlacement
 }
 
 /// <summary>
-/// Quando o Windows nega criar o widget (erro 5 ao criar a janela filha da barra, por exemplo): primeiro tenta o modo
-/// por cima da barra; se nem esse der, espera <see cref="RetryAfter"/> antes de tentar de novo. A negação pode ser só
-/// do momento, então o modo preferido é tentado outra vez depois de <see cref="InsideRetryAfter"/> (espaçado: trocar
-/// de modo recria a janela).
+/// Quando o Windows nega criar o widget (erro 5 ao criar a janela filha da barra, por exemplo): passa para o modo por
+/// cima da barra até o app fechar (tentar de novo recriaria a janela e repetiria o erro; reabrir o app tenta de novo).
+/// Se nem o modo por cima der, espera <see cref="RetryAfter"/> antes de tentar outra vez. O tempo é monotônico
+/// (<see cref="Environment.TickCount64"/>), imune a mudanças no relógio.
 /// </summary>
 public sealed class WidgetFallback
 {
     public static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(30);
-    public static readonly TimeSpan InsideRetryAfter = TimeSpan.FromMinutes(10);
-    DateTime? _insideFailedAt, _overlayFailedAt;
+    bool _insideDenied;
+    TimeSpan? _overlayFailedAt;
 
-    /// <summary>Modo a criar: o da configuração, a não ser que ele tenha sido negado há pouco.</summary>
-    public bool WantInside(bool setting, DateTime now) =>
-        setting && (_insideFailedAt == null || now - _insideFailedAt >= InsideRetryAfter);
-
-    /// <summary>Pode tentar criar agora? (os dois modos falharam há pouco: espera)</summary>
-    public bool CanCreate(DateTime now) => _overlayFailedAt == null || now - _overlayFailedAt >= RetryAfter;
-
-    public void Failed(bool inside, DateTime now)
-    {
-        if (inside) _insideFailedAt = now;
-        else _overlayFailedAt = now;
-    }
-
+    public bool WantInside(bool setting) => setting && !_insideDenied;
+    public bool CanCreate(TimeSpan now) => _overlayFailedAt == null || now - _overlayFailedAt >= RetryAfter;
+    public void Failed(bool inside, TimeSpan now) { if (inside) _insideDenied = true; else _overlayFailedAt = now; }
     public void Created() => _overlayFailedAt = null;
 }
 
+/// <summary>
+/// Texto do log quando o Windows nega criar o widget. Erro 5 (acesso negado) entre processos costuma ser nível de
+/// integridade diferente (um processo elevado e o outro não), então a mensagem traz o dos dois lados.
+/// </summary>
+public static class WidgetDenial
+{
+    /// <summary>Nome do nível de integridade pelo RID (SECURITY_MANDATORY_*_RID).</summary>
+    public static string IntegrityName(uint rid) => rid switch
+    {
+        0x0000 => "não confiável",
+        0x1000 => "baixa",
+        0x2000 => "média",
+        0x2100 => "média+",
+        0x3000 => "alta",
+        0x4000 => "sistema",
+        _ => "0x" + rid.ToString("X", CultureInfo.InvariantCulture),
+    };
+
+    static string Integrity(uint? rid) => "integridade " + (rid is { } r ? IntegrityName(r) : "desconhecida");
+
+    public static string Describe(bool inside, int error, long barHwnd, uint? barPid, uint? barIntegrity,
+        int myPid, uint? myIntegrity, bool elevated)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        string bar = barPid is { } pid
+            ? $"processo {pid.ToString(inv)}, {Integrity(barIntegrity)}"
+            : "processo desconhecido";
+        return $"criar o widget {(inside ? "dentro" : "por cima")} da barra (erro {error.ToString(inv)}; " +
+            $"barra 0x{barHwnd.ToString("X", inv)}, {bar}; este processo {myPid.ToString(inv)}, {Integrity(myIntegrity)}, " +
+            $"{(elevated ? "como administrador" : "sem privilégios elevados")})";
+    }
+}

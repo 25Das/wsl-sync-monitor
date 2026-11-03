@@ -198,34 +198,40 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     /// <summary>Cria a janela no modo pedido; no modo dentro da barra, já como filha dela.</summary>
     void Create(TaskbarInfo tb)
     {
-        var now = DateTime.Now;
+        var now = TimeSpan.FromMilliseconds(Environment.TickCount64);
         if (!_fallback.CanCreate(now)) return; // os dois modos falharam há pouco: espera para tentar de novo
-        _parent = _fallback.WantInside(_settings.WidgetInsideTaskbar, now) ? tb.Hwnd : IntPtr.Zero;
+        _parent = WantInside ? tb.Hwnd : IntPtr.Zero;
         try { CreateWindow(); }
         catch (System.ComponentModel.Win32Exception ex)
         {
             // o Windows negou (erro 5: acesso negado) ou outra falha da janela nativa: o widget é só um enfeite, o app segue
             bool wasInside = Inside;
-            uint barPid = 0;
-            uint barThread = Native.GetWindowThreadProcessId(tb.Hwnd, out barPid);
-            Log.Error("widget", $"criar o widget {(wasInside ? "dentro" : "por cima")} da barra (erro {ex.NativeErrorCode}; barra 0x{tb.Hwnd:X}, " +
-                $"processo {(barThread == 0 ? "desconhecido" : barPid.ToString(System.Globalization.CultureInfo.InvariantCulture))}; este processo {Environment.ProcessId}, " +
-                $"{(Environment.IsPrivilegedProcess ? "como administrador" : "sem privilégios elevados")})", ex);
+            Log.Failure("widget", "criar-widget", DescribeDenial(wasInside, ex.NativeErrorCode, tb.Hwnd) + ": " + ex.Message);
             _fallback.Failed(wasInside, now);
             _parent = IntPtr.Zero;
             if (wasInside)
             {
-                Log.Warn("widget", "passando para o modo por cima da barra");
+                Log.Warn("widget", "passando para o modo por cima da barra até o app fechar");
                 Create(tb); // tenta já no outro modo
             }
             return;
         }
         _fallback.Created();
+        Log.Recovered("widget", "criar-widget", "widget criado depois da falha");
         _placed = Rectangle.Empty;
         _dirty = true;
         // a janela nova começa sem mouse em cima e sem arrasto
         _hover = _down = _dragging = false;
         Log.Info("widget", Inside ? "criado dentro da barra de tarefas" : "criado por cima da barra de tarefas");
+    }
+
+    /// <summary>O que ajuda a entender a negação: processo e nível de integridade da barra e deste app.</summary>
+    static string DescribeDenial(bool inside, int error, IntPtr bar)
+    {
+        uint? barPid = Native.GetWindowThreadProcessId(bar, out uint pid) == 0 ? null : pid;
+        return WidgetDenial.Describe(inside, error, bar.ToInt64(), barPid,
+            barPid is { } p ? Native.GetIntegrityLevel((int)p) : null,
+            Environment.ProcessId, Native.GetIntegrityLevel(Environment.ProcessId), Environment.IsPrivilegedProcess);
     }
 
     void CreateWindow() => CreateHandle(new CreateParams
@@ -238,8 +244,8 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
 
     readonly WidgetFallback _fallback = new();
 
-    /// <summary>O modo que vale agora: o da configuração, ou o por cima da barra se o Windows negou o outro há pouco.</summary>
-    bool WantInside => _fallback.WantInside(_settings.WidgetInsideTaskbar, DateTime.Now);
+    /// <summary>O modo que vale agora: o da configuração, ou o por cima da barra se o Windows negou o outro nesta sessão.</summary>
+    bool WantInside => _fallback.WantInside(_settings.WidgetInsideTaskbar);
 
     void Destroy()
     {
@@ -286,10 +292,9 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         bool taskbar = tb.Hwnd != IntPtr.Zero; // sem barra: Windows iniciando ou Explorer reiniciando
         if (taskbar && NeedsRecreate(tb)) { Destroy(); Create(tb); }
         if (taskbar) HookTaskbar(tb.Hwnd);
-        if (taskbar && Handle == IntPtr.Zero) return; // não foi possível criar a janela (já registrado): tenta de novo depois
-
         int interval = WidgetPlacement.FollowIntervalMs(tb.AutoHide, Inside, taskbar);
         if (_follow.Interval != interval) _follow.Interval = interval; // trocar reinicia a contagem: só quando muda
+        if (taskbar && Handle == IntPtr.Zero) return; // não foi possível criar a janela (já registrado): tenta de novo depois
         var (show, reason) = WidgetPlacement.Visibility(_settings.ShowTaskbarWidget && !_suspended, Inside,
             taskbar, tb.Thickness, tb.FullyShown, tb.FullscreenApp, tb.NotificationState);
         if (!show)

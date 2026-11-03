@@ -14,7 +14,7 @@ public sealed class WidgetHost : IDisposable
 {
     readonly SynchronizationContext _app;
     SynchronizationContext _widgetCtx = null!;
-    TaskbarWidget _w = null!;
+    TaskbarWidget? _w; // null se não deu para criar o widget (o app segue sem ele)
     volatile bool _menuOpen;
 
     public event Action? Clicked;
@@ -23,7 +23,10 @@ public sealed class WidgetHost : IDisposable
     public event Action? HoverEnded;
     public event Action? OffsetChanged;
 
-    public WidgetHost(Settings settings)
+    public WidgetHost(Settings settings) : this(settings, () => new TaskbarWidget(settings)) { }
+
+    /// <param name="create">Cria o widget (nos testes, simula falhas).</param>
+    internal WidgetHost(Settings settings, Func<TaskbarWidget> create)
     {
         _app = SynchronizationContext.Current ?? throw new InvalidOperationException("criar na interface principal");
         using var ready = new ManualResetEventSlim();
@@ -32,15 +35,27 @@ public sealed class WidgetHost : IDisposable
             // contexto de sincronização deste thread (o widget é uma janela nativa: nenhum controle o instala)
             _widgetCtx = new WindowsFormsSynchronizationContext();
             SynchronizationContext.SetSynchronizationContext(_widgetCtx);
-            _w = new TaskbarWidget(settings) { YieldTo = () => _menuOpen };
-            _w.Clicked += () => _app.Post(_ => Clicked?.Invoke(), null);
-            _w.RightClicked += () => _app.Post(_ => RightClicked?.Invoke(), null);
-            _w.HoverStarted += () => _app.Post(_ => HoverStarted?.Invoke(), null);
-            _w.HoverEnded += () => _app.Post(_ => HoverEnded?.Invoke(), null);
-            _w.OffsetChanged += () => _app.Post(_ => OffsetChanged?.Invoke(), null);
-            _w.Start(); // só depois de os eventos estarem ligados
-            ready.Set();
-            Application.Run();
+            TaskbarWidget? w = null;
+            try
+            {
+                w = create();
+                w.YieldTo = () => _menuOpen;
+                w.Clicked += () => _app.Post(_ => Clicked?.Invoke(), null);
+                w.RightClicked += () => _app.Post(_ => RightClicked?.Invoke(), null);
+                w.HoverStarted += () => _app.Post(_ => HoverStarted?.Invoke(), null);
+                w.HoverEnded += () => _app.Post(_ => HoverEnded?.Invoke(), null);
+                w.OffsetChanged += () => _app.Post(_ => OffsetChanged?.Invoke(), null);
+                w.Start(); // só depois de os eventos estarem ligados
+                _w = w;
+            }
+            catch (Exception ex)
+            {
+                // uma exceção aqui, fora do loop de mensagens, derrubaria o app inteiro: o widget é só um enfeite
+                Log.Error("widget", "iniciar o widget da barra (o app segue sem ele)", ex);
+                w?.Dispose();
+            }
+            finally { ready.Set(); }
+            if (_w != null) Application.Run();
         })
         { IsBackground = true, Name = "Widget da barra" };
         thread.SetApartmentState(ApartmentState.STA);
@@ -48,10 +63,14 @@ public sealed class WidgetHost : IDisposable
         ready.Wait();
     }
 
-    void OnWidget(Action<TaskbarWidget> action) => _widgetCtx.Post(_ =>
+    void OnWidget(Action<TaskbarWidget> action)
     {
-        if (!_w.IsDisposed) action(_w);
-    }, null);
+        if (_w is not { } w) return; // sem widget: nada a fazer (e o thread dele já terminou)
+        _widgetCtx.Post(_ =>
+        {
+            if (!w.IsDisposed) action(w);
+        }, null);
+    }
 
     public void SetSnapshot(Snapshot s) => OnWidget(w => w.SetSnapshot(s));
     public bool Busy { set => OnWidget(w => w.Busy = value); }
@@ -65,10 +84,10 @@ public sealed class WidgetHost : IDisposable
     public void BringAboveTaskbar() => OnWidget(w => w.BringAboveTaskbar());
 
     /// <summary>O widget está à mostra (lido do estado da janela, seguro entre threads).</summary>
-    public bool Visible => _w.IsShown;
+    public bool Visible => _w?.IsShown ?? false;
 
-    public Rectangle ScreenBounds => _w.ScreenBounds;
-    public Point PopupAnchor => _w.PopupAnchor;
+    public Rectangle ScreenBounds => _w?.ScreenBounds ?? Rectangle.Empty;
+    public Point PopupAnchor => _w?.PopupAnchor ?? Point.Empty;
 
     public void Dispose() => OnWidget(w =>
     {

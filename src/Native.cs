@@ -195,6 +195,42 @@ static class Native
         finally { CloseHandle(h); }
     }
 
+    /// <summary>Nível de integridade (RID) do processo, ou null se não der para ler (sem permissão, processo saiu).</summary>
+    public static uint? GetIntegrityLevel(int pid)
+    {
+        var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (h == IntPtr.Zero) return null;
+        try
+        {
+            if (!OpenProcessToken(h, TOKEN_QUERY, out var token)) return null;
+            try
+            {
+                // primeira chamada só descobre o tamanho (falha esperada com ERROR_INSUFFICIENT_BUFFER)
+                _ = GetTokenInformation(token, TokenIntegrityLevel, IntPtr.Zero, 0, out int len);
+                if (len <= 0) return null;
+                var buf = Marshal.AllocHGlobal(len);
+                try
+                {
+                    if (!GetTokenInformation(token, TokenIntegrityLevel, buf, len, out _)) return null;
+                    // TOKEN_MANDATORY_LABEL { SID_AND_ATTRIBUTES { IntPtr Sid; uint Attributes } }: o RID é a última subautoridade
+                    var sid = Marshal.ReadIntPtr(buf);
+                    int count = Marshal.ReadByte(GetSidSubAuthorityCount(sid));
+                    return count == 0 ? null : (uint)Marshal.ReadInt32(GetSidSubAuthority(sid, (uint)(count - 1)));
+                }
+                finally { Marshal.FreeHGlobal(buf); }
+            }
+            finally { CloseHandle(token); }
+        }
+        finally { CloseHandle(h); }
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true)] static extern bool OpenProcessToken(IntPtr process, uint access, out IntPtr token);
+    [DllImport("advapi32.dll", SetLastError = true)] static extern bool GetTokenInformation(IntPtr token, int cls, IntPtr info, int len, out int returned);
+    [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthorityCount(IntPtr sid);
+    [DllImport("advapi32.dll")] static extern IntPtr GetSidSubAuthority(IntPtr sid, uint index);
+    const uint TOKEN_QUERY = 0x8;
+    const int TokenIntegrityLevel = 25;
+
     // ---- desligamento do Windows ----
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool ShutdownBlockReasonCreate(IntPtr hWnd, string reason);
     [DllImport("user32.dll")] public static extern bool ShutdownBlockReasonDestroy(IntPtr hWnd);

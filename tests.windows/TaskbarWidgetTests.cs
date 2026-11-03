@@ -203,4 +203,26 @@ public sealed class TaskbarWidgetTests
         Assert.NotEqual(GetCurrentThreadId(), GetWindowThreadProcessId(h, out _));
         Assert.True(host.Visible);
     }
+
+    [Fact]
+    public void Falha_ao_criar_o_widget_nao_derruba_o_app()
+    {
+        // no thread do widget, uma exceção antes do loop de mensagens fechava o processo (exceção não tratada)
+        SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
+        using var host = new WidgetHost(new Settings(),
+            () => throw new System.ComponentModel.Win32Exception(5)); // acesso negado, como no Windows do usuário
+        Assert.False(host.Visible);
+        Assert.Equal(Rectangle.Empty, host.ScreenBounds);
+        host.SetSnapshot(new Snapshot()); // chamadas seguem inofensivas
+        host.Busy = true;
+    }
+
+    [Fact]
+    public void Le_o_nivel_de_integridade_do_proprio_processo()
+    {
+        // usado no log quando o Windows nega criar o widget: média (comum) ou alta (administrador)
+        var rid = Native.GetIntegrityLevel(Environment.ProcessId);
+        Assert.NotNull(rid);
+        Assert.Contains(rid!.Value, new uint[] { 0x2000, 0x2100, 0x3000, 0x4000 });
+    }
 }
