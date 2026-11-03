@@ -1,0 +1,16 @@
+2026-11-03 01:15:39.424 INFO  [app] iniciado · versão 1.20.2 · Microsoft Windows NT 10.0.26100.0 · C:\Users\runneradmin\AppData\Local\Temp\wsm-e2e-75604209\app\WslSyncMonitor.exe
+2026-11-03 01:15:39.794 INFO  [widget] criado dentro da barra de tarefas
+2026-11-03 01:15:39.818 INFO  [widget] exibido 0.5 s após o início do app
+2026-11-03 01:15:39.907 AVISO [wsl] wsl.exe --list --verbose → código -1
+2026-11-03 01:15:39.909 INFO  [atualização] primeira leitura do estado em 0.6 s (WSL: Nenhuma distro instalada, Syncthing: WSL parado)
+2026-11-03 01:15:41.783 INFO  [atualização do app] versão 9.9.9 disponível
+2026-11-03 01:15:42.314 INFO  [atualização do app] instalando a versão 9.9.9
+2026-11-03 01:15:42.360 INFO  [atualização do app] de prontidão: a versão nova está abrindo
+2026-11-03 01:15:42.420 INFO  [app] iniciado · versão 1.20.2 · Microsoft Windows NT 10.0.26100.0 · C:\Users\runneradmin\AppData\Local\Temp\wsm-e2e-75604209\app\WslSyncMonitor.exe
+2026-11-03 01:15:42.575 INFO  [widget] criado dentro da barra de tarefas
+2026-11-03 01:15:42.589 INFO  [widget] exibido 0.2 s após o início do app
+2026-11-03 01:15:42.681 AVISO [wsl] wsl.exe --list --verbose → código -1
+2026-11-03 01:15:42.683 INFO  [atualização] primeira leitura do estado em 0.3 s (WSL: Nenhuma distro instalada, Syncthing: WSL parado)
+2026-11-03 01:15:42.694 INFO  [atualização do app] versão 1.20.2 pronta
+2026-11-03 01:15:42.695 INFO  [app] fechado para a nova versão assumir
+2026-11-03 01:15:42.702 INFO  [atualização do app] versão 9.9.9 disponível
