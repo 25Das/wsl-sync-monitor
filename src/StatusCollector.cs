@@ -270,7 +270,11 @@ public sealed class StatusCollector : IDisposable
         return SyncthingApi.CombineCompletion(parts);
     }
 
-    async Task<JsonElement> GetAsync(string baseUrl, string key, string path)
+    /// <summary>Lê da API; falha de conexão é repetida uma vez (ver <see cref="SyncthingHttp.RetryOnceOnConnectionErrorAsync"/>).</summary>
+    Task<JsonElement> GetAsync(string baseUrl, string key, string path) =>
+        SyncthingHttp.RetryOnceOnConnectionErrorAsync(() => GetOnceAsync(baseUrl, key, path));
+
+    async Task<JsonElement> GetOnceAsync(string baseUrl, string key, string path)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, baseUrl + path);
         if (!string.IsNullOrEmpty(key)) req.Headers.Add("X-API-Key", key);

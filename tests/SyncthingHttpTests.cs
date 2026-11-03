@@ -28,4 +28,52 @@ public class SyncthingHttpTests
         Assert.Equal(accepted, h.ServerCertificateCustomValidationCallback!(req, null, null, SslPolicyErrors.RemoteCertificateChainErrors));
         Assert.True(h.ServerCertificateCustomValidationCallback(req, null, null, SslPolicyErrors.None));
     }
+
+    // conexão reaproveitada que morreu (depois de suspender, por exemplo): o primeiro pedido falha, o seguinte funciona.
+    // Sem tentar de novo, isso virava "Sem resposta da API" no log e no ícone por uma fração de segundo.
+
+    [Fact]
+    public async Task Falha_de_conexao_tenta_de_novo_uma_vez()
+    {
+        int calls = 0;
+        var r = await SyncthingHttp.RetryOnceOnConnectionErrorAsync(() =>
+            ++calls == 1 ? throw new HttpRequestException("An error occurred while sending the request.") : Task.FromResult(42));
+        Assert.Equal(42, r);
+        Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task Falha_de_novo_vale_a_segunda()
+    {
+        int calls = 0;
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => SyncthingHttp.RetryOnceOnConnectionErrorAsync<int>(() =>
+            throw new HttpRequestException("falha " + ++calls)));
+        Assert.Equal("falha 2", ex.Message);
+    }
+
+    [Fact]
+    public async Task Resposta_de_erro_do_servidor_nao_tenta_de_novo()
+    {
+        // o Syncthing respondeu (chave recusada, erro interno): repetir não muda nada
+        int calls = 0;
+        await Assert.ThrowsAsync<HttpRequestException>(() => SyncthingHttp.RetryOnceOnConnectionErrorAsync<int>(() =>
+        {
+            calls++;
+            throw new HttpRequestException("HTTP 403", null, System.Net.HttpStatusCode.Forbidden);
+        }));
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task Prazo_esgotado_nao_tenta_de_novo()
+    {
+        // um Syncthing travado não responde a nenhum dos dois: repetir só dobraria a espera
+        int calls = 0;
+        await Assert.ThrowsAsync<TaskCanceledException>(() => SyncthingHttp.RetryOnceOnConnectionErrorAsync<int>(() =>
+        {
+            calls++;
+            throw new TaskCanceledException();
+        }));
+        Assert.Equal(1, calls);
+    }
 }

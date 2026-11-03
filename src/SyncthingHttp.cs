@@ -17,6 +17,17 @@ public static class SyncthingHttp
         UseProxy = false,
     };
 
+    /// <summary>
+    /// Pedido de leitura que falhou na conexão (sem resposta do servidor nem prazo esgotado) é repetido uma vez: uma
+    /// conexão reaproveitada pode ter morrido (depois de suspender, por exemplo) e o pedido seguinte abre outra.
+    /// Resposta de erro e prazo esgotado não se repetem (repetir não muda nada, ou só dobraria a espera).
+    /// </summary>
+    public static async Task<T> RetryOnceOnConnectionErrorAsync<T>(Func<Task<T>> send)
+    {
+        try { return await send().ConfigureAwait(false); }
+        catch (HttpRequestException ex) when (ex.StatusCode == null) { return await send().ConfigureAwait(false); }
+    }
+
     static bool IsLocal(Uri? u) => u != null && (u.IsLoopback || (IPAddress.TryParse(u.Host, out var ip) && IsPrivate(ip)));
 
     static bool IsPrivate(IPAddress ip)

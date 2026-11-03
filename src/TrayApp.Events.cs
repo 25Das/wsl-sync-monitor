@@ -119,6 +119,8 @@ public sealed partial class TrayApp
                 _activity.Reset(); // saindo, ou o acesso mudou: o que veio do Syncthing anterior não vale mais
                 continue;
             }
+            // no desligamento o próprio app para o Syncthing, que fecha o fluxo: esperado, não é aviso
+            catch (Exception ex) when (WslService.SessionEnding) { Log.Info("syncthing", "fluxo de eventos encerrado (desligamento): " + ex.Message); }
             catch (Exception ex) { Log.Failure("syncthing", "eventos", "fluxo de eventos interrompido: " + ex.Message); }
             finally
             {

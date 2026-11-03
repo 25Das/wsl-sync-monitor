@@ -382,7 +382,9 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
         {
             var desc = t.Result == null ? "não lidos" : string.Join(" ", t.Result.Select(i => $"{i.Start}–{i.End}"));
             bool changed = desc != _iconsDesc;
-            if (changed) { _iconsDesc = desc; Log.Info("widget", "ícones da barra: " + desc); }
+            _iconsDesc = desc;
+            // mudam a cada janela aberta ou fechada: só a falha de leitura vai para o log (registrada em TaskbarIcons.Read)
+            if (t.Result != null) Log.Recovered("widget", "icones", "ícones da barra lidos de novo");
             _taskbarIcons = t.Result;
             _readingIcons = false;
             if (changed) ui?.Post(_ => FollowSoon(), null); // recoloca já com os ícones novos
