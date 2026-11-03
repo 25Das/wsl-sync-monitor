@@ -27,8 +27,10 @@ public sealed class SyncthingEvents(HttpClient http)
         string? started = await StartTimeAsync(baseUrl, apiKey, ct).ConfigureAwait(false);
         long since = await LatestIdAsync(baseUrl, apiKey, ct).ConfigureAwait(false);
         onConnected?.Invoke();
-        while (!ct.IsCancellationRequested)
+        while (true)
         {
+            // cancelado entre dois pedidos termina como cancelado: voltar normalmente seria lido como queda do fluxo
+            ct.ThrowIfCancellationRequested();
             var batch = await GetAsync(baseUrl, apiKey, $"/rest/events?since={since}&timeout={(int)LongPoll.TotalSeconds}", ct)
                 .ConfigureAwait(false);
             if (batch.Count > 0)

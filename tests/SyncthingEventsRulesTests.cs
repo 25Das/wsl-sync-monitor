@@ -54,6 +54,17 @@ public class SyncthingEventsRulesTests
     }
 
     [Fact]
+    public async Task Cancelado_entre_dois_pedidos_termina_como_cancelado()
+    {
+        // terminar "normalmente" seria lido como queda do fluxo (Syncthing marcado como parado, espera para reconectar)
+        var fake = new FakeSyncthing(_ => "2026-10-23T10:00:00Z");
+        using var http = new HttpClient(fake);
+        using var cts = new CancellationTokenSource();
+        var run = new SyncthingEvents(http).RunAsync("http://st", "", _ => { }, cts.Token, onConnected: cts.Cancel);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+    }
+
+    [Fact]
     public async Task Avisa_quando_conectou()
     {
         var fake = new FakeSyncthing(_ => "2026-10-23T10:00:00Z");
