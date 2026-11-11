@@ -30,6 +30,7 @@
     <Compile Include="../src/Models.cs" Link="src/Models.cs" />
     <Compile Include="../src/GuardRules.cs" Link="src/GuardRules.cs" />
     <Compile Include="../src/ShutdownProgress.cs" Link="src/ShutdownProgress.cs" />
+    <Compile Include="../src/AtomicFile.cs" Link="src/AtomicFile.cs" />
     <Compile Include="../src/TrayIconModel.cs" Link="src/TrayIconModel.cs" />
     <Compile Include="../src/PanelFooter.cs" Link="src/PanelFooter.cs" />
     <Compile Include="../src/WslPaths.cs" Link="src/WslPaths.cs" />

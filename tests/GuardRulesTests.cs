@@ -78,6 +78,22 @@ public class GuardRulesTests
     }
 
     [Fact]
+    public void Ocupado_nao_segura_a_distro_nem_com_manter_ligada()
+    {
+        // reiniciar a distro (ou atualizar o WSL) mantém o pedido: no meio da operação, segurar a distro de novo
+        // criaria um processo que o encerramento em seguida mata (e a proteção acharia que a distro caiu por fora)
+        Assert.Equal(new GuardStep(GuardState.KeptAlive, None, 0), GuardRules.Step(GuardState.KeptAlive, In(busy: true, keep: true)));
+        Assert.Equal(new GuardStep(GuardState.Off, None, 0), GuardRules.Step(GuardState.Off, In(busy: true, keep: true)));
+    }
+
+    [Fact]
+    public void Ocupado_com_a_protecao_desligada_nao_solta_no_meio()
+    {
+        // a operação (ex.: iniciar a distro) decide; a proteção age na leitura depois dela
+        Assert.Equal(new GuardStep(GuardState.InUse, None, 0), GuardRules.Step(GuardState.InUse, In(busy: true, protect: false)));
+    }
+
+    [Fact]
     public void Pedido_de_manter_ligada_por_tempo_e_ate_desligar()
     {
         var now = new DateTime(2026, 10, 22, 15, 0, 0);
@@ -142,5 +158,36 @@ public class KeepAliveAtLaunchTests
     public void Encerrar_o_WSL_inteiro_desfaz_o_pedido()
     {
         Assert.Null(KeepAliveRequest.UntilStopped("Ubuntu").AfterStop(null, restart: false));
+    }
+
+    // a distro do Syncthing é solta pela proteção (verifica a sincronização antes); outra distro mantida ligada não tem
+    // proteção nenhuma: quando o pedido acaba, ela precisa ser solta na hora (antes, ficava segurada até o app fechar)
+
+    [Fact]
+    public void Pedido_que_acaba_numa_distro_sem_o_Syncthing_solta_ela()
+    {
+        var debian = KeepAliveRequest.For("Debian", TimeSpan.FromHours(1), DateTime.Now);
+        Assert.Equal("Debian", KeepAliveRequest.DistroToRelease(debian, next: null, monitored: "Ubuntu"));
+    }
+
+    [Fact]
+    public void Pedido_trocado_para_outra_distro_solta_a_anterior()
+    {
+        var debian = KeepAliveRequest.UntilStopped("Debian");
+        Assert.Equal("Debian", KeepAliveRequest.DistroToRelease(debian, KeepAliveRequest.UntilStopped("Ubuntu"), monitored: "Ubuntu"));
+    }
+
+    [Fact]
+    public void Pedido_renovado_na_mesma_distro_nao_solta()
+    {
+        var debian = KeepAliveRequest.For("Debian", TimeSpan.FromHours(1), DateTime.Now);
+        Assert.Null(KeepAliveRequest.DistroToRelease(debian, KeepAliveRequest.UntilStopped("debian"), monitored: "Ubuntu"));
+    }
+
+    [Fact]
+    public void Pedido_que_acaba_na_distro_do_Syncthing_fica_com_a_protecao()
+    {
+        Assert.Null(KeepAliveRequest.DistroToRelease(KeepAliveRequest.UntilStopped("Ubuntu"), next: null, monitored: "ubuntu"));
+        Assert.Null(KeepAliveRequest.DistroToRelease(previous: null, KeepAliveRequest.UntilStopped("Debian"), monitored: "Ubuntu"));
     }
 }

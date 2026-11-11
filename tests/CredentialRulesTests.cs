@@ -44,4 +44,28 @@ public class CredentialRulesTests
         // sem poder reler (nada roda na distro liberada), apagar a chave deixaria o app sem nenhuma
         Assert.False(CredentialRules.DiscardKeyOnAuthError(allowDistroCommands: false));
     }
+
+    // o usuário trocou a porta (ou ligou o HTTPS) da interface do Syncthing: ele roda, mas não responde no endereço
+    // lido antes. Antes, o app ficava no endereço antigo até trocar de distro
+
+
+    [Fact]
+    public void Syncthing_rodando_sem_responder_rele_o_endereco()
+    {
+        Assert.True(CredentialRules.RereadAfterUnreachable(processRunning: true, lastRead: Now.AddMinutes(-5), Now, allowDistroCommands: true));
+    }
+
+    [Fact]
+    public void Releitura_do_endereco_no_maximo_uma_vez_por_minuto()
+    {
+        // ele pode só estar subindo: cada releitura executa um comando na distro
+        Assert.False(CredentialRules.RereadAfterUnreachable(true, Now.AddSeconds(-20), Now, true));
+    }
+
+    [Fact]
+    public void Sem_o_processo_ou_com_a_distro_liberada_nao_rele()
+    {
+        Assert.False(CredentialRules.RereadAfterUnreachable(processRunning: false, Now.AddMinutes(-5), Now, true));
+        Assert.False(CredentialRules.RereadAfterUnreachable(processRunning: true, Now.AddMinutes(-5), Now, allowDistroCommands: false));
+    }
 }

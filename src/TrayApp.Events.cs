@@ -34,6 +34,7 @@ public sealed partial class TrayApp
         _lingerTimer.Tick += (_, _) => { _lingerTimer.Stop(); ShowState(); }; // a atividade recente venceu
         _refreshSoon.Tick += (_, _) => { _refreshSoon.Stop(); RequestRefresh(); };
         _ = EventsLoopAsync();
+        Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
 
         // settings.json editado à mão vale na hora (antes, só na próxima atualização)
         try
@@ -202,8 +203,28 @@ public sealed partial class TrayApp
         }
     }
 
+    /// <summary>
+    /// O Windows voltou da suspensão: a conexão do fluxo de eventos pode ter morrido sem aviso (ficaria esperando até o
+    /// prazo dela, minutos) e o prazo de uma verificação em andamento correu durante a suspensão (ela venceria na hora
+    /// e soltaria a distro sem confirmar a sincronização). Reconecta, lê tudo e recomeça a verificação.
+    /// </summary>
+    void OnPowerModeChanged(object? sender, Microsoft.Win32.PowerModeChangedEventArgs e)
+    {
+        if (e.Mode == Microsoft.Win32.PowerModes.Suspend) { Log.Info("app", "o Windows vai suspender"); return; }
+        if (e.Mode != Microsoft.Win32.PowerModes.Resume) return;
+        _ui.Post(_ =>
+        {
+            if (_exiting || _standby) return;
+            Log.Info("app", "o Windows voltou da suspensão; conferindo tudo de novo");
+            RestartEvents();
+            if (_guard == GuardState.Verifying && _snap?.Target is { Running: true } d) StartVerify(d.Name); // prazo novo
+            RequestRefresh();
+        }, null);
+    }
+
     void StopRealTime()
     {
+        Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         _eventsCts.Cancel();
         _lingerTimer.Stop();
         _refreshSoon.Stop();

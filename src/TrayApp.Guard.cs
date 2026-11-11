@@ -69,14 +69,25 @@ public sealed partial class TrayApp
     /// <summary>Pede para manter a distro ligada (null = até desligar) ou cancela o pedido (distro null).</summary>
     void SetKeepAlive(string? distro, TimeSpan? duration)
     {
+        var previous = _keepAliveRequest;
         _keepAliveRequest = distro == null ? null
             : duration is { } d ? KeepAliveRequest.For(distro, d, DateTime.Now)
             : KeepAliveRequest.UntilStopped(distro);
         Log.Info("proteção", _keepAliveRequest is { } req ? $"{req.Distro}: Manter ligada {req.Describe()}" : "Manter ligada desativado");
+        ReleaseEndedKeepAlive(previous);
         _settings.KeepAliveDistro = _keepAliveRequest is { Persist: true } r ? r.Distro : "";
         SaveSettings();
         if (distro != null && Distro(distro) is { Running: false }) _ = StartDistroAsync(distro);
         RefreshNow();
+    }
+
+    /// <summary>
+    /// Pedido que acabou numa distro que não é a do Syncthing: ninguém mais a solta (a proteção só cuida da do
+    /// Syncthing), então ela é solta aqui. Antes, ficava segurada até o app fechar.
+    /// </summary>
+    void ReleaseEndedKeepAlive(KeepAliveRequest? previous)
+    {
+        if (KeepAliveRequest.DistroToRelease(previous, _keepAliveRequest, TargetDistro) is { } d) WslService.Release(d);
     }
 
     bool _launchChecked;
@@ -90,6 +101,21 @@ public sealed partial class TrayApp
                 d.Name.Equals(k.Distro, StringComparison.OrdinalIgnoreCase)))) return;
         Log.Info("proteção", $"{k.Distro}: ligando ao iniciar (Manter ligada até você desligar)");
         _ = StartDistroAsync(k.Distro);
+    }
+
+    /// <summary>
+    /// "Manter ligada (até você desligar)" editado à mão no settings.json: vale na hora. Um pedido por tempo, feito no
+    /// menu, não é salvo no arquivo e continua até acabar.
+    /// </summary>
+    void ApplyKeepAliveFromSettings()
+    {
+        if (_keepAliveRequest is { Persist: false }) return;
+        var previous = _keepAliveRequest;
+        _keepAliveRequest = string.IsNullOrWhiteSpace(_settings.KeepAliveDistro) ? null : KeepAliveRequest.UntilStopped(_settings.KeepAliveDistro);
+        Log.Info("proteção", _keepAliveRequest is { } k ? $"{k.Distro}: Manter ligada até você desligar (settings.json)" : "Manter ligada desativado (settings.json)");
+        ReleaseEndedKeepAlive(previous);
+        if (_keepAliveRequest is { } r && Distro(r.Distro) is { Running: false }) _ = StartDistroAsync(r.Distro);
+        RefreshNow();
     }
 
     void LoadKeepAlive()
@@ -106,7 +132,12 @@ public sealed partial class TrayApp
         if (d.Running) _lastRunningAt = DateTime.Now;
 
         // "Manter ligada" por tempo: quando expira, deixa de valer
-        if (_keepAliveRequest is { Persist: false } k && !k.IsActive(DateTime.Now)) _keepAliveRequest = null;
+        if (_keepAliveRequest is { Persist: false } k && !k.IsActive(DateTime.Now))
+        {
+            Log.Info("proteção", $"{k.Distro}: Manter ligada terminou ({k.Describe()})");
+            _keepAliveRequest = null;
+            ReleaseEndedKeepAlive(k);
+        }
 
         bool canCount = d.Running && !_busy && (_settings.ProtectSync || IsKeptAlive(d.Name));
         var sessions = canCount ? WslService.ExternalSessions(d.Name, DefaultDistro) : [];
@@ -264,6 +295,7 @@ public sealed partial class TrayApp
         if (_exiting) { _exitCts?.Cancel(); Log.Info("app", "sair agora (sem esperar)"); return; } // segundo clique
         _exiting = true;
         Log.Info("app", "saindo");
+        _updateDownload?.Cancel(); // uma atualização baixando não troca o executável enquanto o app sai
         _popup.HidePopup();
         var d = _snap?.Target;
         if (_settings.ProtectSync && d is { Running: true } && _guard != GuardState.Released &&

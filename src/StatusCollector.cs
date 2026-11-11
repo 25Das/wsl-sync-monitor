@@ -87,7 +87,18 @@ public sealed class StatusCollector : IDisposable
             catch (Exception pex) { Log.Failure("syncthing", "pgrep", "não foi possível saber se o Syncthing roda: " + pex.Message); }
 
             if (running != true || !await TryWslIpFallbackAsync(snap, s, distro))
+            {
                 (snap.St, snap.StError) = ReadFailures.ApiUnreachable(running, GuiUrl(s), ex.Message);
+                // roda mas não responde: a porta ou o HTTPS da interface podem ter mudado; a próxima leitura relê
+                if (string.IsNullOrWhiteSpace(s.SyncthingUrl) &&
+                    CredentialRules.RereadAfterUnreachable(running == true, _configReadAt, DateTime.Now, allowDistroCommands))
+                {
+                    Log.Info("syncthing", "a API não responde no endereço conhecido; relendo o config.xml");
+                    _cachedUrl = null;
+                    _cachedKey = null;
+                    _fallbackUrl = null;
+                }
+            }
         }
         catch (Exception ex)
         {

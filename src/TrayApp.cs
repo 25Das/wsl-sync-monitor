@@ -213,7 +213,9 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         // copia para a instância compartilhada com o widget
         bool ignoredChanged = !fresh.IgnoredFolders.ToHashSet().SetEquals(_settings.IgnoredFolders)
                               || !fresh.IgnoredDevices.ToHashSet().SetEquals(_settings.IgnoredDevices);
+        bool keepAliveChanged = !string.Equals(fresh.KeepAliveDistro, _settings.KeepAliveDistro, StringComparison.OrdinalIgnoreCase);
         foreach (var p in typeof(Settings).GetProperties().Where(p => p.CanWrite)) p.SetValue(_settings, p.GetValue(fresh));
+        if (keepAliveChanged) ApplyKeepAliveFromSettings();
         _activity.Ignored = _settings.Ignored();
         if (ignoredChanged) RequestRefresh(); // tira (ou devolve) já das listas, sem esperar o próximo ciclo
         if (accessChanged) { _collector.InvalidateCredentials(); RestartEvents(); }
@@ -482,11 +484,12 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _busy = true;
         SetBusy($"Baixando a versão {u.Version.ToString(3)}…");
         Process? next = null;
+        using var download = _updateDownload = new CancellationTokenSource();
         try
         {
             Log.Info("atualização do app", $"instalando a versão {u.Version.ToString(3)}");
             using var ready = Updater.CreateReadySignal(Environment.ProcessId);
-            next = await _updater.InstallAsync(u); // se nem iniciar, o executável já voltou
+            next = await _updater.InstallAsync(u, download.Token); // se nem iniciar, o executável já voltou
             // de prontidão: a nova assume (mutex, distros seguradas) e esta só fecha quando ela avisar que está pronta
             EnterStandby();
             if (await Updater.WaitReady(ready, next, Updater.StartTimeout))
@@ -498,8 +501,13 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
             }
             Log.Warn("atualização do app", $"a versão {u.Version.ToString(3)} não ficou pronta; voltando para a atual");
             bool back = ResumeAfterFailedUpdate(next);
+            if (_handingOver) return; // outra instância assumiu: esta já está fechando (sem voltar duas vezes)
             throw new InvalidOperationException("a versão nova não iniciou" +
                 (back ? "; a atual continua." : " e não foi possível voltar o executável anterior."));
+        }
+        catch (OperationCanceledException) when (download.IsCancellationRequested)
+        {
+            Log.Info("atualização do app", "download cancelado: o app está saindo");
         }
         catch (Exception ex)
         {
@@ -512,8 +520,15 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
                     AppName, MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
                 try { Process.Start(new ProcessStartInfo(u.PageUrl) { UseShellExecute = true }); } catch { }
         }
-        finally { next?.Dispose(); }
+        finally
+        {
+            _updateDownload = null;
+            next?.Dispose();
+        }
     }
+
+    /// <summary>Download da atualização em andamento (sair o cancela).</summary>
+    CancellationTokenSource? _updateDownload;
 
     /// <summary>
     /// A versão nova não ficou pronta: encerra o que sobrou dela, volta o executável anterior e retoma o mutex e a

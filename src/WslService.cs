@@ -39,7 +39,8 @@ public static class WslService
             using (p)
             {
                 bool own;
-                lock (OwnPids) own = OwnPids.Contains(p.Id) || _keepAlive.Values.Any(k => k.Id == p.Id && !k.HasExited);
+                lock (OwnPids) own = OwnPids.Contains(p.Id);
+                lock (KeepAliveLock) own |= _keepAlive.Values.Any(k => k.Id == p.Id && !k.HasExited);
                 if (own) continue;
                 var cmd = Native.GetCommandLine(p.Id);
                 if (WslCommandLine.IsKeepAlive(cmd, out _)) continue; // de outra instância do app (ver AdoptKeepAlives)
@@ -209,13 +210,21 @@ public static class WslService
         return r.ExitCode == 0 ? r.Output.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() : null;
     }
 
-    // processos de manutenção (SyncthingScripts.KeepAlive) que mantêm ligada cada distro segurada pelo app
+    // processos de manutenção (SyncthingScripts.KeepAlive) que mantêm ligada cada distro segurada pelo app. São
+    // usados pela interface, pela sequência de desligamento (thread de fundo, com a interface esperando) e pelos avisos
+    // de fim de processo (pool): todo acesso passa pelo KeepAliveLock
     static readonly Dictionary<string, Native.DetachedProcess> _keepAlive = new(StringComparer.OrdinalIgnoreCase);
+    static readonly object KeepAliveLock = new();
 
     /// <summary>Inicia a distro e mantém um processo oculto vivo para que ela não desligue por inatividade.</summary>
     public static void StartDistro(string distro)
     {
         if (Blocked) return; // Windows encerrando a sessão: não liga nada (e o wsl.exe falharia)
+        lock (KeepAliveLock) StartDistroLocked(distro);
+    }
+
+    static void StartDistroLocked(string distro)
+    {
         if (_keepAlive.TryGetValue(distro, out var p))
         {
             if (!p.HasExited) return;
@@ -238,11 +247,13 @@ public static class WslService
 
     /// <summary>É este o processo que mantém a distro ligada agora? (um aviso atrasado de um processo já trocado não vale)</summary>
     internal static bool IsKeepAlive(string distro, Native.DetachedProcess p) =>
-        _keepAlive.TryGetValue(distro, out var current) && ReferenceEquals(current, p);
+        Locked(() => _keepAlive.TryGetValue(distro, out var current) && ReferenceEquals(current, p));
+
+    static T Locked<T>(Func<T> f) { lock (KeepAliveLock) return f(); }
 
     static void Hold(string distro, Native.DetachedProcess p)
     {
-        _keepAlive[distro] = p;
+        lock (KeepAliveLock) _keepAlive[distro] = p;
         p.WatchExit(() => KeepAliveExited?.Invoke(distro, p));
     }
 
@@ -300,18 +311,23 @@ public static class WslService
     }
 
     public static bool IsHolding(string distro) =>
-        _keepAlive.TryGetValue(distro, out var p) && p is { HasExited: false };
+        Locked(() => _keepAlive.TryGetValue(distro, out var p) && p is { HasExited: false });
 
     /// <summary>Solta a distro (encerra o processo que a mantém ligada); o WSL pode então desligar por ociosidade.</summary>
     public static void Release(string? distro = null) => ReleaseKeepAlive(distro);
 
     static void ReleaseKeepAlive(string? distro = null)
     {
-        foreach (var name in _keepAlive.Keys.ToList())
+        List<(string Name, Native.DetachedProcess Process)> released = [];
+        lock (KeepAliveLock)
+            foreach (var name in _keepAlive.Keys.ToList())
+            {
+                if (distro != null && !name.Equals(distro, StringComparison.OrdinalIgnoreCase)) continue;
+                released.Add((name, _keepAlive[name]));
+                _keepAlive.Remove(name);
+            }
+        foreach (var (name, p) in released)
         {
-            if (distro != null && !name.Equals(distro, StringComparison.OrdinalIgnoreCase)) continue;
-            var p = _keepAlive[name];
-            _keepAlive.Remove(name);
             p.StopWatchingExit(); // encerrado de propósito: não é um fim inesperado
             try { p.Kill(); } catch { /* já tinha saído */ }
             p.Dispose();

@@ -105,9 +105,10 @@ public sealed partial class TrayApp
             yield return Item("Encerrar…", () => StopDistroAsync(name), enabled: !_busy);
         }
         else yield return Item("Iniciar", () => StartDistroAsync(name), enabled: !_busy);
-        yield return Sub("Manter ligada", KeepAliveMenu(name));
+        yield return Sub("Manter ligada", KeepAliveMenu(name), enabled: !_busy); // ligar a distro espera a operação em andamento
         yield return Sep();
-        yield return Item("Usar para o Syncthing", () => UseForSyncthing(name), check: IsMonitored(name));
+        // trocar no meio de uma operação soltaria a distro que ela está usando (ex.: esperando sincronizar para sair)
+        yield return Item("Usar para o Syncthing", () => UseForSyncthing(name), enabled: !_busy, check: IsMonitored(name));
         yield return Item("Definir como padrão do WSL", () => SetDefaultDistroAsync(name), enabled: !d.IsDefault && !_busy, check: d.IsDefault);
         yield return Sep();
         yield return Item("Exportar backup…", () => ExportDistroAsync(name), enabled: !_busy);

@@ -158,6 +158,12 @@ public sealed partial class TrayApp
             SetBusy("Atualizando o WSL…");
             var result = await WslService.UpdateWslAsync();
             _wslVersion = null; // relê na ficha técnica
+            // "Manter ligada" continua valendo depois da atualização: liga de novo a distro que estava mantida
+            if (_keepAliveRequest is { } k && k.IsActive(DateTime.Now) && running.Contains(k.Distro, StringComparer.OrdinalIgnoreCase))
+            {
+                await RefreshAsync();
+                await StartCoreAsync(k.Distro);
+            }
             MessageBox.Show(string.IsNullOrWhiteSpace(result) ? "WSL atualizado." : result, AppName);
         });
     }
@@ -191,6 +197,8 @@ public sealed partial class TrayApp
     /// <summary>Troca a distro onde o Syncthing é acompanhado.</summary>
     void UseForSyncthing(string name)
     {
+        // a mesma distro já escolhida: nada muda (antes, soltava e recomeçava a proteção dela à toa); ocupado: ver o menu
+        if (_busy || name.Equals(_settings.Distro, StringComparison.OrdinalIgnoreCase)) return;
         ResetGuardForDistroChange();
         _settings.Distro = name;
         SaveSettings();

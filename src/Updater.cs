@@ -38,9 +38,11 @@ public sealed class Updater : IDisposable
     /// permite renomear um .exe em execução. Quem chama espera com <see cref="WaitReady"/> a nova versão ficar pronta
     /// antes de fechar; senão, volta com <see cref="Rollback(string)"/>. Se ela nem inicia, já volta aqui.
     /// </summary>
-    public async Task<Process> InstallAsync(UpdateInfo u)
+    /// <param name="ct">cancela o download (o app está saindo); depois de baixado, a troca não é interrompida</param>
+    public async Task<Process> InstallAsync(UpdateInfo u, CancellationToken ct = default)
     {
-        var bytes = await _http.GetByteArrayAsync(u.DownloadUrl);
+        var bytes = await _http.GetByteArrayAsync(u.DownloadUrl, ct);
+        ct.ThrowIfCancellationRequested();
         if (bytes.Length != u.Size || bytes.Length < 2 || bytes[0] != 'M' || bytes[1] != 'Z')
             throw new InvalidDataException("O arquivo baixado não é o executável esperado.");
         SwapIn(ExePath, bytes);

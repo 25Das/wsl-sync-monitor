@@ -14,6 +14,13 @@ public static class CredentialRules
         allowDistroCommands && !haveKey && now - lastRead >= RetryInterval;
 
     /// <summary>
+    /// O Syncthing roda mas não responde no endereço lido do config.xml: o usuário pode ter trocado a porta ou ligado
+    /// o HTTPS da interface. Relê o config.xml (no máximo uma vez por <see cref="RetryInterval"/>: ele pode só estar subindo).
+    /// </summary>
+    public static bool RereadAfterUnreachable(bool processRunning, DateTime lastRead, DateTime now, bool allowDistroCommands) =>
+        allowDistroCommands && processRunning && now - lastRead >= RetryInterval;
+
+    /// <summary>
     /// Com a distro em uso, descarta a chave recusada para relê-la. Com a distro liberada não há como reler,
     /// então a chave é mantida (descartá-la deixaria o app sem nenhuma até a distro voltar a ser usada).
     /// </summary>

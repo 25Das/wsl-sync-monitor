@@ -164,7 +164,7 @@ public sealed class Settings
         try
         {
             Directory.CreateDirectory(Dir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts));
+            AtomicFile.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts)); // nunca pela metade (é relido ao mudar)
         }
         catch (Exception ex) { Log.Warn("configurações", "salvar settings.json", ex); }
     }

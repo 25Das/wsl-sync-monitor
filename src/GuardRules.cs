@@ -23,13 +23,15 @@ public static class GuardRules
         if (!i.Running)
             return new(GuardState.Off, s == GuardState.Off ? GuardActions.None : GuardActions.CancelVerify | GuardActions.Release, 0);
 
+        // uma operação do usuário em andamento (iniciar, reiniciar, encerrar, atualizar o WSL…) decide sozinha: segurar
+        // ou soltar a distro no meio dela atrapalharia. A proteção age na leitura feita logo depois
+        if (i.Busy) return new(s, GuardActions.None, i.IdleTicks);
+
         if (i.KeepAliveActive) // vale mesmo com a proteção desligada: é um pedido explícito
             return new(GuardState.KeptAlive, GuardActions.Hold | (s == GuardState.Verifying ? GuardActions.CancelVerify : 0), 0);
 
         if (!i.ProtectEnabled)
             return new(GuardState.Off, s == GuardState.Off ? GuardActions.None : GuardActions.CancelVerify | GuardActions.Release, 0);
-
-        if (i.Busy) return new(s, GuardActions.None, i.IdleTicks);
 
         if (i.Sessions > 0)
             return new(GuardState.InUse, GuardActions.Hold | (s == GuardState.Verifying ? GuardActions.CancelVerify : 0), 0);
@@ -65,6 +67,16 @@ public sealed record KeepAliveRequest(string Distro, DateTime? Until)
     /// </summary>
     public KeepAliveRequest? AfterStop(string? distro, bool restart) =>
         restart || (distro != null && !distro.Equals(Distro, StringComparison.OrdinalIgnoreCase)) ? this : null;
+
+    /// <summary>
+    /// O pedido mudou (acabou, foi parado ou trocado): a distro que precisa ser solta agora, se houver. A distro do
+    /// Syncthing (<paramref name="monitored"/>) não: a proteção a solta depois de confirmar a sincronização.
+    /// </summary>
+    public static string? DistroToRelease(KeepAliveRequest? previous, KeepAliveRequest? next, string? monitored)
+    {
+        if (previous == null || previous.Distro.Equals(monitored, StringComparison.OrdinalIgnoreCase)) return null;
+        return next != null && next.Distro.Equals(previous.Distro, StringComparison.OrdinalIgnoreCase) ? null : previous.Distro;
+    }
 
     /// <summary>Ao abrir o app: "até você desligar" liga a distro se ela estiver desligada (é o que o pedido quer dizer).</summary>
     public bool StartAtLaunch(DistroInfo? distro) =>
