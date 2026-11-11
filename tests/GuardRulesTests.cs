@@ -114,4 +114,33 @@ public class KeepAliveAtLaunchTests
     [Fact]
     public void Pedido_por_tempo_nao_vale_depois_de_reiniciar_o_app() =>
         Assert.False(KeepAliveRequest.For("Ubuntu", TimeSpan.FromHours(1), DateTime.Now).StartAtLaunch(new DistroInfo("Ubuntu", false, 2, true)));
+
+    // "Manter ligada até você desligar": encerrar a distro (ou o WSL) é o "desligar"; reiniciar não. Antes, reiniciar
+    // pelo menu desativava o pedido sem avisar e a distro deixava de ser mantida ligada (e de ligar ao abrir o app)
+
+    [Fact]
+    public void Reiniciar_a_distro_mantem_o_pedido()
+    {
+        var k = KeepAliveRequest.UntilStopped("Ubuntu");
+        Assert.Same(k, k.AfterStop("Ubuntu", restart: true));
+    }
+
+    [Fact]
+    public void Encerrar_a_distro_desfaz_o_pedido()
+    {
+        Assert.Null(KeepAliveRequest.UntilStopped("Ubuntu").AfterStop("ubuntu", restart: false));
+    }
+
+    [Fact]
+    public void Encerrar_outra_distro_nao_mexe_no_pedido()
+    {
+        var k = KeepAliveRequest.UntilStopped("Ubuntu");
+        Assert.Same(k, k.AfterStop("Debian", restart: false));
+    }
+
+    [Fact]
+    public void Encerrar_o_WSL_inteiro_desfaz_o_pedido()
+    {
+        Assert.Null(KeepAliveRequest.UntilStopped("Ubuntu").AfterStop(null, restart: false));
+    }
 }

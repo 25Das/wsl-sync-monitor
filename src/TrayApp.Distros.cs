@@ -91,10 +91,11 @@ public sealed partial class TrayApp
     }
 
     /// <summary>Encerramento seguro de uma distro: para o Syncthing, grava em disco e encerra.</summary>
-    async Task StopCoreAsync(string d)
+    /// <param name="restart">vai ligar de novo em seguida: "Manter ligada" continua valendo</param>
+    async Task StopCoreAsync(string d, bool restart = false)
     {
         if (IsMonitored(d)) { CancelVerify(); _guard = GuardState.Off; }
-        if (_keepAliveRequest?.Distro.Equals(d, StringComparison.OrdinalIgnoreCase) == true) SetKeepAlive(null, null);
+        if (_keepAliveRequest is { } k && k.AfterStop(d, restart) == null) SetKeepAlive(null, null);
         await StopSyncthingInAsync(d);
         SetBusy($"Encerrando {d}…");
         await WslService.TerminateSafelyAsync(d);
@@ -104,6 +105,7 @@ public sealed partial class TrayApp
     {
         if (Distro(d)?.Running != true || _busy) return;
         if (!Confirm($"Encerrar {d}?\n\nSe o Syncthing estiver rodando nela, ele é parado primeiro e os dados são gravados em disco antes de encerrar.")) return;
+        Log.Info("wsl", $"{d}: encerrar (pedido no menu)");
         await RunBusyAsync(() => StopCoreAsync(d));
     }
 
@@ -111,19 +113,21 @@ public sealed partial class TrayApp
     {
         if (Distro(d)?.Running != true || _busy) return;
         if (!Confirm($"Reiniciar {d}?\n\nEla é encerrada com segurança (o Syncthing é parado primeiro) e iniciada de novo.")) return;
+        Log.Info("wsl", $"{d}: reiniciar (pedido no menu)");
         await RunBusyAsync(async () =>
         {
-            await StopCoreAsync(d);
+            await StopCoreAsync(d, restart: true);
             await RefreshAsync();
             await StartCoreAsync(d);
         });
     }
 
     /// <summary>Encerramento seguro de todas as distros e da máquina virtual do WSL.</summary>
-    async Task ShutdownAllCoreAsync(List<string> running)
+    /// <param name="restart">o WSL volta em seguida (atualização): "Manter ligada" continua valendo</param>
+    async Task ShutdownAllCoreAsync(List<string> running, bool restart = false)
     {
         CancelVerify(); _guard = GuardState.Off;
-        if (_keepAliveRequest != null) SetKeepAlive(null, null);
+        if (_keepAliveRequest is { } k && k.AfterStop(null, restart) == null) SetKeepAlive(null, null);
         foreach (var d in running) await StopSyncthingInAsync(d);
         SetBusy("Encerrando o WSL…");
         await WslService.ShutdownAllSafelyAsync(running);
@@ -134,6 +138,7 @@ public sealed partial class TrayApp
         var running = RunningDistros;
         if (running.Count == 0 || _busy) return;
         if (!Confirm($"Encerrar todo o WSL ({string.Join(", ", running)})?\n\nO Syncthing é parado primeiro onde estiver rodando, os dados são gravados em disco e então todas as distros e a máquina virtual do WSL são encerradas.")) return;
+        Log.Info("wsl", "encerrar o WSL (pedido no menu)");
         await RunBusyAsync(() => ShutdownAllCoreAsync(running));
     }
 
@@ -148,7 +153,8 @@ public sealed partial class TrayApp
                 : "") + "Pode levar alguns minutos.")) return;
         await RunBusyAsync(async () =>
         {
-            if (running.Count > 0) await ShutdownAllCoreAsync(running);
+            Log.Info("wsl", "atualizar o WSL (pedido no menu)");
+            if (running.Count > 0) await ShutdownAllCoreAsync(running, restart: true);
             SetBusy("Atualizando o WSL…");
             var result = await WslService.UpdateWslAsync();
             _wslVersion = null; // relê na ficha técnica

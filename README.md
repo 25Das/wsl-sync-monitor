@@ -152,7 +152,8 @@ Com só o app aberto, a distro é solta depois de sincronizar e o WSL desliga po
 distro sem nenhum programa aberto nela (por exemplo, serviços em segundo plano), use **WSL ▸ distro ▸ Manter
 ligada**: *até eu desligar* (vale também depois de reiniciar o app, que liga a distro ao abrir se ela estiver
 desligada), *por 1 hora* ou *por 4 horas*. Ao acabar,
-o app espera a sincronização e solta a distro normalmente. Encerrar a distro cancela o pedido.
+o app espera a sincronização e solta a distro normalmente. Encerrar a distro (ou o WSL) cancela o pedido;
+reiniciá-la ou atualizar o WSL, não.
 
 ## Proteção da sincronização
 

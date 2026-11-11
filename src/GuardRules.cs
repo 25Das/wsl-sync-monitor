@@ -59,6 +59,13 @@ public sealed record KeepAliveRequest(string Distro, DateTime? Until)
     /// <summary>Só "até você desligar" é salvo nas configurações (vale depois de reiniciar o app).</summary>
     public bool Persist => Until == null;
 
+    /// <summary>
+    /// O pedido depois de o usuário encerrar a distro <paramref name="distro"/> (null = o WSL inteiro): encerrar é o
+    /// "desligar" do pedido e o desfaz; reiniciar, não.
+    /// </summary>
+    public KeepAliveRequest? AfterStop(string? distro, bool restart) =>
+        restart || (distro != null && !distro.Equals(Distro, StringComparison.OrdinalIgnoreCase)) ? this : null;
+
     /// <summary>Ao abrir o app: "até você desligar" liga a distro se ela estiver desligada (é o que o pedido quer dizer).</summary>
     public bool StartAtLaunch(DistroInfo? distro) =>
         Persist && distro is { Running: false } d && d.Name.Equals(Distro, StringComparison.OrdinalIgnoreCase);
