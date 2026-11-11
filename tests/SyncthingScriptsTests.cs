@@ -260,7 +260,9 @@ public sealed class WaitExitScriptTests : IDisposable
 
     Process StartTarget(string seconds)
     {
-        File.Copy("/bin/sleep", _bin, overwrite: true);
+        // um script com o nome procurado (o nome do processo é o do script). Antes era uma cópia do /bin/sleep, que no
+        // Ubuntu 26 é o coreutils multiuso: com outro nome ele não sabe o que fazer e termina na hora
+        File.WriteAllText(_bin, "#!/bin/sh\nsleep \"$1\"\n");
         File.SetUnixFileMode(_bin, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.UserWrite);
         var p = Process.Start(_bin, seconds);
         _started.Add(p);
