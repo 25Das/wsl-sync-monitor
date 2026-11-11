@@ -31,7 +31,7 @@ public sealed class AtomicFileTests : IDisposable
     }
 
     [Fact]
-    public void Leitores_nunca_veem_o_arquivo_pela_metade()
+    public async Task Leitores_nunca_veem_o_arquivo_pela_metade()
     {
         var big = new string('x', 1_000_000);
         var small = "{}";
@@ -54,6 +54,6 @@ public sealed class AtomicFileTests : IDisposable
         });
         for (int i = 0; i < 30; i++) AtomicFile.WriteAllText(FilePath, i % 2 == 0 ? big : small);
         stop.Cancel();
-        Assert.Equal(0, reader.Result);
+        Assert.Equal(0, await reader);
     }
 }
