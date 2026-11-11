@@ -203,14 +203,16 @@ public sealed class KeepAliveScriptTests : IDisposable
     [ShFact]
     public void Pedido_de_parar_o_syncthing_para_so_o_processo_pedido()
     {
-        // um processo com o nome pedido (cópia do sleep): é ele, e só ele, que o pedido para
+        // um processo com o nome pedido (um script: o nome do processo é o dele): é ele, e só ele, que o pedido para.
+        // Não uma cópia do /bin/sleep: no Ubuntu 26 é o coreutils multiuso, que com outro nome termina na hora
         var bin = Path.Combine(Path.GetTempPath(), _target);
-        File.Copy("/bin/sleep", bin, overwrite: true);
+        File.WriteAllText(bin, "#!/bin/sh\nsleep \"$1\"\n");
         File.SetUnixFileMode(bin, UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.UserWrite);
         using var target = Process.Start(bin, "60");
         try
         {
             Start();
+            Assert.False(target.HasExited); // senão o teste passaria sem o pedido parar nada
             File.WriteAllText(Path.Combine(_dir, "stop-syncthing"), "");
             Assert.True(WaitFile(Path.Combine(_dir, "stopped")));
             Assert.True(target.WaitForExit(5000));
