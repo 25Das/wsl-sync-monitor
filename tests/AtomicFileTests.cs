@@ -49,6 +49,7 @@ public sealed class AtomicFileTests : IDisposable
                 }
                 catch (IOException) { } // aberto no momento da troca: quem lê tenta de novo (como o app faz)
                 catch (UnauthorizedAccessException) { }
+                Thread.Sleep(1); // como quem relê ao mudar (o app, um editor): leituras curtas, não um laço sem pausa
             }
             return bad;
         });

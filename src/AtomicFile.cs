@@ -17,7 +17,7 @@ public static class AtomicFile
             for (int attempt = 1; ; attempt++)
             {
                 try { File.Move(temp, path, overwrite: true); return; }
-                catch (Exception ex) when (attempt < 10 && ex is IOException or UnauthorizedAccessException) { Thread.Sleep(50); }
+                catch (Exception ex) when (attempt < 40 && ex is IOException or UnauthorizedAccessException) { Thread.Sleep(25); } // até ~1 s
             }
         }
         finally
