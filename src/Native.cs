@@ -259,7 +259,14 @@ static class Native
     public const byte AC_SRC_OVER = 0, AC_SRC_ALPHA = 1;
 
     public const int WS_EX_LAYERED = 0x80000, WS_EX_TOOLWINDOW = 0x80, WS_EX_TOPMOST = 0x8, WS_EX_NOACTIVATE = 0x8000000;
-    public const int WS_CHILD = 0x40000000, WS_CLIPSIBLINGS = 0x04000000, WS_POPUP = unchecked((int)0x80000000);
+    public const int WS_CHILD = 0x40000000, WS_CLIPSIBLINGS = 0x04000000, WS_POPUP = unchecked((int)0x80000000), WS_VISIBLE = 0x10000000;
+    const int GWL_STYLE = -16;
+
+    /// <summary>
+    /// A janela está marcada para aparecer (estilo WS_VISIBLE). Diferente de <see cref="IsWindowVisible"/>, não depende
+    /// da janela-mãe: o widget dentro da barra continua "mostrado" enquanto a barra some (app em tela cheia).
+    /// </summary>
+    public static bool HasVisibleStyle(IntPtr hWnd) => (GetWindowLong(hWnd, GWL_STYLE) & WS_VISIBLE) != 0;
 
     /// <summary>
     /// Exibe um bitmap ARGB 32bpp numa janela WS_EX_LAYERED; <paramref name="position"/> null mantém a posição

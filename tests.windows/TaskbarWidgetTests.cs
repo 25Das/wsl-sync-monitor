@@ -225,4 +225,21 @@ public sealed class TaskbarWidgetTests
         Assert.NotNull(rid);
         Assert.Contains(rid!.Value, new uint[] { 0x2000, 0x2100, 0x3000, 0x4000 });
     }
+
+    [Fact]
+    public void Janela_filha_de_uma_barra_oculta_continua_marcada_como_visivel()
+    {
+        // a barra some (app em tela cheia) e o IsWindowVisible do widget, filho dela, passa a dizer "oculto" sem o
+        // widget ter se escondido: o widget confere o próprio estilo para não "se mostrar" (e registrar) de novo
+        var parent = new NativeWindow();
+        parent.CreateHandle(new CreateParams { Style = Native.WS_POPUP }); // sem WS_VISIBLE: oculta
+        var child = new NativeWindow();
+        try
+        {
+            child.CreateHandle(new CreateParams { Parent = parent.Handle, Style = Native.WS_CHILD | Native.WS_VISIBLE, Width = 10, Height = 10 });
+            Assert.False(Native.IsWindowVisible(child.Handle));
+            Assert.True(Native.HasVisibleStyle(child.Handle));
+        }
+        finally { child.DestroyHandle(); parent.DestroyHandle(); }
+    }
 }

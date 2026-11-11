@@ -329,7 +329,9 @@ public sealed class TaskbarWidget : NativeWindow, IDisposable
     void SetShown(bool shown)
     {
         WatchForeground(shown && !Inside);
-        if (Handle == IntPtr.Zero || Native.IsWindowVisible(Handle) == shown) return;
+        // o próprio estilo, não IsWindowVisible: dentro da barra, ela sumir (tela cheia) não esconde o widget de fato,
+        // e "mostrá-lo" de novo a cada vez enchia o log de "exibido"
+        if (Handle == IntPtr.Zero || Native.HasVisibleStyle(Handle) == shown) return;
         Native.ShowWindow(Handle, shown ? Native.SW_SHOWNA : Native.SW_HIDE);
         if (!shown) return;
         Log.Info("widget", _everShown ? "exibido" : $"exibido {(DateTime.Now - AppStart).TotalSeconds:0.0} s após o início do app");

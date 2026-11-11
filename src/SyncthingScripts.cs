@@ -73,6 +73,28 @@ public static class SyncthingScripts
     public static string ListConflicts(string folderPath) =>
         ForSh($"find {WslPaths.ShQuote(folderPath)} -name '*.sync-conflict-*' -not -path '*/.stversions/*' 2>/dev/null | head -200");
 
+    /// <summary>
+    /// Liga o Syncthing pelo serviço do systemd do usuário (desligamento cancelado depois de o app pará-lo). Sem sessão
+    /// de login (wsl.exe --exec), o systemctl --user precisa do XDG_RUNTIME_DIR. Responde started, no-unit (sem o
+    /// serviço), no-systemd ou failed.
+    /// </summary>
+    public const string StartSyncthingService =
+        "export XDG_RUNTIME_DIR=\"${XDG_RUNTIME_DIR:-/run/user/$(id -u)}\"; " +
+        "if ! command -v systemctl >/dev/null 2>&1; then echo no-systemd; " +
+        "elif ! systemctl --user cat syncthing.service >/dev/null 2>&1; then echo no-unit; " +
+        "elif systemctl --user start syncthing.service >/dev/null 2>&1; then echo started; " +
+        "else echo failed; fi";
+
+    /// <summary>O resultado de <see cref="StartSyncthingService"/> por extenso.</summary>
+    public static (bool Started, string Text) DescribeStart(string output) => output.Trim() switch
+    {
+        "started" => (true, "Syncthing ligado de novo (serviço do systemd do usuário)"),
+        "no-unit" => (false, "o Syncthing ficou parado: não há o serviço syncthing.service do usuário para ligá-lo (ligue-o como costuma, ou reinicie a distro)"),
+        "no-systemd" => (false, "o Syncthing ficou parado: a distro não tem o systemd para ligá-lo (ligue-o como costuma, ou reinicie a distro)"),
+        "failed" => (false, "o Syncthing ficou parado: o systemd não conseguiu ligá-lo (veja systemctl --user status syncthing)"),
+        var other => (false, $"o Syncthing ficou parado: resposta inesperada ao ligá-lo ({(other.Length == 0 ? "vazia" : other)})"),
+    };
+
     /// <summary>Espaço do disco da distro: "df -B1 --output=size,avail /".</summary>
     public const string DiskUsage = "df -B1 --output=size,avail /";
 

@@ -20,7 +20,7 @@ public sealed class ShutdownTests : IDisposable
     public void Janela_que_segura_o_desligamento_tem_o_nome_e_o_icone_do_app()
     {
         // é ela que o Windows lista em "Estes aplicativos estão impedindo o desligamento"
-        var w = new ShutdownWatcher(() => false, () => Task.CompletedTask, () => 10);
+        var w = new ShutdownWatcher(() => false, _ => Task.CompletedTask, () => 10);
         try
         {
             var title = new System.Text.StringBuilder(256);
@@ -38,7 +38,7 @@ public sealed class ShutdownTests : IDisposable
     public void Aviso_de_desligamento_roda_a_sequencia_e_marca_a_sessao_terminando()
     {
         bool ran = false;
-        var w = new ShutdownWatcher(() => true, () => { ran = true; return Task.CompletedTask; }, () => 10);
+        var w = new ShutdownWatcher(() => true, _ => { ran = true; return Task.CompletedTask; }, () => 10);
         try
         {
             Assert.Equal(1, (long)Send(w, Native.WM_QUERYENDSESSION, 0, 0)); // pode desligar
@@ -52,7 +52,7 @@ public sealed class ShutdownTests : IDisposable
     public void Desligamento_cancelado_volta_ao_normal_e_protege_de_novo_no_proximo()
     {
         int runs = 0;
-        var w = new ShutdownWatcher(() => true, () => { runs++; return Task.CompletedTask; }, () => 10);
+        var w = new ShutdownWatcher(() => true, _ => { runs++; return Task.CompletedTask; }, () => 10);
         try
         {
             Send(w, Native.WM_QUERYENDSESSION, 0, 0);
@@ -65,10 +65,51 @@ public sealed class ShutdownTests : IDisposable
         finally { w.DestroyHandle(); }
     }
 
+    /// <summary>Roda numa thread de interface (STA), como a do app: a espera pela sequência entrega as mensagens enviadas.</summary>
+    static void OnSta(Action body)
+    {
+        Exception? error = null;
+        var t = new Thread(() => { try { body(); } catch (Exception ex) { error = ex; } });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        Assert.True(t.Join(TimeSpan.FromSeconds(30)), "travou");
+        if (error != null) throw new Xunit.Sdk.XunitException("falhou na thread STA: " + error);
+    }
+
+    [Fact]
+    public void Desligamento_cancelado_durante_a_sequencia_a_interrompe_e_protege_o_proximo()
+    {
+        // caso real: cancelado 3 s depois de começar. O WM_ENDSESSION (cancelado) chega enquanto o app ainda espera a
+        // sequência; antes, ela seguia até parar o Syncthing e o desligamento seguinte saía sem proteção nenhuma
+        OnSta(() =>
+        {
+            int runs = 0;
+            bool interrupted = false;
+            ShutdownWatcher w = null!;
+            w = new ShutdownWatcher(() => true, async ct =>
+            {
+                if (++runs > 1) return;
+                SendMessage(w.Handle, Native.WM_ENDSESSION, IntPtr.Zero, IntPtr.Zero); // o usuário cancelou
+                try { await Task.Delay(TimeSpan.FromSeconds(20), ct); }
+                catch (OperationCanceledException) { interrupted = true; }
+            }, () => 25);
+            try
+            {
+                Send(w, Native.WM_QUERYENDSESSION, 0, 0);
+                Assert.True(interrupted);
+                Assert.False(WslService.SessionEnding);
+
+                Send(w, Native.WM_QUERYENDSESSION, 0, 0); // o próximo desligamento roda a sequência de novo
+                Assert.Equal(2, runs);
+            }
+            finally { w.Dispose(); }
+        });
+    }
+
     [Fact]
     public void Instalador_pedindo_para_fechar_o_app_nao_e_fim_de_sessao()
     {
-        var w = new ShutdownWatcher(() => false, () => Task.CompletedTask, () => 10);
+        var w = new ShutdownWatcher(() => false, _ => Task.CompletedTask, () => 10);
         try
         {
             Send(w, Native.WM_QUERYENDSESSION, 0, 0x1); // ENDSESSION_CLOSEAPP

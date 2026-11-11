@@ -583,7 +583,7 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
         _exitEvent?.Dispose();
         _updateTimer.Stop();
         _updater.Dispose();
-        _shutdownWatcher?.DestroyHandle();
+        _shutdownWatcher?.Dispose();
         _tray.Visible = false;
         _refreshTimer.Stop();
         _hoverTimer.Stop();

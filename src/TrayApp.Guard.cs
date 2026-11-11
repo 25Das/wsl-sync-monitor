@@ -72,6 +72,7 @@ public sealed partial class TrayApp
         _keepAliveRequest = distro == null ? null
             : duration is { } d ? KeepAliveRequest.For(distro, d, DateTime.Now)
             : KeepAliveRequest.UntilStopped(distro);
+        Log.Info("proteção", _keepAliveRequest is { } req ? $"{req.Distro}: Manter ligada {req.Describe()}" : "Manter ligada desativado");
         _settings.KeepAliveDistro = _keepAliveRequest is { Persist: true } r ? r.Distro : "";
         SaveSettings();
         if (distro != null && Distro(distro) is { Running: false }) _ = StartDistroAsync(distro);
@@ -287,8 +288,9 @@ public sealed partial class TrayApp
     /// Roda numa thread de fundo enquanto o Windows espera (sem tocar na interface). Executa o mínimo de wsl.exe
     /// possível (com a sessão terminando, cada um pode falhar): espera e para o Syncthing pela API, e só usa o
     /// wsl.exe para o sinal de reserva e para gravar o disco e encerrar a distro. Cada passo vai para o log.
+    /// Desligamento cancelado no meio (<paramref name="ct"/>): para onde está, e liga de novo o Syncthing se já o parou.
     /// </summary>
-    async Task ShutdownSequenceAsync()
+    async Task ShutdownSequenceAsync(CancellationToken ct)
     {
         var d = _snap?.Target?.Name;
         if (d == null) return;
@@ -300,11 +302,19 @@ public sealed partial class TrayApp
             Log.Info("desligamento", $"{d}: esperando a sincronização (até {_settings.ShutdownMaxWaitSeconds} s)");
             // carência infinita: aqui não dá para perguntar à distro se o Syncthing existe (seria um wsl.exe novo)
             bool synced = await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), TimeSpan.MaxValue,
-                null, CancellationToken.None);
+                null, ct);
+            if (ct.IsCancellationRequested)
+            {
+                Log.Info("desligamento", $"{d}: cancelado durante a espera; o Syncthing segue rodando");
+                return;
+            }
             Log.Info("desligamento", synced ? $"{d}: sincronizado ({total.Elapsed.TotalSeconds:0} s)" : $"{d}: limite de espera atingido, seguindo");
         }
         else Log.Info("desligamento", $"{d}: a API do Syncthing já não respondia ({_snap?.StStatusText}); sem espera");
 
+        if (ct.IsCancellationRequested) return; // nada feito ainda: nada a desfazer
+
+        // daqui em diante não se interrompe no meio de um passo: parado o Syncthing, um cancelamento o liga de novo
         bool stopped = false;
         try
         {
@@ -320,13 +330,35 @@ public sealed partial class TrayApp
             stopped = true;
             Log.Info("desligamento", "Syncthing parado por sinal (pedido ao processo de manutenção)");
         }
+        if (ct.IsCancellationRequested) { _ = StartSyncthingAfterCancelAsync(d, stopped); return; } // sem segurar a interface
 
         // grava os dados em disco; a distro é encerrada pelo próprio Windows ao desligar
         Log.Info("desligamento", await WslService.RequestInDistroAsync(d, "sync", "synced", TimeSpan.FromSeconds(30))
             ? $"{d}: dados gravados em disco"
             : $"{d}: sem processo de manutenção para gravar os dados (o Syncthing {(stopped ? "já fechou" : "não fechou")} o banco de dados)");
+        if (ct.IsCancellationRequested) { _ = StartSyncthingAfterCancelAsync(d, stopped); return; } // sem segurar a interface
         WslService.Release();
         Log.Info("desligamento", $"sequência concluída em {total.Elapsed.TotalSeconds:0} s");
+    }
+
+    /// <summary>
+    /// Desligamento cancelado depois de a sequência parar o Syncthing: tenta ligá-lo de novo pelo serviço do systemd do
+    /// usuário. Sem isso, a sincronização ficaria parada até a distro reiniciar. Roda solta: a interface (que espera a
+    /// sequência terminar) não fica presa enquanto o wsl.exe responde. Erros vão para o log, nunca para fora.
+    /// </summary>
+    async Task StartSyncthingAfterCancelAsync(string distro, bool stopped)
+    {
+        _ui.Post(_ => RequestRefresh(), null); // o estado mudou (e a proteção volta a valer)
+        if (!stopped) return;
+        try
+        {
+            var r = await WslService.ShAsync(distro, SyncthingScripts.StartSyncthingService, 30000);
+            var (started, text) = SyncthingScripts.DescribeStart(r.Output);
+            if (started) Log.Info("desligamento", $"{distro}: {text}");
+            else Log.Warn("desligamento", $"{distro}: desligamento cancelado depois de parar o Syncthing; {text}");
+        }
+        catch (Exception ex) { Log.Warn("desligamento", $"{distro}: desligamento cancelado depois de parar o Syncthing, e não foi possível ligá-lo de novo", ex); }
+        _ui.Post(_ => RequestRefresh(), null);
     }
 }
 
@@ -335,17 +367,24 @@ public sealed partial class TrayApp
 /// "aguardando…" na tela de desligamento) até a sequência segura terminar; depois o desligamento continua sozinho.
 /// O "Desligar mesmo assim" do Windows continua disponível.
 /// </summary>
-sealed class ShutdownWatcher : NativeWindow
+sealed class ShutdownWatcher : NativeWindow, IDisposable
 {
     readonly Func<bool> _needed;
-    readonly Func<Task> _sequence;
+    readonly Func<CancellationToken, Task> _sequence;
     readonly Func<int> _timeoutSeconds;
-    bool _done;
+    readonly ShutdownProgress _progress = new();
     const long ENDSESSION_CLOSEAPP = 0x1;
 
     public event Action? SessionEnded;
 
-    public ShutdownWatcher(Func<bool> needed, Func<Task> sequence, Func<int> timeoutSeconds)
+    public void Dispose()
+    {
+        DestroyHandle();
+        _progress.Dispose();
+    }
+
+    /// <param name="sequence">a sequência segura; o token é cancelado se o desligamento for cancelado no meio</param>
+    public ShutdownWatcher(Func<bool> needed, Func<CancellationToken, Task> sequence, Func<int> timeoutSeconds)
     {
         _needed = needed; _sequence = sequence; _timeoutSeconds = timeoutSeconds;
         // janela de nível superior invisível (janelas "message-only" não recebem WM_QUERYENDSESSION). Enquanto segura
@@ -372,17 +411,21 @@ sealed class ShutdownWatcher : NativeWindow
                 WslService.SessionEnding = true;
                 Log.Info("desligamento", "o Windows está encerrando a sessão");
             }
-            if (!_done && _needed())
+            if (_progress.ShouldRun(_needed()))
             {
                 Native.ShutdownBlockReasonCreate(Handle, "Aguardando o Syncthing terminar a sincronização e encerrando o WSL…");
+                _progress.Started();
+                var ct = _progress.Token;
                 try
                 {
-                    if (!Task.Run(_sequence).Wait(TimeSpan.FromSeconds(_timeoutSeconds())))
+                    // a espera entrega as mensagens enviadas a esta janela: um cancelamento (WM_ENDSESSION) chega aqui no meio
+                    if (!Task.Run(() => _sequence(ct)).Wait(TimeSpan.FromSeconds(_timeoutSeconds())))
                         Log.Warn("desligamento", $"sequência não terminou em {_timeoutSeconds()} s; liberando o desligamento");
                 }
+                catch (AggregateException ex) when (ct.IsCancellationRequested && ex.InnerException is OperationCanceledException) { }
                 catch (Exception ex) { Log.Error("desligamento", "sequência de desligamento", ex); }
                 Native.ShutdownBlockReasonDestroy(Handle);
-                _done = true;
+                if (_progress.Finished()) Log.Info("desligamento", "sequência interrompida pelo cancelamento");
             }
             m.Result = (IntPtr)1; // pode desligar
             return;
@@ -394,12 +437,14 @@ sealed class ShutdownWatcher : NativeWindow
                 Log.Info("desligamento", "sessão encerrada; saindo");
                 SessionEnded?.Invoke();
             }
-            else if (WslService.SessionEnding || _done)
+            else
             {
-                // desligamento cancelado (pelo usuário ou por outro app): volta ao normal
-                _done = false;
+                // desligamento cancelado (pelo usuário ou por outro app): volta ao normal; uma sequência em andamento é
+                // interrompida (com o wsl.exe já liberado, para ela poder ligar o Syncthing de novo), e o próximo
+                // desligamento roda a sequência outra vez
+                bool wasEnding = WslService.SessionEnding;
                 WslService.SessionEnding = false;
-                Log.Info("desligamento", "cancelado; o monitoramento continua");
+                if (_progress.Cancel() || wasEnding) Log.Info("desligamento", "cancelado; o monitoramento continua");
             }
             m.Result = IntPtr.Zero;
             return;
