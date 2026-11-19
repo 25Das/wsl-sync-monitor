@@ -1,0 +1,9 @@
+2026-10-23 02:19:08.425 INFO  [app] iniciado · versão 1.14.0 · Microsoft Windows NT 10.0.26100.0 · D:\a\wsl-sync-monitor\wsl-sync-monitor\tests.windows\bin\Release\net8.0-windows\WslSyncMonitor.exe
+2026-10-23 02:19:09.344 INFO  [widget] criado dentro da barra de tarefas
+2026-10-23 02:19:09.378 INFO  [widget] exibido 1.0 s após o início do app
+2026-10-23 02:19:09.477 INFO  [widget] ícones da barra: 287–332 334–554 556–600 600–644 644–688 688–732 0–200
+2026-10-23 02:19:09.520 AVISO [wsl] wsl.exe --list --verbose → código -1
+2026-10-23 02:19:09.522 INFO  [atualização] primeira leitura do estado em 1.2 s (WSL: Nenhuma distro instalada, Syncthing: WSL parado)
+2026-10-23 02:19:11.409 INFO  [atualização do app] versão 9.9.9 disponível
+2026-10-23 02:19:13.746 INFO  [app] saindo
+2026-10-23 02:19:13.747 INFO  [app] fechado

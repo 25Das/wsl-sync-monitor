@@ -1,0 +1,14 @@
+2026-11-11 10:03:39.694 INFO  [app] iniciado · versão 1.20.3 · Microsoft Windows NT 10.0.26100.0 · C:\Users\runneradmin\AppData\Local\Temp\wsm-e2e-0097d6c8\app\WslSyncMonitor.exe
+2026-11-11 10:03:40.375 INFO  [widget] criado dentro da barra de tarefas
+2026-11-11 10:03:40.412 INFO  [widget] exibido 0.8 s após o início do app
+2026-11-11 10:03:40.540 AVISO [wsl] wsl.exe --list --verbose → código -1
+2026-11-11 10:03:40.543 INFO  [atualização] primeira leitura do estado em 1.0 s (WSL: Nenhuma distro instalada, Syncthing: WSL parado)
+2026-11-11 10:03:42.365 INFO  [atualização do app] versão 9.9.9 disponível
+2026-11-11 10:03:42.901 INFO  [atualização do app] instalando a versão 9.9.9
+2026-11-11 10:03:42.966 INFO  [atualização do app] de prontidão: a versão nova está abrindo
+2026-11-11 10:03:43.147 AVISO [atualização do app] a versão 9.9.9 não ficou pronta; voltando para a atual
+2026-11-11 10:03:43.166 INFO  [widget] exibido
+2026-11-11 10:03:43.169 INFO  [atualização do app] a versão atual voltou a agir
+2026-11-11 10:03:43.173 ERRO  [atualização do app] instalar a versão 9.9.9
+    System.InvalidOperationException: a versão nova não iniciou; a atual continua.
+       at WslSyncMonitor.TrayApp.InstallUpdate() in D:\a\wsl-sync-monitor\wsl-sync-monitor\src\TrayApp.cs:line 501
