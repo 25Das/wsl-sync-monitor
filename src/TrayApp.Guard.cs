@@ -36,8 +36,8 @@ public sealed partial class TrayApp
             if (RefreshRules.RefreshOnKeepAliveExit(lived)) RequestRefresh();
         }, null);
         _shutdownWatcher = new ShutdownWatcher(NeedsShutdownProtection, ShutdownSequenceAsync,
-            // espera + parar o Syncthing (~45 s) + sync e terminate (até 120 s), com folga
-            () => _settings.ShutdownMaxWaitSeconds + 300);
+            // a sequência se ajusta para caber antes de o Windows desistir; passado isso, ele cancelaria de qualquer jeito
+            () => (int)ShutdownProgress.WindowsPatience.TotalSeconds - 2);
         _shutdownWatcher.SessionEnded += () => { WslService.Release(); ExitThread(); };
     }
 
@@ -229,7 +229,12 @@ public sealed partial class TrayApp
                 if (c.Synced && warm)
                 {
                     stableSince ??= DateTime.Now;
-                    if ((DateTime.Now - stableSince.Value).TotalSeconds >= _settings.StableSeconds) return true;
+                    if ((DateTime.Now - stableSince.Value).TotalSeconds >= _settings.StableSeconds)
+                    {
+                        // ex.: arquivos que o Syncthing não consegue gravar (esperar não resolve): fica registrado
+                        if (c.Detail != "sincronizado") Log.Info("proteção", $"{distro}: {c.Detail}");
+                        return true;
+                    }
                     progress?.Invoke("Confirmando a sincronização…");
                 }
                 else
@@ -329,18 +334,27 @@ public sealed partial class TrayApp
         var total = System.Diagnostics.Stopwatch.StartNew();
         _verifyCts?.Cancel();
 
+        // tudo precisa caber antes de o Windows desistir e cancelar o desligamento (ver ShutdownProgress.WindowsPatience)
+        TimeSpan Left(TimeSpan max)
+        {
+            var left = ShutdownProgress.WindowsPatience - TimeSpan.FromSeconds(5) - total.Elapsed;
+            return left < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : left < max ? left : max;
+        }
+
         if (_snap?.St == StState.Running)
         {
-            Log.Info("desligamento", $"{d}: esperando a sincronização (até {_settings.ShutdownMaxWaitSeconds} s)");
+            var budget = ShutdownProgress.WaitBudget(_settings.ShutdownMaxWaitSeconds);
+            Log.Info("desligamento", $"{d}: esperando a sincronização (até {budget.TotalSeconds:0} s)");
+            string? pending = null;
             // carência infinita: aqui não dá para perguntar à distro se o Syncthing existe (seria um wsl.exe novo)
-            bool synced = await WaitSyncedAsync(d, TimeSpan.FromSeconds(_settings.ShutdownMaxWaitSeconds), TimeSpan.MaxValue,
-                null, ct);
+            bool synced = await WaitSyncedAsync(d, budget, TimeSpan.MaxValue, t => pending = t, ct);
             if (ct.IsCancellationRequested)
             {
                 Log.Info("desligamento", $"{d}: cancelado durante a espera; o Syncthing segue rodando");
                 return;
             }
-            Log.Info("desligamento", synced ? $"{d}: sincronizado ({total.Elapsed.TotalSeconds:0} s)" : $"{d}: limite de espera atingido, seguindo");
+            Log.Info("desligamento", synced ? $"{d}: sincronizado ({total.Elapsed.TotalSeconds:0} s)"
+                : $"{d}: limite de espera atingido ({Lower(pending ?? "sem resposta do Syncthing")}); parando o Syncthing com segurança");
         }
         else Log.Info("desligamento", $"{d}: a API do Syncthing já não respondia ({_snap?.StStatusText}); sem espera");
 
@@ -353,11 +367,12 @@ public sealed partial class TrayApp
             var (url, key) = _collector.ApiAccess(_settings);
             await _collector.ShutdownSyncthingAsync(_settings);
             // o Syncthing fecha a conexão aberta do fluxo de eventos ao parar: a resposta vem na hora
-            stopped = await new SyncthingEvents(_eventsHttp).WaitUntilDownAsync(url, key, TimeSpan.FromSeconds(30), CancellationToken.None);
-            Log.Info("desligamento", stopped ? "Syncthing parado pela API" : "Syncthing não parou em 30 s após o pedido");
+            var downMax = Left(TimeSpan.FromSeconds(30));
+            stopped = await new SyncthingEvents(_eventsHttp).WaitUntilDownAsync(url, key, downMax, CancellationToken.None);
+            Log.Info("desligamento", stopped ? "Syncthing parado pela API" : $"Syncthing não parou em {downMax.TotalSeconds:0} s após o pedido");
         }
         catch (Exception ex) { Log.Info("desligamento", $"a API não atendeu ao pedido de parar ({ex.Message})"); }
-        if (!stopped && await WslService.RequestInDistroAsync(d, "stop-syncthing", "stopped", TimeSpan.FromSeconds(40)))
+        if (!stopped && await WslService.RequestInDistroAsync(d, "stop-syncthing", "stopped", Left(TimeSpan.FromSeconds(40))))
         {
             stopped = true;
             Log.Info("desligamento", "Syncthing parado por sinal (pedido ao processo de manutenção)");
@@ -365,7 +380,7 @@ public sealed partial class TrayApp
         if (ct.IsCancellationRequested) { _ = StartSyncthingAfterCancelAsync(d, stopped); return; } // sem segurar a interface
 
         // grava os dados em disco; a distro é encerrada pelo próprio Windows ao desligar
-        Log.Info("desligamento", await WslService.RequestInDistroAsync(d, "sync", "synced", TimeSpan.FromSeconds(30))
+        Log.Info("desligamento", await WslService.RequestInDistroAsync(d, "sync", "synced", Left(TimeSpan.FromSeconds(30)))
             ? $"{d}: dados gravados em disco"
             : $"{d}: sem processo de manutenção para gravar os dados (o Syncthing {(stopped ? "já fechou" : "não fechou")} o banco de dados)");
         if (ct.IsCancellationRequested) { _ = StartSyncthingAfterCancelAsync(d, stopped); return; } // sem segurar a interface

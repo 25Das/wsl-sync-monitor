@@ -163,6 +163,9 @@ depois de confirmar que o Syncthing terminou. Então o desligamento por ociosida
 O mesmo vale ao sair do app e ao desligar o Windows. Com **Ligar o WSL a cada 60 min para sincronizar**, o app liga o WSL (se estiver desligado) só
 para sincronizar.
 
+Arquivos que o Syncthing não consegue gravar (permissão, nome inválido, arquivo em uso) não seguram a espera: esperar não
+resolve. A pasta mostra a contagem no painel; clique na linha dela e em *Ver os arquivos com erro…* para ver quais e por quê.
+
 O estado aparece no painel, na seção *Proteção da sincronização*. Como funciona:
 
 - **Em uso:** enquanto há sessões de outros programas na distro (processos `wsl.exe` do Windows que apontam
@@ -209,7 +212,7 @@ Botão direito → *Editar configurações…* abre `%APPDATA%\WslSyncMonitor\se
 | `HoverPopup` | `false` | Abre os detalhes ao passar o mouse sobre o widget (o ícone da bandeja abre só com clique). |
 | `ProtectSync` | `true` | Segura o WSL até o Syncthing sincronizar. |
 | `MaxHoldMinutes` | `10` | Limite da espera (e ao sair do app). |
-| `ShutdownMaxWaitSeconds` | `120` | Limite da espera ao desligar o Windows. |
+| `ShutdownMaxWaitSeconds` | `120` | Limite da espera pela sincronização ao desligar o Windows, no máximo 40 s: o Windows cancela o desligamento cerca de 60 s depois, e o resto do tempo é para parar o Syncthing e gravar os dados em disco. |
 | `StartupGraceSeconds` | `90` | Tempo para o Syncthing conectar após ligar. |
 | `StableSeconds` | `10` | Tempo que "sincronizado" precisa durar. |
 | `PeriodicSyncMinutes` | `60` | Sincronização periódica (0 = desligada). |

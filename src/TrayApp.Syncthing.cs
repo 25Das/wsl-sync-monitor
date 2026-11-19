@@ -117,6 +117,16 @@ public sealed partial class TrayApp
     Task SetFolderPausedAsync(FolderInfo f, bool paused) =>
         SyncthingCommandAsync(() => _collector.SetFolderPausedAsync(_settings, f.Id, paused));
 
+    /// <summary>Arquivos que o Syncthing não conseguiu gravar na pasta e por quê (o painel só mostrava a contagem).</summary>
+    void ShowFolderErrors(FolderInfo f) => ShowText($"arquivos com erro em {f.Label}", async () =>
+        FolderErrorsText(f, await _collector.GetFolderErrorsAsync(_settings, f.Id)));
+
+    static string FolderErrorsText(FolderInfo f, List<(string Path, string Error)> errors) => errors.Count == 0
+        ? $"{f.Label}: nenhum arquivo com erro agora (o Syncthing pode ter resolvido ao tentar de novo)."
+        : $"{f.Label} ({f.Path}): {errors.Count} arquivo(s) que o Syncthing não conseguiu gravar. Ele tenta de novo sozinho; " +
+          "se o motivo não mudar (permissão, nome inválido no outro sistema, arquivo em uso), corrija ou ignore o arquivo " +
+          "no .stignore.\n\n" + string.Join("\n", errors.Select(e => $"{e.Path}\n    {e.Error}"));
+
     void ShowConflicts(FolderInfo f) => ShowText($"arquivos em conflito em {f.Label}", async () =>
     {
         if (SyncthingDistro is not { } d) return "A distro do Syncthing não está ligada.";

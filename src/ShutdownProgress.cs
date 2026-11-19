@@ -7,6 +7,19 @@ namespace WslSyncMonitor;
 /// </summary>
 public sealed class ShutdownProgress : IDisposable
 {
+    /// <summary>
+    /// Quanto o Windows espera um app que segura o desligamento antes de cancelá-lo sozinho (visto nos logs: 62 s,
+    /// sempre). Passado isso, a pessoa tenta de novo e acaba em "Desligar mesmo assim", sem proteção nenhuma.
+    /// </summary>
+    public static readonly TimeSpan WindowsPatience = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// A espera pela sincronização ao desligar: a configurada, até 40 s, para sobrar tempo de parar o Syncthing e
+    /// gravar os dados em disco antes de o Windows desistir.
+    /// </summary>
+    public static TimeSpan WaitBudget(int settingSeconds) =>
+        TimeSpan.FromSeconds(Math.Clamp(settingSeconds, 0, 40));
+
     bool _running, _done, _canceled;
     CancellationTokenSource _cts = new();
 

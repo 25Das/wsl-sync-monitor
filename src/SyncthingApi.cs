@@ -82,7 +82,7 @@ public static class SyncthingApi
         f.InSyncBytes = (long)Num(db, "inSyncBytes");
         f.NeedBytes = (long)Num(db, "needBytes");
         f.NeedItems = (long)(Num(db, "needFiles") + Num(db, "needDirectories") + Num(db, "needSymlinks") + Num(db, "needDeletes"));
-        f.Errors = (int)(Num(db, "errors") + Num(db, "pullErrors"));
+        f.Errors = FolderErrorCount(db);
         f.Error = NonEmpty(Str(db, "error")) ?? NonEmpty(Str(db, "invalid"));
     }
 
@@ -130,6 +130,12 @@ public static class SyncthingApi
         return doc.RootElement.Clone();
     }
 
+    /// <summary>
+    /// Arquivos com erro na pasta (/rest/db/status). Algumas versões repetem a contagem em "errors" (antigo) e
+    /// "pullErrors": somar contava cada erro duas vezes.
+    /// </summary>
+    public static int FolderErrorCount(JsonElement db) => (int)Math.Max(Num(db, "errors"), Num(db, "pullErrors"));
+
     /// <summary>Pastas cujo estado é preciso consultar: as ativas e compartilhadas com alguém.</summary>
     public static IReadOnlyList<string> FoldersToCheck(JsonElement config, string? myId, IgnoredItems? ignored = null) =>
         SharedActiveFolders(config, myId, ignored).Select(f => Str(f, "id") ?? "").ToList();
@@ -157,6 +163,7 @@ public static class SyncthingApi
                 return new(false, string.Create(CultureInfo.InvariantCulture, $"enviando para {name} ({pct:0}%)"), uptime, allConnected);
         }
 
+        var withErrors = new List<string>();
         foreach (var f in SharedActiveFolders(config, myId, ignored))
         {
             var label = NonEmpty(Str(f, "label")) ?? Str(f, "id") ?? "";
@@ -164,10 +171,13 @@ public static class SyncthingApi
                 return new(false, $"{label}: aguardando", uptime, allConnected);
             var state = Str(db, "state") ?? "";
             if (state != "idle") return new(false, $"{label}: {state}", uptime, allConnected);
-            if (Num(db, "needTotalItems") > 0 || Num(db, "needBytes") > 0)
+            double need = Num(db, "needTotalItems"), errors = FolderErrorCount(db);
+            // parada e o que falta são só arquivos que o Syncthing não consegue gravar: esperar não resolve
+            if (need > 0 && errors >= need) { withErrors.Add(string.Create(CultureInfo.InvariantCulture, $"{label}: {errors:0} arquivo(s) com erro")); continue; }
+            if (need > 0 || Num(db, "needBytes") > 0)
                 return new(false, $"{label}: recebendo", uptime, allConnected);
         }
-        return new(true, "sincronizado", uptime, allConnected);
+        return new(true, withErrors.Count == 0 ? "sincronizado" : $"sincronizado ({string.Join("; ", withErrors)})", uptime, allConnected);
     }
 
     static IEnumerable<(string Id, string Name)> ActiveDevices(JsonElement config, string? myId, IgnoredItems? ignored)

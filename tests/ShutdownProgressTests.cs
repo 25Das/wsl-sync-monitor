@@ -65,4 +65,21 @@ public class ShutdownProgressTests
         Assert.False(p.Finished());
         Assert.False(p.ShouldRun(needed: true));
     }
+
+    // caso real (17 e 18/11): com a espera de até 120 s, o Windows cancelava o desligamento 62 s depois, todas as
+    // vezes; na terceira tentativa vinha o "Desligar mesmo assim" e o Syncthing não era parado com segurança
+
+    [Fact]
+    public void Espera_cabe_antes_de_o_Windows_desistir()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(40), ShutdownProgress.WaitBudget(120));
+        Assert.True(ShutdownProgress.WaitBudget(120) + TimeSpan.FromSeconds(15) < ShutdownProgress.WindowsPatience);
+    }
+
+    [Fact]
+    public void Espera_menor_configurada_vale()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(20), ShutdownProgress.WaitBudget(20));
+        Assert.Equal(TimeSpan.Zero, ShutdownProgress.WaitBudget(0));
+    }
 }

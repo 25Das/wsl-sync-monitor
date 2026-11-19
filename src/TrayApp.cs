@@ -258,10 +258,22 @@ public sealed partial class TrayApp : ApplicationContext, IPopupActions
     void ShowHealthCheck()
     {
         if (_snap == null) return;
-        var issues = HealthCheck.Find(_snap, DateTime.Now, _settings.DeviceStaleDays);
-        ShowText("Pastas e dispositivos", () => Task.FromResult(issues.Count == 0
-            ? "Nenhum problema encontrado nas pastas e nos dispositivos mostrados no painel."
-            : string.Join(Environment.NewLine, issues.Select(i => (i.Level == Level.Error ? "✕ " : "! ") + i.Text))));
+        var snap = _snap;
+        var issues = HealthCheck.Find(snap, DateTime.Now, _settings.DeviceStaleDays);
+        ShowText("Pastas e dispositivos", async () =>
+        {
+            if (issues.Count == 0) return "Nenhum problema encontrado nas pastas e nos dispositivos mostrados no painel.";
+            var text = string.Join("\n", issues.Select(i => (i.Level == Level.Error ? "✕ " : "! ") + i.Text)); // a janela converte \n
+            // os arquivos com erro de cada pasta, para não ficar só na contagem
+            foreach (var f in snap.Folders.Where(f => f.Errors > 0))
+            {
+                string detail;
+                try { detail = FolderErrorsText(f, await _collector.GetFolderErrorsAsync(_settings, f.Id)); }
+                catch (Exception ex) { detail = $"{f.Label}: não foi possível ler os arquivos com erro ({ex.Message})."; }
+                text += "\n\n" + detail;
+            }
+            return text;
+        });
     }
 
     void WarnInvalidSettings(string? error, bool startup) =>

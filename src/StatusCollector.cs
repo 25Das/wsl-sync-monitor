@@ -238,6 +238,10 @@ public sealed class StatusCollector : IDisposable
             if (!Bool(f, "paused") && Str(f, "id") is { } id && !s.IgnoredFolders.Contains(id)) await ScanFolderAsync(s, id);
     }
 
+    /// <summary>Arquivos que o Syncthing não conseguiu gravar na pasta, com o motivo (GET /rest/folder/errors).</summary>
+    public async Task<List<(string Path, string Error)>> GetFolderErrorsAsync(Settings s, string folderId) =>
+        SyncthingParsers.FolderErrors((await GetAsync(GuiUrl(s), ApiKey(s), "/rest/folder/errors?folder=" + Q(folderId))).GetRawText());
+
     /// <summary>Erros recentes do Syncthing (GET /rest/system/error).</summary>
     public async Task<List<(DateTimeOffset When, string Message)>> GetErrorsAsync(Settings s) =>
         SyncthingParsers.Errors((await GetAsync(GuiUrl(s), ApiKey(s), "/rest/system/error")).GetRawText());

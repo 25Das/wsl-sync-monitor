@@ -191,6 +191,8 @@ public sealed partial class TrayApp
         bool on = _snap?.St == StState.Running;
         yield return Info($"{f.Status.Text} · {f.Path}");
         yield return Sep();
+        if (f.Errors > 0) // o problema que o painel aponta: os arquivos e o motivo, logo no começo
+            yield return Item($"Ver os {f.Errors} arquivo(s) com erro…", () => ShowFolderErrors(f), enabled: on, bold: true);
         yield return Item("Abrir no Explorer", () => OpenFolderInExplorerAsync(f));
         yield return Item("Abrir terminal aqui", () => OpenTerminalInFolderAsync(f));
         yield return Sep();

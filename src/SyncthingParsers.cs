@@ -20,6 +20,21 @@ public static class SyncthingParsers
         return list;
     }
 
+    /// <summary>
+    /// /rest/folder/errors: os arquivos que o Syncthing não conseguiu gravar e o motivo. Resposta ilegível vira
+    /// exceção (dizer "nenhum erro" seria mentira).
+    /// </summary>
+    public static List<(string Path, string Error)> FolderErrors(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var list = new List<(string, string)>();
+        if (doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array)
+            foreach (var e in errors.EnumerateArray())
+                list.Add((e.TryGetProperty("path", out var p) ? p.GetString() ?? "" : "",
+                          e.TryGetProperty("error", out var m) ? m.GetString() ?? "" : ""));
+        return list;
+    }
+
     /// <summary>Saída de "df -B1 --output=size,avail /": (total, livre) em bytes.</summary>
     public static (long Total, long Free)? Df(string output)
     {

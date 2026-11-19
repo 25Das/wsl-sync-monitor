@@ -70,4 +70,40 @@ public class ProcessCheckTests
     [InlineData("Erro: distro não encontrada", true)]
     public void So_um_no_explicito_conta_como_parado(string output, bool mayBeRunning) =>
         Assert.Equal(mayBeRunning, SyncthingParsers.ProcessMayBeRunning(output));
+
+    // /rest/folder/errors: os arquivos que o Syncthing não conseguiu gravar e o motivo de cada um (antes, o app só
+    // mostrava "8 erro(s)" e nenhum lugar dizia quais)
+
+    [Fact]
+    public void Arquivos_com_erro_da_pasta()
+    {
+        var list = SyncthingParsers.FolderErrors("""
+            {"folder":"izdab-dr9wa","errors":[
+              {"path":"projects/a/.lock","error":"opening temp file: permission denied"},
+              {"path":"sessions/x:y.json","error":"invalid filename"}],"page":1,"perpage":65536}
+            """);
+        Assert.Equal([("projects/a/.lock", "opening temp file: permission denied"), ("sessions/x:y.json", "invalid filename")], list);
+    }
+
+    [Theory]
+    [InlineData("""{"folder":"f","errors":null}""")]
+    [InlineData("""{"folder":"f","errors":[]}""")]
+    public void Pasta_sem_erros(string json) => Assert.Empty(SyncthingParsers.FolderErrors(json));
+
+    [Fact]
+    public void Resposta_ilegivel_nao_vira_lista_vazia()
+    {
+        // "nenhum erro" seria mentira: quem chama mostra a falha
+        Assert.ThrowsAny<System.Text.Json.JsonException>(() => SyncthingParsers.FolderErrors("<html>"));
+    }
+
+    [Theory]
+    [InlineData("""{"errors":8,"pullErrors":8}""", 8)]   // versões em que "errors" repete "pullErrors"
+    [InlineData("""{"errors":0,"pullErrors":3}""", 3)]
+    [InlineData("""{"errors":2}""", 2)]
+    public void Contagem_de_erros_da_pasta_sem_contar_duas_vezes(string json, int expected)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(expected, SyncthingApi.FolderErrorCount(doc.RootElement));
+    }
 }

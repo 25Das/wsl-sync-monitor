@@ -155,4 +155,33 @@ public class SyncthingApiTests
             new Dictionary<string, JsonElement>(), new Dictionary<string, JsonElement>());
         Assert.False(c.Synced);
     }
+
+    // arquivos que o Syncthing não consegue gravar (permissão, nome inválido, arquivo travado) ficam "pendentes" para
+    // sempre: esperar não resolve. Antes, a proteção esperava até o limite e, ao desligar, o Windows cancelava o
+    // desligamento depois de 60 s (caso real: pasta Claude com 8 erros)
+
+    static SyncCheck WithClaude(string status) => SyncthingApi.EvaluateSync(Json("system-status"), Json("config"), Connections(),
+        new Dictionary<string, JsonElement> { [Vm] = Json("db-completion-done") },
+        new Dictionary<string, JsonElement> { ["izdab-dr9wa"] = JsonDocument.Parse(status).RootElement.Clone() });
+
+    [Fact]
+    public void Pendencias_que_sao_so_arquivos_com_erro_nao_seguram_a_espera()
+    {
+        var c = WithClaude("""{ "state": "idle", "needTotalItems": 8, "needBytes": 4096, "pullErrors": 8 }""");
+        Assert.Equal((true, "sincronizado (Claude: 8 arquivo(s) com erro)"), (c.Synced, c.Detail));
+    }
+
+    [Fact]
+    public void Pendencias_alem_dos_erros_ainda_estao_chegando()
+    {
+        var c = WithClaude("""{ "state": "idle", "needTotalItems": 10, "needBytes": 4096, "pullErrors": 8 }""");
+        Assert.Equal((false, "Claude: recebendo"), (c.Synced, c.Detail));
+    }
+
+    [Fact]
+    public void Erros_com_a_pasta_ainda_sincronizando_esperam()
+    {
+        var c = WithClaude("""{ "state": "syncing", "needTotalItems": 8, "pullErrors": 8 }""");
+        Assert.False(c.Synced);
+    }
 }
