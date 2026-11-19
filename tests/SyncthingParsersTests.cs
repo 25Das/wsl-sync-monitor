@@ -106,4 +106,29 @@ public class ProcessCheckTests
         using var doc = System.Text.Json.JsonDocument.Parse(json);
         Assert.Equal(expected, SyncthingApi.FolderErrorCount(doc.RootElement));
     }
+
+    // /rest/db/remoteneed: o que um dispositivo ainda precisa de uma pasta (caso real: a VM presa em 95% com 0 B)
+
+    [Fact]
+    public void O_que_falta_no_dispositivo()
+    {
+        var list = SyncthingParsers.RemoteNeed("""
+            {"files":[
+              {"name":"projects/old","deleted":true,"type":"FILE_INFO_TYPE_DIRECTORY","size":128},
+              {"name":"notes/a.md","deleted":false,"type":"FILE_INFO_TYPE_FILE","size":0},
+              {"name":"bin","deleted":false,"type":"FILE_INFO_TYPE_DIRECTORY","size":128}],"page":1,"perpage":100}
+            """);
+        Assert.Equal(["excluir: projects/old", "arquivo: notes/a.md", "pasta: bin"], list);
+    }
+
+    [Theory]
+    [InlineData("""{"files":[],"page":1,"perpage":100}""")]
+    [InlineData("""{"files":null}""")]
+    public void Nada_falta_no_dispositivo(string json) => Assert.Empty(SyncthingParsers.RemoteNeed(json));
+
+    [Fact]
+    public void Formato_desconhecido_nao_vira_nada_falta()
+    {
+        Assert.ThrowsAny<Exception>(() => SyncthingParsers.RemoteNeed("""{"progress":[]}"""));
+    }
 }

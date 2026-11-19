@@ -152,18 +152,28 @@ public static class SyncthingApi
         var myId = Str(status, "myID");
         var uptime = TimeSpan.FromSeconds(Num(status, "uptime"));
         bool allConnected = true;
+        var pendingRemote = new List<string>();
 
         foreach (var (id, name) in ActiveDevices(config, myId, ignored))
         {
             if (!IsConnected(connections, id)) { allConnected = false; continue; }
             if (!completions.TryGetValue(id, out var comp))
                 return new(false, $"aguardando {name}", uptime, allConnected);
-            double pct = Num(comp, "completion", 100);
-            if (pct < 100 || Num(comp, "needItems") > 0 || Num(comp, "needDeletes") > 0)
+            double pct = Num(comp, "completion", 100), items = Num(comp, "needItems") + Num(comp, "needDeletes");
+            if (pct < 100 || items > 0)
+            {
+                // nenhum byte a enviar (o campo precisa vir na resposta): só exclusões, pastas, permissões, que ele aplica
+                // sem este PC. Parado assim (os 95% do Syncthing), o problema é do lado dele: esperar não resolve
+                if (Num(comp, "needBytes", -1) == 0 && items > 0)
+                {
+                    pendingRemote.Add(string.Create(CultureInfo.InvariantCulture, $"{name}: {items:0} item(s) sem dados, pendentes no próprio dispositivo"));
+                    continue;
+                }
                 return new(false, string.Create(CultureInfo.InvariantCulture, $"enviando para {name} ({pct:0}%)"), uptime, allConnected);
+            }
         }
 
-        var withErrors = new List<string>();
+        var withErrors = pendingRemote; // o que não depende de esperar, no texto do resultado
         foreach (var f in SharedActiveFolders(config, myId, ignored))
         {
             var label = NonEmpty(Str(f, "label")) ?? Str(f, "id") ?? "";

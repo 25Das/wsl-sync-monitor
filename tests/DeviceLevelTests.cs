@@ -57,6 +57,7 @@ public class DeviceLevelTests
     {
         var s = Triangle(true, false);
         s.Devices[0].Completion = 50;
+        s.Devices[0].NeedBytes = 1_000_000; // como o Syncthing informa: a porcentagem vem junto com o que falta enviar
         Assert.Equal(Level.Busy, s.DevicesLevel);
         Assert.Equal(Level.Busy, s.Overall);
     }
@@ -95,4 +96,22 @@ public class DeviceLevelTests
     [InlineData("", "", "", "↓ 0 B/s  ↑ 0 B/s")]
     public void Linha_de_conexao_sem_separador_sobrando(string type, string address, string version, string expected) =>
         Assert.Equal(expected, new DeviceInfo { Connected = true, ConnType = type, Address = address, ClientVersion = version }.ConnectionText);
+
+    // caso real: a VM "presa em 95% (0 B)". Nada falta enviar; o que falta (exclusões, pastas, permissões) ela aplica
+    // sozinha, e se não aplica o problema é nela. Antes aparecia como "Sincronizando" para sempre, em azul
+
+    [Fact]
+    public void Noventa_e_cinco_por_cento_sem_nada_a_enviar_aponta_para_o_dispositivo()
+    {
+        var d = new DeviceInfo { Connected = true, Completion = 95, NeedBytes = 0 };
+        Assert.Equal(("Nada a enviar · 95%: itens pendentes no próprio dispositivo (veja no Syncthing dele)", Level.Warn),
+            (d.Status.Text, d.Status.Level));
+    }
+
+    [Fact]
+    public void Com_dados_a_enviar_continua_sincronizando()
+    {
+        var d = new DeviceInfo { Connected = true, Completion = 95, NeedBytes = 2048 };
+        Assert.Equal(Level.Busy, d.Status.Level);
+    }
 }

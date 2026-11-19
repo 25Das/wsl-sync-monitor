@@ -35,6 +35,27 @@ public static class SyncthingParsers
         return list;
     }
 
+    /// <summary>
+    /// /rest/db/remoteneed: o que o dispositivo ainda precisa da pasta ("excluir: …", "pasta: …", "arquivo: …").
+    /// Resposta sem a lista "files" vira exceção (dizer "nada falta" seria mentira).
+    /// </summary>
+    public static List<string> RemoteNeed(string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("files", out var files))
+            throw new FormatException("resposta do Syncthing sem a lista de arquivos (files)");
+        var list = new List<string>();
+        if (files.ValueKind != JsonValueKind.Array) return list;
+        foreach (var f in files.EnumerateArray())
+        {
+            var name = f.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            bool deleted = f.TryGetProperty("deleted", out var d) && d.ValueKind == JsonValueKind.True;
+            bool dir = f.TryGetProperty("type", out var t) && (t.GetString() ?? "").Contains("DIRECTORY", StringComparison.Ordinal);
+            list.Add((deleted ? "excluir" : dir ? "pasta" : "arquivo") + ": " + name);
+        }
+        return list;
+    }
+
     /// <summary>Saída de "df -B1 --output=size,avail /": (total, livre) em bytes.</summary>
     public static (long Total, long Free)? Df(string output)
     {

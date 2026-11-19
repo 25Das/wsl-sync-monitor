@@ -251,6 +251,7 @@ public sealed partial class TrayApp
             : Item("Pausar", () => SetDevicePausedAsync(dev, true), enabled: on);
         yield return Item("Copiar ID", () => CopyToClipboard(dev.Id));
         yield return Item("Pastas compartilhadas…", () => ShowSharedFolders(dev));
+        yield return Item("O que falta nele…", () => ShowRemoteNeed(dev), enabled: on && dev.Connected);
         yield return Sep();
         yield return Item("Mostrar no painel", () => ToggleDeviceInPanel(dev), check: !_settings.IsDeviceHidden(dev));
         yield return Item("Ignorar (não monitorar)…", () => IgnoreDevice(dev));

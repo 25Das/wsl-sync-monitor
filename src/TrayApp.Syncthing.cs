@@ -168,6 +168,29 @@ public sealed partial class TrayApp
             : string.Join("\n", folders.Select(f => $"{f.Label}  ({f.Path}) · {f.Status.Text}")));
     });
 
+    /// <summary>
+    /// O que o dispositivo ainda precisa, pasta a pasta. Útil quando ele fica parado abaixo de 100% sem nada a enviar
+    /// (os 95% do Syncthing): são exclusões, pastas ou permissões que ele não consegue aplicar, e o motivo está nele.
+    /// </summary>
+    void ShowRemoteNeed(DeviceInfo dev) => ShowText($"o que falta em {dev.Name}", async () =>
+    {
+        var folders = _snap?.AllFolders.Where(f => f.DeviceIds.Contains(dev.Id) && !f.Paused && !_activity.Ignored.Folders.Contains(f.Id)).ToList() ?? [];
+        var sb = new StringBuilder();
+        foreach (var f in folders)
+        {
+            var items = await _collector.GetRemoteNeedAsync(_settings, f.Id, dev.Id);
+            if (items.Count == 0) continue;
+            sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"{f.Label} ({items.Count}{(items.Count >= 200 ? "+" : "")}):\n");
+            foreach (var i in items) sb.Append("    ").Append(i).Append('\n');
+            sb.Append('\n');
+        }
+        return sb.Length == 0
+            ? $"{dev.Name} não precisa de mais nada das pastas monitoradas."
+            : $"{dev.Name} ainda precisa disto. Sem nada a enviar (exclusões, pastas, permissões), quem aplica é {dev.Name}: " +
+              "se não sai daí, veja as pastas com erro (Failed Items) no Syncthing dele. Causa comum: excluir uma pasta " +
+              "que lá contém arquivos ignorados pelo .stignore dele (\"directory not empty\").\n\n" + sb;
+    });
+
     void IgnoreDevice(DeviceInfo dev)
     {
         if (!Confirm($"Ignorar o dispositivo {dev.Name}?\n\nO app deixa de monitorá-lo: ele sai do painel, dos contadores e dos avisos, " +

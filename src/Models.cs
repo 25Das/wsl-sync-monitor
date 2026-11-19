@@ -81,6 +81,10 @@ public sealed class DeviceInfo
             if (!Connected)
                 // desligado é normal (ex.: o outro PC); quem avisa é o estado geral quando nenhum está conectado
                 return (LastSeen is { Year: > 1970 } ls ? $"Desconectado · visto {Fmt.Ago(ls)}" : "Desconectado", Level.Off);
+            // nada a enviar e abaixo de 100%: faltam itens sem dados (exclusões, pastas, permissões) que ele aplica
+            // sozinho; parado assim (os 95% do Syncthing), o problema está nele
+            if (Completion < 100 && NeedBytes == 0 && !CompletionUnknown)
+                return ($"Nada a enviar · {Math.Floor(Completion):0}%: itens pendentes no próprio dispositivo (veja no Syncthing dele)", Level.Warn);
             if (Completion < 100 || NeedBytes > 0)
                 return ($"Sincronizando {Math.Floor(Completion):0}% ({Fmt.Bytes(NeedBytes)})", Level.Busy);
             if (CompletionUnknown) return ("Conectado · andamento desconhecido", Level.Unknown);

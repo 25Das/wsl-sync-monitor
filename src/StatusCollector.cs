@@ -242,6 +242,11 @@ public sealed class StatusCollector : IDisposable
     public async Task<List<(string Path, string Error)>> GetFolderErrorsAsync(Settings s, string folderId) =>
         SyncthingParsers.FolderErrors((await GetAsync(GuiUrl(s), ApiKey(s), "/rest/folder/errors?folder=" + Q(folderId))).GetRawText());
 
+    /// <summary>O que o dispositivo ainda precisa da pasta, até 200 itens (GET /rest/db/remoteneed).</summary>
+    public async Task<List<string>> GetRemoteNeedAsync(Settings s, string folderId, string deviceId) =>
+        SyncthingParsers.RemoteNeed((await GetAsync(GuiUrl(s), ApiKey(s),
+            $"/rest/db/remoteneed?folder={Q(folderId)}&device={Q(deviceId)}&page=1&perpage=200")).GetRawText());
+
     /// <summary>Erros recentes do Syncthing (GET /rest/system/error).</summary>
     public async Task<List<(DateTimeOffset When, string Message)>> GetErrorsAsync(Settings s) =>
         SyncthingParsers.Errors((await GetAsync(GuiUrl(s), ApiKey(s), "/rest/system/error")).GetRawText());

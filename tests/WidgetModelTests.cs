@@ -51,7 +51,7 @@ public class WidgetModelTests
     public void Dispositivos_contam_os_conectados_e_a_cor_segue_o_estado_deles()
     {
         var s = Running(new FolderInfo { State = "idle" });
-        s.Devices.Add(new DeviceInfo { Connected = true, Completion = 50 });
+        s.Devices.Add(new DeviceInfo { Connected = true, Completion = 50, NeedBytes = 1_000_000 });
         s.Devices.Add(new DeviceInfo { Connected = false });
         s.AllDevices.AddRange(s.Devices);
         var m = WidgetModel.From(s, false);

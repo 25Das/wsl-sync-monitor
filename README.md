@@ -165,6 +165,8 @@ para sincronizar.
 
 Arquivos que o Syncthing não consegue gravar (permissão, nome inválido, arquivo em uso) não seguram a espera: esperar não
 resolve. A pasta mostra a contagem no painel; clique na linha dela e em *Ver os arquivos com erro…* para ver quais e por quê.
+O mesmo vale para um dispositivo parado abaixo de 100% sem nada a enviar (os "95%" do Syncthing): faltam exclusões,
+pastas ou permissões que só ele aplica. O painel avisa em amarelo; *O que falta nele…*, no menu do dispositivo, lista os itens.
 
 O estado aparece no painel, na seção *Proteção da sincronização*. Como funciona:
 

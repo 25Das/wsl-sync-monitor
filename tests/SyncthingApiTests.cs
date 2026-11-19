@@ -184,4 +184,26 @@ public class SyncthingApiTests
         var c = WithClaude("""{ "state": "syncing", "needTotalItems": 8, "pullErrors": 8 }""");
         Assert.False(c.Synced);
     }
+
+    // caso real: a VM parada em 95% com 0 byte. É o que o Syncthing mostra quando faltam só itens sem dados
+    // (exclusões, pastas, permissões): ela já tem a lista do que mudou e aplica sem precisar deste PC. Se não aplica,
+    // é erro do lado dela; esperar aqui não resolve (e segurava a distro e o desligamento)
+
+    static SyncCheck WithVm(string completion) => SyncthingApi.EvaluateSync(Json("system-status"), Json("config"), Connections(),
+        new Dictionary<string, JsonElement> { [Vm] = JsonDocument.Parse(completion).RootElement.Clone() },
+        new Dictionary<string, JsonElement> { ["izdab-dr9wa"] = Json("db-status-idle") });
+
+    [Fact]
+    public void Dispositivo_que_so_precisa_aplicar_itens_sem_dados_nao_segura_a_espera()
+    {
+        var c = WithVm("""{ "completion": 95, "globalBytes": 1000, "needBytes": 0, "needItems": 0, "needDeletes": 3 }""");
+        Assert.Equal((true, "sincronizado (vm: 3 item(s) sem dados, pendentes no próprio dispositivo)"), (c.Synced, c.Detail));
+    }
+
+    [Fact]
+    public void Dispositivo_com_dados_a_receber_ainda_esta_recebendo()
+    {
+        var c = WithVm("""{ "completion": 99, "globalBytes": 1000, "needBytes": 10, "needItems": 1, "needDeletes": 0 }""");
+        Assert.Equal((false, "enviando para vm (99%)"), (c.Synced, c.Detail));
+    }
 }
